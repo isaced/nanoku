@@ -30,8 +30,6 @@ type AppDTO struct {
 	Name      string        `json:"name"`
 	Image     string        `json:"image"`
 	Port      int           `json:"port"`
-	RepoURL   string        `json:"repoUrl,omitempty"`
-	Branch    string        `json:"branch"`
 	Container *ContainerDTO `json:"container,omitempty"`
 	EnvVars   []EnvVarDTO   `json:"envVars,omitempty"`
 
@@ -52,11 +50,13 @@ type AppDTO struct {
 	RegistryURL        string `json:"registryUrl,omitempty"`
 	RegistryUsername   string `json:"registryUsername,omitempty"`
 
-	// External-build webhook config. WebhookSecret is only populated on the
-	// CreateApp / RotateWebhookSecret responses, never on List/Get.
-	WebhookConfigured bool   `json:"webhookConfigured"`
-	ImageRepo         string `json:"imageRepo,omitempty"`
-	WebhookSecret     string `json:"webhookSecret,omitempty"`
+	// HTTP-trigger config. TriggerToken is only populated on the
+	// CreateApp / RotateTriggerToken responses, never on List/Get.
+	// The token is the bearer credential for POST /api/apps/{name}/trigger;
+	// the same value also implies a per-app token is set (used to drive
+	// the `triggerConfigured` UI affordance).
+	TriggerConfigured bool   `json:"triggerConfigured"`
+	TriggerToken      string `json:"triggerToken,omitempty"`
 
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
@@ -85,17 +85,18 @@ type AppInput struct {
 	Name             *string `json:"name"`
 	Image            *string `json:"image"`
 	Port             *int    `json:"port"`
-	RepoURL          *string `json:"repoUrl"`
-	Branch           *string `json:"branch"`
 	DeployMethod     *string `json:"deployMethod"`
 	ComposePath      *string `json:"composePath"`
 	ComposeContent   *string `json:"composeContent"`
 	RegistryURL      *string `json:"registryUrl"`
 	RegistryUsername *string `json:"registryUsername"`
 	RegistryPassword *string `json:"registryPassword"`
-	ImageRepo        *string `json:"imageRepo"`
 	// ClearRegistry wipes stored registry credentials.
 	ClearRegistry *bool `json:"clearRegistry"`
+	// EnableTrigger generates a per-app bearer token on the server. The
+	// token is returned exactly once in the create response. Idempotent
+	// on update: an already-set token is left alone.
+	EnableTrigger *bool `json:"enableTrigger"`
 }
 
 type DeployDTO struct {
@@ -162,12 +163,8 @@ func (h *Handlers) toAppDTO(ctx context.Context, a *db.App) AppDTO {
 		Name:      a.Name,
 		Image:     appImage(a),
 		Port:      appPort(a),
-		Branch:    a.Branch,
 		CreatedAt: a.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt: a.UpdatedAt.UTC().Format(time.RFC3339),
-	}
-	if a.RepoURL != nil {
-		out.RepoURL = *a.RepoURL
 	}
 	out.DeployMethod = a.DeployMethod
 	if a.DeployMethod == "compose" {
@@ -188,11 +185,8 @@ func (h *Handlers) toAppDTO(ctx context.Context, a *db.App) AppDTO {
 			out.RegistryURL = *a.RegistryURL
 		}
 	}
-	if a.ImageRepo != nil {
-		out.ImageRepo = *a.ImageRepo
-	}
-	if a.WebhookSecret != nil && *a.WebhookSecret != "" && a.ImageRepo != nil && *a.ImageRepo != "" {
-		out.WebhookConfigured = true
+	if appHasToken(a) {
+		out.TriggerConfigured = true
 	}
 	if h.Docker != nil {
 		cur, err := a.QueryCurrentContainer().Only(ctx)
@@ -321,22 +315,14 @@ func (h *Handlers) CreateApp(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	branch := "main"
-	if in.Branch != nil && strings.TrimSpace(*in.Branch) != "" {
-		branch = strings.TrimSpace(*in.Branch)
-	}
 	create := h.DB.App.Create().
 		SetName(*in.Name).
-		SetDeployMethod(deployMethod).
-		SetBranch(branch)
+		SetDeployMethod(deployMethod)
 	if deployMethod == "docker" {
 		create.SetImage(strings.TrimSpace(*in.Image))
 		if in.Port != nil {
 			create.SetPort(*in.Port)
 		}
-	}
-	if in.RepoURL != nil && strings.TrimSpace(*in.RepoURL) != "" {
-		create.SetRepoURL(strings.TrimSpace(*in.RepoURL))
 	}
 	// compose fields
 	if in.ComposePath != nil && strings.TrimSpace(*in.ComposePath) != "" {
@@ -357,20 +343,18 @@ func (h *Handlers) CreateApp(w http.ResponseWriter, r *http.Request) {
 		create.SetRegistryPassword(*in.RegistryPassword)
 	}
 
-	// Webhook deploy: image_repo triggers secret auto-generation. The secret
-	// is returned in the create response exactly once; subsequent Get/List
-	// only report WebhookConfigured.
-	var generatedSecret string
-	if in.ImageRepo != nil && strings.TrimSpace(*in.ImageRepo) != "" {
-		repo := strings.TrimSpace(*in.ImageRepo)
-		create.SetImageRepo(repo)
-		secret, err := randomSecret()
+	// HTTP trigger: when enabled on create, generate a fresh bearer token
+	// server-side and return it in the create response (single-shot).
+	// On update, EnableTrigger is a no-op for already-enabled apps.
+	var generatedToken string
+	if in.EnableTrigger != nil && *in.EnableTrigger {
+		tok, err := randomToken()
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, fmt.Errorf("generate webhook secret: %w", err))
+			writeErr(w, http.StatusInternalServerError, fmt.Errorf("generate trigger token: %w", err))
 			return
 		}
-		create.SetWebhookSecret(secret)
-		generatedSecret = secret
+		create.SetTriggerToken(tok)
+		generatedToken = tok
 	}
 
 	a, err := create.Save(r.Context())
@@ -387,7 +371,7 @@ func (h *Handlers) CreateApp(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	dto := h.toAppDTO(r.Context(), a)
-	dto.WebhookSecret = generatedSecret // single-shot: only on this create response
+	dto.TriggerToken = generatedToken // single-shot: only on this create response
 	writeJSON(w, http.StatusCreated, dto)
 }
 
@@ -440,17 +424,6 @@ func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
 	upd := h.DB.App.UpdateOneID(id)
 	if in.Name != nil {
 		upd.SetName(*in.Name)
-	}
-	if in.Branch != nil {
-		upd.SetBranch(strings.TrimSpace(*in.Branch))
-	}
-	if in.RepoURL != nil {
-		repo := strings.TrimSpace(*in.RepoURL)
-		if repo == "" {
-			upd.ClearRepoURL()
-		} else {
-			upd.SetRepoURL(repo)
-		}
 	}
 	if in.Image != nil {
 		upd.SetImage(strings.TrimSpace(*in.Image))
@@ -505,24 +478,6 @@ func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
 		upd.ClearRegistryURL()
 	} else if in.RegistryPassword != nil && *in.RegistryPassword != "" {
 		upd.SetRegistryPassword(*in.RegistryPassword)
-	}
-	if in.ImageRepo != nil {
-		repo := strings.TrimSpace(*in.ImageRepo)
-		if repo == "" {
-			upd.ClearImageRepo()
-			upd.ClearWebhookSecret()
-		} else {
-			upd.SetImageRepo(repo)
-			// Only auto-provision secret when transitioning from "no webhook".
-			if a.WebhookSecret == nil || *a.WebhookSecret == "" {
-				secret, err := randomSecret()
-				if err != nil {
-					writeErr(w, http.StatusInternalServerError, fmt.Errorf("generate webhook secret: %w", err))
-					return
-				}
-				upd.SetWebhookSecret(secret)
-			}
-		}
 	}
 	a, err = upd.Save(r.Context())
 	if err != nil {

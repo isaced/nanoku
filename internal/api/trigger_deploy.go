@@ -9,13 +9,18 @@ import (
 	"github.com/isaced/nanoku/internal/db"
 )
 
-// executeWebhookDeploy runs in a goroutine spawned by Webhook after the
+// executeTriggerDeploy runs in a goroutine spawned by Trigger after the
 // deploy lock has been acquired and the Deploy row has been created with
 // status=running. It always releases the lock and updates the Deploy row.
 //
+// `image` is the full resolved `<repo>:<tag>` (see resolveTriggerImage in
+// trigger.go). The HTTP payload is fully validated before this is called;
+// this worker is intentionally non-validating so a panic in the deploy
+// pipeline can't be confused with a malformed request.
+//
 // parentCtx is a detached context (not the HTTP request's), so a client
-// disconnect doesn't kill the in-flight pull / caddy reload.
-func (h *Handlers) executeWebhookDeploy(parentCtx context.Context, appID, deployID int, tag, commitMsg string) {
+// disconnect doesn't kill an in-flight pull / caddy reload.
+func (h *Handlers) executeTriggerDeploy(parentCtx context.Context, appID, deployID int, image, commitMsg string) {
 	defer h.DeployLock.Release(appID)
 	defer func() {
 		if r := recover(); r != nil {
@@ -40,13 +45,6 @@ func (h *Handlers) executeWebhookDeploy(parentCtx context.Context, appID, deploy
 		h.markDeployFailed(ctx, deployID, errors.New("docker unavailable"))
 		return
 	}
-
-	if a.ImageRepo == nil || *a.ImageRepo == "" {
-		h.markDeployFailed(ctx, deployID, errors.New("app has no image_repo configured"))
-		return
-	}
-
-	image := *a.ImageRepo + ":" + tag
 
 	regURL, regUser, regPass := registryCreds(a)
 	pull := func() error {

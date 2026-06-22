@@ -308,7 +308,7 @@ func (h *Handlers) regenerateAndReload(r *http.Request) error {
 }
 
 // regenerateAndReloadCtx is the ctx-only form, safe to call from goroutines
-// that don't have a *http.Request (e.g. webhook deploy worker).
+// that don't have a *http.Request (e.g. the trigger deploy worker).
 func (h *Handlers) regenerateAndReloadCtx(ctx context.Context) error {
 	resolved, err := h.resolveSiteUpstreamsCtx(ctx)
 	if err != nil {

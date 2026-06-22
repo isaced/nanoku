@@ -90,26 +90,35 @@ func main() {
 	mux.HandleFunc("GET /api/apps/{id}/env", handlers.ListAppEnvVars)
 	mux.HandleFunc("PUT /api/apps/{id}/env", handlers.ReplaceAppEnvVars)
 	mux.HandleFunc("GET /api/apps/{id}/deploys", handlers.ListAppDeploys)
-	mux.HandleFunc("POST /api/apps/{id}/rotate-webhook-secret", handlers.RotateWebhookSecret)
+	mux.HandleFunc("POST /api/apps/{id}/rotate-trigger-token", handlers.RotateTriggerToken)
 
 	mux.HandleFunc("GET /api/system/status", handlers.SystemStatus)
 	mux.HandleFunc("GET /api/system/logs", handlers.SystemLogs)
 
 	mux.HandleFunc("GET /api/dashboard", handlers.Dashboard)
 
-	// Webhook is mounted outside the BasicAuth chain — it authenticates by
-	// HMAC-SHA256 over the request body using the app's webhook_secret.
-	webhookMux := http.NewServeMux()
-	webhookMux.HandleFunc("POST /api/webhook/{name}", handlers.Webhook)
+	// Routing layers, outer to inner:
+	//   CORS
+	//   apiMux          — dispatches by URL pattern
+	//     ├ POST /api/apps/{name}/trigger   (no auth, Bearer verified in handler)
+	//     ├ /api/                          (admin: wrapped in BasicAuth)
+	//     └ /                              (UI: served as-is)
+	//
+	// The trigger endpoint is registered before the `/api/` catch-all so
+	// it wins for matching URLs. Auth is per-branch: BasicAuth is applied
+	// to the internal mux only, not to the trigger route, because the
+	// trigger credential is a per-app bearer token, not the admin password.
+	//
+	// Provider-agnostic on purpose: any HTTP caller that can produce
+	// `Authorization: Bearer <token>` + a JSON body can fire a deploy.
+	authedInternal := api.BasicAuth(cfg.AdminUser, cfg.AdminPassword)(mux)
 
 	apiMux := http.NewServeMux()
-	apiMux.Handle("/api/", mux)
-	apiMux.Handle("/api/webhook/", webhookMux)
+	apiMux.HandleFunc("POST /api/apps/{name}/trigger", handlers.Trigger)
+	apiMux.Handle("/api/", authedInternal)
 	apiMux.Handle("/", api.UIHandler())
 
-	root := api.BasicAuth(cfg.AdminUser, cfg.AdminPassword)(
-		api.CORS(apiMux),
-	)
+	root := api.CORS(apiMux)
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,

@@ -2,10 +2,10 @@ package api
 
 import "sync"
 
-// DeployLock serializes webhook-driven deploys per app so a duplicated
-// webhook (GitHub retries, two pushes in the same second) doesn't race on
-// the same container / caddyfile. Manual UI deploys also take the lock so
-// a webhook never lands mid-manual-redeploy.
+// DeployLock serializes HTTP-triggered deploys per app so a duplicated
+// request (CI retries, two pushes in the same second) doesn't race on the
+// same container / caddyfile. Manual UI deploys also take the lock so an
+// external trigger never lands mid-manual-redeploy.
 //
 // Different apps deploy in parallel.
 type DeployLock struct {
