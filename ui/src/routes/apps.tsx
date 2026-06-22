@@ -642,6 +642,53 @@ function CopyableValue({ value, label }: { value: string; label: string }) {
   )
 }
 
+function githubActionsWorkflowYaml(appName: string, url: string, secret: string) {
+  // GitHub Actions uses ${{ ... }} for expressions. In JS template literals
+  // we must escape every literal `$` so it isn't treated as interpolation.
+  // `${{` in the final string should read literally — hence `\${{` here.
+  const $ = '$'
+  return [
+    'name: deploy',
+    'on:',
+    '  push:',
+    '    branches: [main]',
+    '',
+    'jobs:',
+    '  build:',
+    '    runs-on: ubuntu-latest',
+    '    permissions:',
+    '      contents: read',
+    '      packages: write',
+    '    steps:',
+    '      - uses: actions/checkout@v4',
+    '      - uses: docker/setup-buildx-action@v3',
+    '      - uses: docker/login-action@v3',
+    '        with:',
+    '          registry: ghcr.io',
+    `          username: ${$}{{ github.actor }}`,
+    `          password: ${$}{{ secrets.GITHUB_TOKEN }}`,
+    '      - uses: docker/build-push-action@v5',
+    '        with:',
+    '          push: true',
+    `          tags: ghcr.io/${$}{{ github.repository_owner }}/${$}{{ github.event.repository.name }}:${$}{{ github.sha }}`,
+    '',
+    `      - name: Notify Nanoku (${appName})`,
+    '        env:',
+    `          URL: ${url}`,
+    `          SECRET: ${secret}`,
+    `          SHA: ${$}{{ github.sha }}`,
+    `          MSG: ${$}{{ github.event.head_commit.message }}`,
+    '        run: |',
+    '          BODY="{\\"tag\\":\\"\${SHA}\\",\\"commit_message\\":\\"\${MSG//\\"/\\\\\\"}\\".\\"}"',
+    '          SIG="sha256=$(printf \'%s\' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | awk \'{print $2}\')"',
+    '          curl -fsS -X POST "$URL" \\',
+    '            -H "Content-Type: application/json" \\',
+    '            -H "X-Hub-Signature-256: $SIG" \\',
+    '            -d "$BODY"',
+    '',
+  ].join('\n')
+}
+
 function WebhookSecretModal({
   appName,
   url,
@@ -653,6 +700,7 @@ function WebhookSecretModal({
   secret: string
   onClose: () => void
 }) {
+  const yaml = githubActionsWorkflowYaml(appName, url, secret)
   return (
     <Modal
       title={
@@ -666,7 +714,7 @@ function WebhookSecretModal({
       onCancel={onClose}
       okText="Done"
       cancelButtonProps={{ style: { display: 'none' } }}
-      width={620}
+      width={680}
     >
       <Alert
         type="warning"
@@ -698,6 +746,35 @@ function WebhookSecretModal({
           On push, your GitHub Actions workflow builds and pushes the image,
           then POSTs <code>{'{ "tag": "<sha>", "commit_message": "<msg>" }'}</code> to the URL.
         </div>
+        <Collapse
+          ghost
+          items={[
+            {
+              key: 'yaml',
+              label: (
+                <span className="text-xs">
+                  <code>.github/workflows/deploy.yml</code> — copy into your app repo
+                </span>
+              ),
+              children: (
+                <div className="space-y-2">
+                  <Button
+                    size="small"
+                    icon={<Copy size={12} />}
+                    onClick={() => {
+                      void navigator.clipboard.writeText(yaml)
+                    }}
+                  >
+                    Copy YAML
+                  </Button>
+                  <pre className="mono text-[11px] leading-relaxed bg-[var(--bg-input)] border border-[var(--border)] rounded-lg p-3 overflow-auto max-h-72 whitespace-pre text-[var(--fg-muted)]">
+                    {yaml}
+                  </pre>
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
     </Modal>
   )
