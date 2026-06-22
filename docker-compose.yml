@@ -1,0 +1,17 @@
+services:
+  nanoku:
+    build: .
+    image: nanoku:latest
+    container_name: nanoku
+    restart: unless-stopped
+    ports:
+      - "${LISTEN:-8080}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/data
+    environment:
+      NANOKU_ADMIN_USER: ${NANOKU_ADMIN_USER:-admin}
+      NANOKU_ADMIN_PASSWORD: ${NANOKU_ADMIN_PASSWORD:?NANOKU_ADMIN_PASSWORD is required}
+      NANOKU_CADDY_AUTO_HTTPS: ${NANOKU_CADDY_AUTO_HTTPS:-}
+    # Nanoku's built-in Caddy container will be created on first start.
+    # It uses the docker network `nanoku-net`, which Nanoku creates itself.

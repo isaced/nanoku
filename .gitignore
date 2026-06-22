@@ -47,3 +47,6 @@ internal/api/dist/
 
 # Generated compose files (created at deploy time)
 composes/
+
+# Bind-mounted data dir for the docker-compose stack
+data/
