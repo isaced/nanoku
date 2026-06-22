@@ -105,8 +105,8 @@ func (m *Manager) EnsureCaddyContainer(ctx context.Context, caddyfileHostPath st
 		"--label", "nanoku.managed=true",
 		"--label", "nanoku.role=caddy",
 		"--mount", "type=bind,source=" + caddyfileHostPath + ",target=/etc/caddy/Caddyfile,readonly",
-		"--mount", "type=volume,source="+m.volumeName+",target=/data",
-		"--mount", "type=volume,source="+m.volumeName+",target=/config",
+		"--mount", "type=volume,source=" + m.volumeName + ",target=/data",
+		"--mount", "type=volume,source=" + m.volumeName + ",target=/config",
 		"-p", "80:80",
 		"-p", "443:443",
 		m.image,
@@ -478,7 +478,7 @@ func (m *Manager) ContainerLogs(ctx context.Context, name string, tail int) (str
 	if tail > 5000 {
 		tail = 5000
 	}
-	out, err := m.run(ctx, "container", "logs",
+	out, err := m.runCombined(ctx, "container", "logs",
 		"--tail", strconv.Itoa(tail),
 		"--timestamps",
 		name,
@@ -491,16 +491,16 @@ func (m *Manager) ContainerLogs(ctx context.Context, name string, tail int) (str
 
 // ContainerStats is a single snapshot of resource usage for a container.
 type ContainerStats struct {
-	Name        string  `json:"name"`
-	CPUPerc     float64 `json:"cpuPerc"`
-	MemUsed     int64   `json:"memUsedBytes"`
-	MemLimit    int64   `json:"memLimitBytes"`
-	MemPerc     float64 `json:"memPerc"`
-	NetRxBytes  int64   `json:"netRxBytes"`
-	NetTxBytes  int64   `json:"netTxBytes"`
-	BlockRead   int64   `json:"blockReadBytes"`
-	BlockWrite  int64   `json:"blockWriteBytes"`
-	PIDs        int     `json:"pids"`
+	Name       string  `json:"name"`
+	CPUPerc    float64 `json:"cpuPerc"`
+	MemUsed    int64   `json:"memUsedBytes"`
+	MemLimit   int64   `json:"memLimitBytes"`
+	MemPerc    float64 `json:"memPerc"`
+	NetRxBytes int64   `json:"netRxBytes"`
+	NetTxBytes int64   `json:"netTxBytes"`
+	BlockRead  int64   `json:"blockReadBytes"`
+	BlockWrite int64   `json:"blockWriteBytes"`
+	PIDs       int     `json:"pids"`
 }
 
 // AllStats returns a snapshot of stats for every nanoku-managed container
@@ -666,15 +666,38 @@ func atoiSafe(s string) int {
 	return n
 }
 
+// run executes a docker subcommand and returns stdout on success.
+//
+// stdout and stderr are kept separate on purpose: callers that parse
+// structured output (container IDs from `docker run`, `--format` templates)
+// must not see stderr noise such as deprecation warnings, or the ID parse
+// silently breaks. On error the returned string is stdout-only (may be
+// partial); the stderr text is folded into the wrapped error so diagnostics
+// are not lost. For commands whose payload legitimately spans both streams
+// (e.g. `docker logs`), use runCombined.
 func (m *Manager) run(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, m.binary, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
-	out := stdout.String() + stderr.String()
 	if err != nil {
-		return out, fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+		return stdout.String(), fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}
-	return out, nil
+	return stdout.String(), nil
+}
+
+// runCombined is like run but returns stdout+stderr merged in stream order.
+// Use only for commands where the payload genuinely spans both streams
+// (container logs: the container's stdout goes to docker's stdout, its
+// stderr to docker's stderr).
+func (m *Manager) runCombined(ctx context.Context, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, m.binary, args...)
+	var combined bytes.Buffer
+	cmd.Stdout = &combined
+	cmd.Stderr = &combined
+	if err := cmd.Run(); err != nil {
+		return combined.String(), fmt.Errorf("%w: %s", err, strings.TrimSpace(combined.String()))
+	}
+	return combined.String(), nil
 }
