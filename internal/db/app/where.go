@@ -120,6 +120,16 @@ func RegistryPassword(v string) predicate.App {
 	return predicate.App(sql.FieldEQ(FieldRegistryPassword, v))
 }
 
+// ImageRepo applies equality check predicate on the "image_repo" field. It's identical to ImageRepoEQ.
+func ImageRepo(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldImageRepo, v))
+}
+
+// WebhookSecret applies equality check predicate on the "webhook_secret" field. It's identical to WebhookSecretEQ.
+func WebhookSecret(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldWebhookSecret, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.App {
 	return predicate.App(sql.FieldEQ(FieldCreatedAt, v))
@@ -968,6 +978,156 @@ func RegistryPasswordEqualFold(v string) predicate.App {
 // RegistryPasswordContainsFold applies the ContainsFold predicate on the "registry_password" field.
 func RegistryPasswordContainsFold(v string) predicate.App {
 	return predicate.App(sql.FieldContainsFold(FieldRegistryPassword, v))
+}
+
+// ImageRepoEQ applies the EQ predicate on the "image_repo" field.
+func ImageRepoEQ(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldImageRepo, v))
+}
+
+// ImageRepoNEQ applies the NEQ predicate on the "image_repo" field.
+func ImageRepoNEQ(v string) predicate.App {
+	return predicate.App(sql.FieldNEQ(FieldImageRepo, v))
+}
+
+// ImageRepoIn applies the In predicate on the "image_repo" field.
+func ImageRepoIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldIn(FieldImageRepo, vs...))
+}
+
+// ImageRepoNotIn applies the NotIn predicate on the "image_repo" field.
+func ImageRepoNotIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldNotIn(FieldImageRepo, vs...))
+}
+
+// ImageRepoGT applies the GT predicate on the "image_repo" field.
+func ImageRepoGT(v string) predicate.App {
+	return predicate.App(sql.FieldGT(FieldImageRepo, v))
+}
+
+// ImageRepoGTE applies the GTE predicate on the "image_repo" field.
+func ImageRepoGTE(v string) predicate.App {
+	return predicate.App(sql.FieldGTE(FieldImageRepo, v))
+}
+
+// ImageRepoLT applies the LT predicate on the "image_repo" field.
+func ImageRepoLT(v string) predicate.App {
+	return predicate.App(sql.FieldLT(FieldImageRepo, v))
+}
+
+// ImageRepoLTE applies the LTE predicate on the "image_repo" field.
+func ImageRepoLTE(v string) predicate.App {
+	return predicate.App(sql.FieldLTE(FieldImageRepo, v))
+}
+
+// ImageRepoContains applies the Contains predicate on the "image_repo" field.
+func ImageRepoContains(v string) predicate.App {
+	return predicate.App(sql.FieldContains(FieldImageRepo, v))
+}
+
+// ImageRepoHasPrefix applies the HasPrefix predicate on the "image_repo" field.
+func ImageRepoHasPrefix(v string) predicate.App {
+	return predicate.App(sql.FieldHasPrefix(FieldImageRepo, v))
+}
+
+// ImageRepoHasSuffix applies the HasSuffix predicate on the "image_repo" field.
+func ImageRepoHasSuffix(v string) predicate.App {
+	return predicate.App(sql.FieldHasSuffix(FieldImageRepo, v))
+}
+
+// ImageRepoIsNil applies the IsNil predicate on the "image_repo" field.
+func ImageRepoIsNil() predicate.App {
+	return predicate.App(sql.FieldIsNull(FieldImageRepo))
+}
+
+// ImageRepoNotNil applies the NotNil predicate on the "image_repo" field.
+func ImageRepoNotNil() predicate.App {
+	return predicate.App(sql.FieldNotNull(FieldImageRepo))
+}
+
+// ImageRepoEqualFold applies the EqualFold predicate on the "image_repo" field.
+func ImageRepoEqualFold(v string) predicate.App {
+	return predicate.App(sql.FieldEqualFold(FieldImageRepo, v))
+}
+
+// ImageRepoContainsFold applies the ContainsFold predicate on the "image_repo" field.
+func ImageRepoContainsFold(v string) predicate.App {
+	return predicate.App(sql.FieldContainsFold(FieldImageRepo, v))
+}
+
+// WebhookSecretEQ applies the EQ predicate on the "webhook_secret" field.
+func WebhookSecretEQ(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldWebhookSecret, v))
+}
+
+// WebhookSecretNEQ applies the NEQ predicate on the "webhook_secret" field.
+func WebhookSecretNEQ(v string) predicate.App {
+	return predicate.App(sql.FieldNEQ(FieldWebhookSecret, v))
+}
+
+// WebhookSecretIn applies the In predicate on the "webhook_secret" field.
+func WebhookSecretIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldIn(FieldWebhookSecret, vs...))
+}
+
+// WebhookSecretNotIn applies the NotIn predicate on the "webhook_secret" field.
+func WebhookSecretNotIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldNotIn(FieldWebhookSecret, vs...))
+}
+
+// WebhookSecretGT applies the GT predicate on the "webhook_secret" field.
+func WebhookSecretGT(v string) predicate.App {
+	return predicate.App(sql.FieldGT(FieldWebhookSecret, v))
+}
+
+// WebhookSecretGTE applies the GTE predicate on the "webhook_secret" field.
+func WebhookSecretGTE(v string) predicate.App {
+	return predicate.App(sql.FieldGTE(FieldWebhookSecret, v))
+}
+
+// WebhookSecretLT applies the LT predicate on the "webhook_secret" field.
+func WebhookSecretLT(v string) predicate.App {
+	return predicate.App(sql.FieldLT(FieldWebhookSecret, v))
+}
+
+// WebhookSecretLTE applies the LTE predicate on the "webhook_secret" field.
+func WebhookSecretLTE(v string) predicate.App {
+	return predicate.App(sql.FieldLTE(FieldWebhookSecret, v))
+}
+
+// WebhookSecretContains applies the Contains predicate on the "webhook_secret" field.
+func WebhookSecretContains(v string) predicate.App {
+	return predicate.App(sql.FieldContains(FieldWebhookSecret, v))
+}
+
+// WebhookSecretHasPrefix applies the HasPrefix predicate on the "webhook_secret" field.
+func WebhookSecretHasPrefix(v string) predicate.App {
+	return predicate.App(sql.FieldHasPrefix(FieldWebhookSecret, v))
+}
+
+// WebhookSecretHasSuffix applies the HasSuffix predicate on the "webhook_secret" field.
+func WebhookSecretHasSuffix(v string) predicate.App {
+	return predicate.App(sql.FieldHasSuffix(FieldWebhookSecret, v))
+}
+
+// WebhookSecretIsNil applies the IsNil predicate on the "webhook_secret" field.
+func WebhookSecretIsNil() predicate.App {
+	return predicate.App(sql.FieldIsNull(FieldWebhookSecret))
+}
+
+// WebhookSecretNotNil applies the NotNil predicate on the "webhook_secret" field.
+func WebhookSecretNotNil() predicate.App {
+	return predicate.App(sql.FieldNotNull(FieldWebhookSecret))
+}
+
+// WebhookSecretEqualFold applies the EqualFold predicate on the "webhook_secret" field.
+func WebhookSecretEqualFold(v string) predicate.App {
+	return predicate.App(sql.FieldEqualFold(FieldWebhookSecret, v))
+}
+
+// WebhookSecretContainsFold applies the ContainsFold predicate on the "webhook_secret" field.
+func WebhookSecretContainsFold(v string) predicate.App {
+	return predicate.App(sql.FieldContainsFold(FieldWebhookSecret, v))
 }
 
 // HasSites applies the HasEdge predicate on the "sites" edge.

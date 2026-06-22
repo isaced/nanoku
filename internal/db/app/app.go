@@ -40,6 +40,10 @@ const (
 	FieldRegistryUsername = "registry_username"
 	// FieldRegistryPassword holds the string denoting the registry_password field in the database.
 	FieldRegistryPassword = "registry_password"
+	// FieldImageRepo holds the string denoting the image_repo field in the database.
+	FieldImageRepo = "image_repo"
+	// FieldWebhookSecret holds the string denoting the webhook_secret field in the database.
+	FieldWebhookSecret = "webhook_secret"
 	// EdgeSites holds the string denoting the sites edge name in mutations.
 	EdgeSites = "sites"
 	// EdgeContainers holds the string denoting the containers edge name in mutations.
@@ -105,6 +109,8 @@ var Columns = []string{
 	FieldRegistryURL,
 	FieldRegistryUsername,
 	FieldRegistryPassword,
+	FieldImageRepo,
+	FieldWebhookSecret,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -205,6 +211,16 @@ func ByRegistryUsername(opts ...sql.OrderTermOption) OrderOption {
 // ByRegistryPassword orders the results by the registry_password field.
 func ByRegistryPassword(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRegistryPassword, opts...).ToFunc()
+}
+
+// ByImageRepo orders the results by the image_repo field.
+func ByImageRepo(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageRepo, opts...).ToFunc()
+}
+
+// ByWebhookSecret orders the results by the webhook_secret field.
+func ByWebhookSecret(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWebhookSecret, opts...).ToFunc()
 }
 
 // BySitesCount orders the results by sites count.

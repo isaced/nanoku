@@ -198,6 +198,34 @@ func (_c *AppCreate) SetNillableRegistryPassword(v *string) *AppCreate {
 	return _c
 }
 
+// SetImageRepo sets the "image_repo" field.
+func (_c *AppCreate) SetImageRepo(v string) *AppCreate {
+	_c.mutation.SetImageRepo(v)
+	return _c
+}
+
+// SetNillableImageRepo sets the "image_repo" field if the given value is not nil.
+func (_c *AppCreate) SetNillableImageRepo(v *string) *AppCreate {
+	if v != nil {
+		_c.SetImageRepo(*v)
+	}
+	return _c
+}
+
+// SetWebhookSecret sets the "webhook_secret" field.
+func (_c *AppCreate) SetWebhookSecret(v string) *AppCreate {
+	_c.mutation.SetWebhookSecret(v)
+	return _c
+}
+
+// SetNillableWebhookSecret sets the "webhook_secret" field if the given value is not nil.
+func (_c *AppCreate) SetNillableWebhookSecret(v *string) *AppCreate {
+	if v != nil {
+		_c.SetWebhookSecret(*v)
+	}
+	return _c
+}
+
 // AddSiteIDs adds the "sites" edge to the Site entity by IDs.
 func (_c *AppCreate) AddSiteIDs(ids ...int) *AppCreate {
 	_c.mutation.AddSiteIDs(ids...)
@@ -434,6 +462,14 @@ func (_c *AppCreate) createSpec() (*App, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RegistryPassword(); ok {
 		_spec.SetField(app.FieldRegistryPassword, field.TypeString, value)
 		_node.RegistryPassword = &value
+	}
+	if value, ok := _c.mutation.ImageRepo(); ok {
+		_spec.SetField(app.FieldImageRepo, field.TypeString, value)
+		_node.ImageRepo = &value
+	}
+	if value, ok := _c.mutation.WebhookSecret(); ok {
+		_spec.SetField(app.FieldWebhookSecret, field.TypeString, value)
+		_node.WebhookSecret = &value
 	}
 	if nodes := _c.mutation.SitesIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

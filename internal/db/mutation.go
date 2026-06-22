@@ -55,6 +55,8 @@ type AppMutation struct {
 	registry_url             *string
 	registry_username        *string
 	registry_password        *string
+	image_repo               *string
+	webhook_secret           *string
 	clearedFields            map[string]struct{}
 	sites                    map[int]struct{}
 	removedsites             map[int]struct{}
@@ -766,6 +768,104 @@ func (m *AppMutation) ResetRegistryPassword() {
 	delete(m.clearedFields, app.FieldRegistryPassword)
 }
 
+// SetImageRepo sets the "image_repo" field.
+func (m *AppMutation) SetImageRepo(s string) {
+	m.image_repo = &s
+}
+
+// ImageRepo returns the value of the "image_repo" field in the mutation.
+func (m *AppMutation) ImageRepo() (r string, exists bool) {
+	v := m.image_repo
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageRepo returns the old "image_repo" field's value of the App entity.
+// If the App object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AppMutation) OldImageRepo(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageRepo is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageRepo requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageRepo: %w", err)
+	}
+	return oldValue.ImageRepo, nil
+}
+
+// ClearImageRepo clears the value of the "image_repo" field.
+func (m *AppMutation) ClearImageRepo() {
+	m.image_repo = nil
+	m.clearedFields[app.FieldImageRepo] = struct{}{}
+}
+
+// ImageRepoCleared returns if the "image_repo" field was cleared in this mutation.
+func (m *AppMutation) ImageRepoCleared() bool {
+	_, ok := m.clearedFields[app.FieldImageRepo]
+	return ok
+}
+
+// ResetImageRepo resets all changes to the "image_repo" field.
+func (m *AppMutation) ResetImageRepo() {
+	m.image_repo = nil
+	delete(m.clearedFields, app.FieldImageRepo)
+}
+
+// SetWebhookSecret sets the "webhook_secret" field.
+func (m *AppMutation) SetWebhookSecret(s string) {
+	m.webhook_secret = &s
+}
+
+// WebhookSecret returns the value of the "webhook_secret" field in the mutation.
+func (m *AppMutation) WebhookSecret() (r string, exists bool) {
+	v := m.webhook_secret
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWebhookSecret returns the old "webhook_secret" field's value of the App entity.
+// If the App object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AppMutation) OldWebhookSecret(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWebhookSecret is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWebhookSecret requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWebhookSecret: %w", err)
+	}
+	return oldValue.WebhookSecret, nil
+}
+
+// ClearWebhookSecret clears the value of the "webhook_secret" field.
+func (m *AppMutation) ClearWebhookSecret() {
+	m.webhook_secret = nil
+	m.clearedFields[app.FieldWebhookSecret] = struct{}{}
+}
+
+// WebhookSecretCleared returns if the "webhook_secret" field was cleared in this mutation.
+func (m *AppMutation) WebhookSecretCleared() bool {
+	_, ok := m.clearedFields[app.FieldWebhookSecret]
+	return ok
+}
+
+// ResetWebhookSecret resets all changes to the "webhook_secret" field.
+func (m *AppMutation) ResetWebhookSecret() {
+	m.webhook_secret = nil
+	delete(m.clearedFields, app.FieldWebhookSecret)
+}
+
 // AddSiteIDs adds the "sites" edge to the Site entity by ids.
 func (m *AppMutation) AddSiteIDs(ids ...int) {
 	if m.sites == nil {
@@ -1055,7 +1155,7 @@ func (m *AppMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AppMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 15)
 	if m.created_at != nil {
 		fields = append(fields, app.FieldCreatedAt)
 	}
@@ -1095,6 +1195,12 @@ func (m *AppMutation) Fields() []string {
 	if m.registry_password != nil {
 		fields = append(fields, app.FieldRegistryPassword)
 	}
+	if m.image_repo != nil {
+		fields = append(fields, app.FieldImageRepo)
+	}
+	if m.webhook_secret != nil {
+		fields = append(fields, app.FieldWebhookSecret)
+	}
 	return fields
 }
 
@@ -1129,6 +1235,10 @@ func (m *AppMutation) Field(name string) (ent.Value, bool) {
 		return m.RegistryUsername()
 	case app.FieldRegistryPassword:
 		return m.RegistryPassword()
+	case app.FieldImageRepo:
+		return m.ImageRepo()
+	case app.FieldWebhookSecret:
+		return m.WebhookSecret()
 	}
 	return nil, false
 }
@@ -1164,6 +1274,10 @@ func (m *AppMutation) OldField(ctx context.Context, name string) (ent.Value, err
 		return m.OldRegistryUsername(ctx)
 	case app.FieldRegistryPassword:
 		return m.OldRegistryPassword(ctx)
+	case app.FieldImageRepo:
+		return m.OldImageRepo(ctx)
+	case app.FieldWebhookSecret:
+		return m.OldWebhookSecret(ctx)
 	}
 	return nil, fmt.Errorf("unknown App field %s", name)
 }
@@ -1264,6 +1378,20 @@ func (m *AppMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRegistryPassword(v)
 		return nil
+	case app.FieldImageRepo:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageRepo(v)
+		return nil
+	case app.FieldWebhookSecret:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWebhookSecret(v)
+		return nil
 	}
 	return fmt.Errorf("unknown App field %s", name)
 }
@@ -1333,6 +1461,12 @@ func (m *AppMutation) ClearedFields() []string {
 	if m.FieldCleared(app.FieldRegistryPassword) {
 		fields = append(fields, app.FieldRegistryPassword)
 	}
+	if m.FieldCleared(app.FieldImageRepo) {
+		fields = append(fields, app.FieldImageRepo)
+	}
+	if m.FieldCleared(app.FieldWebhookSecret) {
+		fields = append(fields, app.FieldWebhookSecret)
+	}
 	return fields
 }
 
@@ -1370,6 +1504,12 @@ func (m *AppMutation) ClearField(name string) error {
 		return nil
 	case app.FieldRegistryPassword:
 		m.ClearRegistryPassword()
+		return nil
+	case app.FieldImageRepo:
+		m.ClearImageRepo()
+		return nil
+	case app.FieldWebhookSecret:
+		m.ClearWebhookSecret()
 		return nil
 	}
 	return fmt.Errorf("unknown App nullable field %s", name)
@@ -1417,6 +1557,12 @@ func (m *AppMutation) ResetField(name string) error {
 		return nil
 	case app.FieldRegistryPassword:
 		m.ResetRegistryPassword()
+		return nil
+	case app.FieldImageRepo:
+		m.ResetImageRepo()
+		return nil
+	case app.FieldWebhookSecret:
+		m.ResetWebhookSecret()
 		return nil
 	}
 	return fmt.Errorf("unknown App field %s", name)

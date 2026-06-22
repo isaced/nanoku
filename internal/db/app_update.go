@@ -247,6 +247,46 @@ func (_u *AppUpdate) ClearRegistryPassword() *AppUpdate {
 	return _u
 }
 
+// SetImageRepo sets the "image_repo" field.
+func (_u *AppUpdate) SetImageRepo(v string) *AppUpdate {
+	_u.mutation.SetImageRepo(v)
+	return _u
+}
+
+// SetNillableImageRepo sets the "image_repo" field if the given value is not nil.
+func (_u *AppUpdate) SetNillableImageRepo(v *string) *AppUpdate {
+	if v != nil {
+		_u.SetImageRepo(*v)
+	}
+	return _u
+}
+
+// ClearImageRepo clears the value of the "image_repo" field.
+func (_u *AppUpdate) ClearImageRepo() *AppUpdate {
+	_u.mutation.ClearImageRepo()
+	return _u
+}
+
+// SetWebhookSecret sets the "webhook_secret" field.
+func (_u *AppUpdate) SetWebhookSecret(v string) *AppUpdate {
+	_u.mutation.SetWebhookSecret(v)
+	return _u
+}
+
+// SetNillableWebhookSecret sets the "webhook_secret" field if the given value is not nil.
+func (_u *AppUpdate) SetNillableWebhookSecret(v *string) *AppUpdate {
+	if v != nil {
+		_u.SetWebhookSecret(*v)
+	}
+	return _u
+}
+
+// ClearWebhookSecret clears the value of the "webhook_secret" field.
+func (_u *AppUpdate) ClearWebhookSecret() *AppUpdate {
+	_u.mutation.ClearWebhookSecret()
+	return _u
+}
+
 // AddSiteIDs adds the "sites" edge to the Site entity by IDs.
 func (_u *AppUpdate) AddSiteIDs(ids ...int) *AppUpdate {
 	_u.mutation.AddSiteIDs(ids...)
@@ -546,6 +586,18 @@ func (_u *AppUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.RegistryPasswordCleared() {
 		_spec.ClearField(app.FieldRegistryPassword, field.TypeString)
+	}
+	if value, ok := _u.mutation.ImageRepo(); ok {
+		_spec.SetField(app.FieldImageRepo, field.TypeString, value)
+	}
+	if _u.mutation.ImageRepoCleared() {
+		_spec.ClearField(app.FieldImageRepo, field.TypeString)
+	}
+	if value, ok := _u.mutation.WebhookSecret(); ok {
+		_spec.SetField(app.FieldWebhookSecret, field.TypeString, value)
+	}
+	if _u.mutation.WebhookSecretCleared() {
+		_spec.ClearField(app.FieldWebhookSecret, field.TypeString)
 	}
 	if _u.mutation.SitesCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -991,6 +1043,46 @@ func (_u *AppUpdateOne) ClearRegistryPassword() *AppUpdateOne {
 	return _u
 }
 
+// SetImageRepo sets the "image_repo" field.
+func (_u *AppUpdateOne) SetImageRepo(v string) *AppUpdateOne {
+	_u.mutation.SetImageRepo(v)
+	return _u
+}
+
+// SetNillableImageRepo sets the "image_repo" field if the given value is not nil.
+func (_u *AppUpdateOne) SetNillableImageRepo(v *string) *AppUpdateOne {
+	if v != nil {
+		_u.SetImageRepo(*v)
+	}
+	return _u
+}
+
+// ClearImageRepo clears the value of the "image_repo" field.
+func (_u *AppUpdateOne) ClearImageRepo() *AppUpdateOne {
+	_u.mutation.ClearImageRepo()
+	return _u
+}
+
+// SetWebhookSecret sets the "webhook_secret" field.
+func (_u *AppUpdateOne) SetWebhookSecret(v string) *AppUpdateOne {
+	_u.mutation.SetWebhookSecret(v)
+	return _u
+}
+
+// SetNillableWebhookSecret sets the "webhook_secret" field if the given value is not nil.
+func (_u *AppUpdateOne) SetNillableWebhookSecret(v *string) *AppUpdateOne {
+	if v != nil {
+		_u.SetWebhookSecret(*v)
+	}
+	return _u
+}
+
+// ClearWebhookSecret clears the value of the "webhook_secret" field.
+func (_u *AppUpdateOne) ClearWebhookSecret() *AppUpdateOne {
+	_u.mutation.ClearWebhookSecret()
+	return _u
+}
+
 // AddSiteIDs adds the "sites" edge to the Site entity by IDs.
 func (_u *AppUpdateOne) AddSiteIDs(ids ...int) *AppUpdateOne {
 	_u.mutation.AddSiteIDs(ids...)
@@ -1320,6 +1412,18 @@ func (_u *AppUpdateOne) sqlSave(ctx context.Context) (_node *App, err error) {
 	}
 	if _u.mutation.RegistryPasswordCleared() {
 		_spec.ClearField(app.FieldRegistryPassword, field.TypeString)
+	}
+	if value, ok := _u.mutation.ImageRepo(); ok {
+		_spec.SetField(app.FieldImageRepo, field.TypeString, value)
+	}
+	if _u.mutation.ImageRepoCleared() {
+		_spec.ClearField(app.FieldImageRepo, field.TypeString)
+	}
+	if value, ok := _u.mutation.WebhookSecret(); ok {
+		_spec.SetField(app.FieldWebhookSecret, field.TypeString, value)
+	}
+	if _u.mutation.WebhookSecretCleared() {
+		_spec.ClearField(app.FieldWebhookSecret, field.TypeString)
 	}
 	if _u.mutation.SitesCleared() {
 		edge := &sqlgraph.EdgeSpec{

@@ -24,6 +24,8 @@ var (
 		{Name: "registry_url", Type: field.TypeString, Nullable: true},
 		{Name: "registry_username", Type: field.TypeString, Nullable: true},
 		{Name: "registry_password", Type: field.TypeString, Nullable: true},
+		{Name: "image_repo", Type: field.TypeString, Nullable: true},
+		{Name: "webhook_secret", Type: field.TypeString, Nullable: true},
 	}
 	// AppsTable holds the schema information for the "apps" table.
 	AppsTable = &schema.Table{

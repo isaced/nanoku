@@ -44,6 +44,10 @@ type App struct {
 	RegistryUsername *string `json:"registry_username,omitempty"`
 	// RegistryPassword holds the value of the "registry_password" field.
 	RegistryPassword *string `json:"-"`
+	// OCI image repository (without tag) used on webhook deploy. e.g. ghcr.io/you/myapp.
+	ImageRepo *string `json:"image_repo,omitempty"`
+	// HMAC-SHA256 key for X-Hub-Signature-256 on /api/webhook/{name}.
+	WebhookSecret *string `json:"-"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the AppQuery when eager-loading is set.
 	Edges        AppEdges `json:"edges"`
@@ -121,7 +125,7 @@ func (*App) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case app.FieldID, app.FieldPort:
 			values[i] = new(sql.NullInt64)
-		case app.FieldName, app.FieldImage, app.FieldRepoURL, app.FieldBranch, app.FieldDeployMethod, app.FieldComposeContent, app.FieldComposePath, app.FieldRegistryURL, app.FieldRegistryUsername, app.FieldRegistryPassword:
+		case app.FieldName, app.FieldImage, app.FieldRepoURL, app.FieldBranch, app.FieldDeployMethod, app.FieldComposeContent, app.FieldComposePath, app.FieldRegistryURL, app.FieldRegistryUsername, app.FieldRegistryPassword, app.FieldImageRepo, app.FieldWebhookSecret:
 			values[i] = new(sql.NullString)
 		case app.FieldCreatedAt, app.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -230,6 +234,20 @@ func (_m *App) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.RegistryPassword = new(string)
 				*_m.RegistryPassword = value.String
+			}
+		case app.FieldImageRepo:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field image_repo", values[i])
+			} else if value.Valid {
+				_m.ImageRepo = new(string)
+				*_m.ImageRepo = value.String
+			}
+		case app.FieldWebhookSecret:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field webhook_secret", values[i])
+			} else if value.Valid {
+				_m.WebhookSecret = new(string)
+				*_m.WebhookSecret = value.String
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -341,6 +359,13 @@ func (_m *App) String() string {
 	}
 	builder.WriteString(", ")
 	builder.WriteString("registry_password=<sensitive>")
+	builder.WriteString(", ")
+	if v := _m.ImageRepo; v != nil {
+		builder.WriteString("image_repo=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	builder.WriteString("webhook_secret=<sensitive>")
 	builder.WriteByte(')')
 	return builder.String()
 }

@@ -65,6 +65,20 @@ func (App) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Sensitive(),
+
+		// External-build webhook config. The build itself runs in the user's
+		// GitHub Actions (or any other CI); nanoku just pulls the resulting
+		// image. Webhook payload supplies the tag, image_repo is the
+		// `<registry>/<repo>` prefix (e.g. "ghcr.io/isaced/myapp").
+		field.String("image_repo").
+			Optional().
+			Nillable().
+			Comment("OCI image repository (without tag) used on webhook deploy. e.g. ghcr.io/you/myapp."),
+		field.String("webhook_secret").
+			Optional().
+			Nillable().
+			Sensitive().
+			Comment("HMAC-SHA256 key for X-Hub-Signature-256 on /api/webhook/{name}."),
 	}
 }
 
