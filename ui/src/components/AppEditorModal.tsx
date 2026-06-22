@@ -27,6 +27,7 @@ import { api } from '../lib/api'
 import type { App as AppType, AppInput, EnvVar, VolumeInput } from '../lib/types'
 import { CopyableValue } from './CodeBlock'
 import { TriggerUsage } from './TriggerUsage'
+import { YamlEditor } from './YamlEditor'
 
 export interface AppEditorSaveResult {
   saved: AppType
@@ -211,10 +212,9 @@ export function AppEditorModal({
                   ]}
                   extra={t('editor.composeContentExtra')}
                 >
-                  <Input.TextArea
-                    rows={10}
+                  <YamlEditor
+                    rows={12}
                     placeholder={t('editor.composeContentPlaceholder')}
-                    className="mono text-xs"
                   />
                 </Form.Item>
               </>
