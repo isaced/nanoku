@@ -9,7 +9,7 @@ Nanoku is a minimal yet powerful PaaS-like tool that brings a smooth Vercel/Dokk
 - **Single binary deployment** — Built with Go, everything (including the web UI) in one executable
 - **Embedded Admin UI** — Clean, lightweight web interface for managing projects
 - **SQLite powered** — Zero external database required
-- **GitHub-native workflow** — Webhook driven: `git push` → automatic build → deploy
+- **Provider-agnostic HTTP trigger** — `git push` → CI builds image → POST to nanoku → deploy
 - **Visual configuration** — Easily manage domains, build settings, and reverse proxy rules
 - **Frontend focused** — Perfect for Vite, Next.js, React, Vue, Svelte, and other static/SPA projects
 - **Caddy integration ready** — Automatic config generation and reload support
@@ -31,19 +31,42 @@ chmod +x nanoku
 ./nanoku
 ```
 
-### Auto-deploy from GitHub
+### Auto-deploy from CI
 
 Nanoku doesn't build your code — it pulls pre-built images. The build runs in
-**your** GitHub Actions; nanoku just receives a webhook with the image tag.
+**your** CI (GitHub Actions, GitLab CI, Drone, anything that can POST JSON);
+nanoku just exposes a small HTTP endpoint that triggers a deploy when called.
 
-**Setup:**
+#### Protocol
 
-1. In nanoku, create an app with `Image repository` set, e.g. `ghcr.io/you/myapp`.
-   Save the secret shown in the popup (you won't see it again).
-2. In your app repo on GitHub: **Settings → Secrets and variables → Actions**:
-   - Variable `NANOKU_WEBHOOK_URL`: `https://your-nanoku/api/webhook/myapp`
-   - Secret `NANOKU_WEBHOOK_SECRET`: the secret from step 1
-3. Drop this workflow into your app repo at `.github/workflows/deploy.yml`:
+```http
+POST /api/apps/{name}/trigger
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"tag": "v1.2.3", "commit_message": "fix: ..."}
+```
+
+- `{name}` is the app's DNS-1123 name (set on create)
+- `<token>` is the per-app bearer token, shown once when you enable the trigger
+- The `tag` becomes the image tag; nanoku pulls `<app.image repo part>:<tag>`
+- Response is `202 Accepted` with the new deploy id, or `409` if a deploy for
+  that app is already running (a single deploy at a time is enforced)
+- The token is compared with `crypto/subtle.ConstantTimeCompare` — only exact
+  matches work, no prefix / suffix tricks
+
+#### Setup
+
+1. In nanoku, create an app and tick **Enable HTTP trigger**. Save the token
+   shown in the popup — you won't see it again.
+2. In your CI, set two env vars:
+   - `NANOKU_TRIGGER_URL`: `https://your-nanoku/api/apps/<name>/trigger`
+   - `NANOKU_TRIGGER_TOKEN`: the token from step 1
+3. Build & push your image, then POST the URL with the token.
+
+#### GitHub Actions example
+
+Drop this into your app repo at `.github/workflows/deploy.yml`:
 
 ```yaml
 name: deploy
@@ -75,21 +98,30 @@ jobs:
 
       - name: Notify Nanoku
         env:
-          URL: ${{ vars.NANOKU_WEBHOOK_URL }}
-          SECRET: ${{ vars.NANOKU_WEBHOOK_SECRET }}
+          URL: ${{ vars.NANOKU_TRIGGER_URL }}
+          TOKEN: ${{ vars.NANOKU_TRIGGER_TOKEN }}
           SHA: ${{ github.sha }}
           MSG: ${{ github.event.head_commit.message }}
         run: |
-          BODY="{\"tag\":\"${SHA}\",\"commit_message\":\"${MSG//\"/\\\"}\"}"
-          SIG="sha256=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
+          BODY=$(jq -nc --arg t "$SHA" --arg m "$MSG" '{tag: $t, commit_message: $m}')
           curl -fsS -X POST "$URL" \
+            -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
-            -H "X-Hub-Signature-256: $SIG" \
             -d "$BODY"
 ```
 
-On push: GitHub builds the image, pushes to ghcr.io, then notifies nanoku.
-Nanoku pulls the new image and redeploys.
+#### Generic shell (any CI / local)
 
-Private registries: set `imageRepo` to your private registry path and add
-matching registry credentials in the nanoku app form.
+```bash
+BODY='{"tag":"v1.2.3","commit_message":"fix: ..."}'
+curl -fsS -X POST "$NANOKU_TRIGGER_URL" \
+  -H "Authorization: Bearer $NANOKU_TRIGGER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "$BODY"
+```
+
+#### Private registries
+
+Add matching registry credentials in the nanoku app form (Registry URL +
+username + password). The trigger worker logs into the registry before pull
+and logs out after, so credentials don't linger in `~/.docker/config.json`.
