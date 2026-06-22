@@ -28,6 +28,15 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): voi
   onUnauthorized = handler;
 }
 
+// Single entry point for the 401 → redirect flow. The fetch wrapper calls it
+// for direct api.* calls, and the QueryClient global error handler calls it
+// for useQuery / useMutation failures. Routing and auth-state mutation live
+// in one place.
+export function triggerUnauthorized(): void {
+  markLoggedOut();
+  onUnauthorized?.();
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !headers.has('Content-Type')) {
@@ -35,8 +44,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   const res = await fetch(path, { ...init, headers, credentials: 'include' });
   if (res.status === 401) {
-    markLoggedOut();
-    onUnauthorized?.();
+    triggerUnauthorized();
     throw new ApiError(401, 'Unauthorized');
   }
   if (!res.ok) {
