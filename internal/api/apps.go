@@ -20,6 +20,7 @@ import (
 	"github.com/isaced/nanoku/internal/db/container"
 	"github.com/isaced/nanoku/internal/db/deploy"
 	"github.com/isaced/nanoku/internal/db/envvar"
+	"github.com/isaced/nanoku/internal/docker"
 )
 
 var appNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
@@ -876,6 +877,10 @@ func (h *Handlers) ReplaceAppEnvVars(w http.ResponseWriter, r *http.Request) {
 		k := strings.TrimSpace(kv.Key)
 		if k == "" {
 			writeErr(w, http.StatusBadRequest, errors.New("env var key cannot be empty"))
+			return
+		}
+		if err := docker.ValidateEnvVar(k, kv.Value); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
 			return
 		}
 		if _, dup := seen[k]; dup {

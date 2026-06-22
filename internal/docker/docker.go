@@ -298,6 +298,8 @@ func (m *Manager) ListContainersByNamePrefix(ctx context.Context, prefix string)
 // CreateAppContainer runs a new container for an app and returns its docker ID and generated name.
 // namePrefix: short app slug (e.g. "myapp"); port: container-internal port; env: key=value pairs.
 // hostPort: 0 = no host port mapping (default — proxy via caddy network).
+// env values are written to a temp file and passed via --env-file, so values
+// can never be misinterpreted as docker flags or split across argv slots.
 func (m *Manager) CreateAppContainer(ctx context.Context, namePrefix, image string, port int, env []string, hostPort int) (dockerID string, containerName string, err error) {
 	if err := m.EnsureNetwork(ctx); err != nil {
 		return "", "", err
@@ -307,6 +309,16 @@ func (m *Manager) CreateAppContainer(ctx context.Context, namePrefix, image stri
 		return "", "", err
 	}
 	containerName = fmt.Sprintf("nanoku-%s-%s", namePrefix, suffix)
+
+	var envFilePath string
+	var envCleanup func()
+	if len(env) > 0 {
+		envFilePath, envCleanup, err = WriteEnvFile(env)
+		if err != nil {
+			return "", "", err
+		}
+		defer envCleanup()
+	}
 
 	args := []string{
 		"run", "-d",
@@ -323,8 +335,8 @@ func (m *Manager) CreateAppContainer(ctx context.Context, namePrefix, image stri
 	if hostPort > 0 {
 		args = append(args, "-p", fmt.Sprintf("%d:%d", hostPort, port))
 	}
-	for _, kv := range env {
-		args = append(args, "-e", kv)
+	if envFilePath != "" {
+		args = append(args, "--env-file", envFilePath)
 	}
 	args = append(args, image)
 
