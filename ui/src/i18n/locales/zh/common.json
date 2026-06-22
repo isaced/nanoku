@@ -1,0 +1,40 @@
+{
+  "actions": {
+    "refresh": "刷新",
+    "save": "保存",
+    "create": "创建",
+    "delete": "删除",
+    "cancel": "取消",
+    "edit": "编辑",
+    "copy": "复制",
+    "done": "完成",
+    "rotate": "重置",
+    "add": "添加"
+  },
+  "status": {
+    "loading": "加载中…",
+    "empty": "暂无",
+    "running": "运行中",
+    "exited": "已退出",
+    "created": "已创建",
+    "configured": "已配置",
+    "notDeployed": "未部署",
+    "active": "已激活",
+    "skipped": "已跳过",
+    "notFound": "未找到",
+    "disabled": "已停用"
+  },
+  "common": {
+    "domain": "域名",
+    "name": "名称",
+    "image": "镜像",
+    "port": "端口",
+    "status": "状态",
+    "branch": "分支",
+    "method": "方式",
+    "enabled": "已启用",
+    "cpu": "CPU",
+    "memory": "内存",
+    "updated": "更新于"
+  }
+}

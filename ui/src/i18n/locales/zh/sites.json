@@ -1,0 +1,57 @@
+{
+  "title": "站点",
+  "subtitleEmpty": "尚未配置任何站点。",
+  "subtitleOne": "{{count}} 个站点 · {{active}} 个已启用",
+  "subtitleOther": "{{count}} 个站点 · {{active}} 个已启用",
+  "newSite": "新建站点",
+  "generatedCaddyfile": "生成的 Caddyfile",
+  "table": {
+    "domain": "域名",
+    "upstream": "上游",
+    "actions": {
+      "disable": "停用",
+      "enable": "启用",
+      "edit": "编辑",
+      "delete": "删除"
+    }
+  },
+  "toast": {
+    "updated": "已更新 {{domain}}",
+    "added": "已添加 {{domain}}",
+    "disabled": "已停用 {{domain}}",
+    "enabled": "已启用 {{domain}}",
+    "deleted": "已删除 {{domain}}"
+  },
+  "delete": {
+    "title": "删除 {{domain}}?",
+    "content": "Caddyfile 将被重新生成并重载 Caddy。"
+  },
+  "editor": {
+    "editTitle": "编辑站点",
+    "newTitle": "新建站点",
+    "save": "保存",
+    "create": "创建",
+    "domain": "域名",
+    "domainRequired": "请输入域名",
+    "domainPattern": "格式需为合法域名（如 app.example.com）",
+    "domainPlaceholder": "app.example.com",
+    "app": "关联应用（可选）",
+    "appPlaceholder": "关联到已部署的应用",
+    "upstream": "上游",
+    "upstreamRequired": "请填写上游",
+    "upstreamExtraApp": "上游将自动从应用容器解析。",
+    "upstreamExtraFree": "host:port、URL 或 Docker 容器名",
+    "upstreamPlaceholderApp": "（自动解析）",
+    "upstreamPlaceholderFree": "localhost:3000"
+  },
+  "emptyState": {
+    "title": "暂无站点",
+    "subtitle": "添加你的第一个域名，开始通过 Caddy 路由流量。",
+    "addSite": "添加站点"
+  },
+  "caddyfile": {
+    "loading": "加载中…",
+    "failed": "// 加载失败",
+    "empty": "# 空"
+  }
+}

@@ -23,12 +23,12 @@ import {
   Play,
   Power,
   RefreshCw,
-  Square,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api, ApiError } from '../lib/api'
 import { clearCredentials, getCredentials } from '../lib/auth'
-import type { Dashboard, Status } from '../lib/types'
+import type { ContainerStats, Dashboard, Status } from '../lib/types'
 import { TopNav } from '../components/TopNav'
 
 export const Route = createFileRoute('/dashboard')({
@@ -55,6 +55,7 @@ function formatBytes(bytes: number): string {
 function DashboardPage() {
   const navigate = useNavigate()
   const { message } = App.useApp()
+  const { t } = useTranslation('dashboard')
   const [data, setData] = useState<Dashboard | null>(null)
   const [status, setStatus] = useState<Status | null>(null)
   const [loading, setLoading] = useState(true)
@@ -109,7 +110,7 @@ function DashboardPage() {
   const summary = data?.summary
   const apps = data?.apps ?? []
   const sites = data?.sites ?? []
-  const stats = data?.stats ?? [] as ContainerStats[]
+  const stats = data?.stats ?? ([] as ContainerStats[])
 
   return (
     <div className="flex-1 flex flex-col">
@@ -118,21 +119,22 @@ function DashboardPage() {
       <main className="flex-1 px-8 py-8 max-w-6xl w-full mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-medium tracking-tight">Dashboard</h1>
+            <h1 className="text-2xl font-medium tracking-tight">{t('title')}</h1>
             <p className="text-sm text-[var(--fg-muted)] mt-1">
-              Sites, apps, and live container resource usage.
+              {t('subtitle')}
               {lastUpdated && (
                 <span className="ml-2">
-                  · updated {lastUpdated.toLocaleTimeString()}
+                  ·{' '}
+                  {t('updatedAt', { time: lastUpdated.toLocaleTimeString() })}
                 </span>
               )}
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <Tooltip title="Auto-refresh every 5s">
+            <Tooltip title={t('autoRefresh')}>
               <div className="flex items-center gap-2 text-xs text-[var(--fg-muted)]">
                 {autoRefresh ? <Play size={12} /> : <Pause size={12} />}
-                <span>Auto</span>
+                <span>{t('auto')}</span>
                 <Switch
                   size="small"
                   checked={autoRefresh}
@@ -150,7 +152,7 @@ function DashboardPage() {
               onClick={() => void reload()}
               loading={loading}
             >
-              Refresh
+              {t('refresh')}
             </Button>
           </div>
         </div>
@@ -158,25 +160,27 @@ function DashboardPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <StatTile
             icon={<Globe size={14} />}
-            label="Sites"
+            label={t('stats.sites')}
             value={summary?.totalSites ?? 0}
-            sub={`${summary?.enabledSites ?? 0} enabled`}
+            sub={t('stats.enabledSites', { count: summary?.enabledSites ?? 0 })}
           />
           <StatTile
             icon={<Layers size={14} />}
-            label="Apps"
+            label={t('stats.apps')}
             value={summary?.totalApps ?? 0}
-            sub={`${summary?.runningApps ?? 0} running`}
+            sub={t('stats.runningApps', { count: summary?.runningApps ?? 0 })}
           />
           <StatTile
             icon={<ContainerIcon size={14} />}
-            label="Containers"
+            label={t('stats.containers')}
             value={summary?.containerCount ?? 0}
-            sub={`${stats.filter((s) => s.pids > 0).length} active`}
+            sub={t('stats.activeContainers', {
+              count: stats.filter((s) => s.pids > 0).length,
+            })}
           />
           <StatTile
             icon={<Cpu size={14} />}
-            label="Total CPU"
+            label={t('stats.totalCpu')}
             value={`${(summary?.totalCpuPerc ?? 0).toFixed(1)}%`}
             sub={
               <UsageBar
@@ -195,11 +199,11 @@ function DashboardPage() {
 
         <section className="mb-10">
           <h2 className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-3">
-            Apps
+            {t('sections.apps')}
           </h2>
           {apps.length === 0 ? (
             <Empty
-              description="No apps yet"
+              description={t('empty.noApps')}
               className="!bg-[var(--bg-elevated)] !border !border-[var(--border)] !rounded-lg !py-12"
             />
           ) : (
@@ -213,7 +217,7 @@ function DashboardPage() {
 
         <section className="mb-10">
           <h2 className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-3">
-            Sites
+            {t('sections.sites')}
           </h2>
           <div className="border border-[var(--border)] rounded-lg overflow-hidden bg-[var(--bg-elevated)]">
             <Table
@@ -221,22 +225,22 @@ function DashboardPage() {
               rowKey="id"
               pagination={false}
               size="small"
-              locale={{ emptyText: 'No sites' }}
+              locale={{ emptyText: t('empty.noSites') }}
               columns={[
                 {
-                  title: 'Domain',
+                  title: t('table.domain'),
                   dataIndex: 'domain',
                   render: (d: string, row) => (
                     <div className="flex items-center gap-2">
                       <span className="mono text-sm">{d}</span>
                       {!row.enabled && (
-                        <Tag className="!m-0">disabled</Tag>
+                        <Tag className="!m-0">{t('common:status.disabled', { ns: 'common' })}</Tag>
                       )}
                     </div>
                   ),
                 },
                 {
-                  title: 'App',
+                  title: t('table.app'),
                   dataIndex: 'appName',
                   render: (n?: string) =>
                     n ? (
@@ -248,7 +252,7 @@ function DashboardPage() {
                     ),
                 },
                 {
-                  title: 'Upstream',
+                  title: t('table.upstream'),
                   dataIndex: 'upstream',
                   render: (u: string) => (
                     <span className="mono text-xs text-[var(--fg-muted)]">
@@ -280,7 +284,7 @@ function DashboardPage() {
 
         <section>
           <h2 className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-3">
-            All containers
+            {t('sections.allContainers')}
           </h2>
           <div className="border border-[var(--border)] rounded-lg overflow-hidden bg-[var(--bg-elevated)]">
             <Table
@@ -288,17 +292,17 @@ function DashboardPage() {
               rowKey="name"
               pagination={false}
               size="small"
-              locale={{ emptyText: 'No containers running' }}
+              locale={{ emptyText: t('empty.noContainers') }}
               columns={[
                 {
-                  title: 'Name',
+                  title: t('table.name'),
                   dataIndex: 'name',
                   render: (n: string) => (
                     <span className="mono text-xs">{n}</span>
                   ),
                 },
                 {
-                  title: 'CPU',
+                  title: t('table.cpu'),
                   dataIndex: 'cpuPerc',
                   width: 180,
                   render: (v: number) => (
@@ -306,7 +310,7 @@ function DashboardPage() {
                   ),
                 },
                 {
-                  title: 'Memory',
+                  title: t('table.memory'),
                   dataIndex: 'memUsedBytes',
                   width: 240,
                   render: (_: number, row) => (
@@ -319,7 +323,7 @@ function DashboardPage() {
                   ),
                 },
                 {
-                  title: 'PIDs',
+                  title: t('table.pids'),
                   dataIndex: 'pids',
                   width: 60,
                   align: 'right',
@@ -330,7 +334,7 @@ function DashboardPage() {
                   ),
                 },
                 {
-                  title: 'Net I/O',
+                  title: t('table.netIo'),
                   width: 160,
                   render: (_: unknown, row) => (
                     <span className="mono text-xs text-[var(--fg-muted)]">
@@ -375,6 +379,7 @@ function StatTile({
 }
 
 function MemCard({ summary }: { summary: Dashboard['summary'] | undefined }) {
+  const { t } = useTranslation('dashboard')
   if (!summary) return null
   const pct = summary.totalMemPerc
   return (
@@ -383,8 +388,7 @@ function MemCard({ summary }: { summary: Dashboard['summary'] | undefined }) {
         <div className="flex items-center gap-2 text-[var(--fg-muted)]">
           <MemoryStick size={14} />
           <span className="text-[10px] tracking-widest uppercase">
-            Total memory across {summary.containerCount} container
-            {summary.containerCount === 1 ? '' : 's'}
+            {t('memoryCard.title', { count: summary.containerCount })}
           </span>
         </div>
         <span className="mono text-sm text-[var(--fg)]">
@@ -402,7 +406,7 @@ function MemCard({ summary }: { summary: Dashboard['summary'] | undefined }) {
         size="small"
       />
       <div className="text-xs text-[var(--fg-muted)] mt-1">
-        {pct.toFixed(2)}% of host memory limit
+        {t('memoryCard.ofHost', { pct: pct.toFixed(2) })}
       </div>
     </div>
   )
@@ -453,9 +457,10 @@ function AppCard({
 }: {
   app: Dashboard['apps'][number]
 }) {
+  const { t } = useTranslation('dashboard')
   const c = app.container
   const stats = app.stats
-  const status = c?.status ?? 'not deployed'
+  const status = c?.status ?? t('common:status.notDeployed', { ns: 'common' })
   return (
     <div className="border border-[var(--border)] rounded-lg bg-[var(--bg-elevated)] p-4">
       <div className="flex items-start justify-between mb-3">
@@ -470,7 +475,7 @@ function AppCard({
             {app.image}
           </div>
         </div>
-        <Tooltip title="Live stats">
+        <Tooltip title={t('appCard.liveStats')}>
           <Activity size={14} className="text-[var(--fg-muted)] mt-1" />
         </Tooltip>
       </div>
@@ -487,7 +492,7 @@ function AppCard({
 
       {!stats ? (
         <div className="text-xs text-[var(--fg-muted)] py-3">
-          No stats — container not running
+          {t('appCard.noStats')}
         </div>
       ) : (
         <div className="space-y-2.5">
@@ -523,15 +528,16 @@ function AppCard({
             />
           </div>
           <div className="flex items-center gap-4 text-[11px] text-[var(--fg-muted)] mono pt-1">
-            <span title="Process count">
-              pids: <span className="text-[var(--fg)]">{stats.pids}</span>
+            <span title={t('appCard.processCount')}>
+              {t('appCard.processCountLabel')}:{' '}
+              <span className="text-[var(--fg)]">{stats.pids}</span>
             </span>
-            <span title="Network I/O">
-              net: {formatBytes(stats.netRxBytes)} ↓ ·{' '}
+            <span title={t('appCard.networkIo')}>
+              {t('appCard.networkLabel')}: {formatBytes(stats.netRxBytes)} ↓ ·{' '}
               {formatBytes(stats.netTxBytes)} ↑
             </span>
-            <span title="Block I/O">
-              disk: {formatBytes(stats.blockReadBytes)} r ·{' '}
+            <span title={t('appCard.blockIo')}>
+              {t('appCard.diskLabel')}: {formatBytes(stats.blockReadBytes)} r ·{' '}
               {formatBytes(stats.blockWriteBytes)} w
             </span>
           </div>
@@ -542,11 +548,12 @@ function AppCard({
 }
 
 function StatusPill({ status }: { status: string }) {
+  const { t } = useTranslation('common')
   if (status === 'running') {
     return (
       <Tag color="green" className="!m-0">
         <span className="inline-flex items-center gap-1">
-          <CircleCheck size={10} /> running
+          <CircleCheck size={10} /> {t('status.running')}
         </span>
       </Tag>
     )
@@ -555,7 +562,12 @@ function StatusPill({ status }: { status: string }) {
     return (
       <Tag className="!m-0">
         <span className="inline-flex items-center gap-1">
-          <CircleDashed size={10} /> {status}
+          <CircleDashed size={10} />{' '}
+          {status === 'exited'
+            ? t('status.exited')
+            : status === 'created'
+              ? t('status.created')
+              : t('status.notDeployed')}
         </span>
       </Tag>
     )

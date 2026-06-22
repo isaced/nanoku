@@ -1,0 +1,55 @@
+{
+  "title": "总览",
+  "subtitle": "站点、应用以及容器实时资源占用。",
+  "updatedAt": "更新于 {{time}}",
+  "autoRefresh": "每 5 秒自动刷新",
+  "auto": "自动",
+  "refresh": "刷新",
+  "stats": {
+    "sites": "站点",
+    "apps": "应用",
+    "containers": "容器",
+    "totalCpu": "CPU 总占用",
+    "enabledSites_one": "{{count}} 个已启用",
+    "enabledSites_other": "{{count}} 个已启用",
+    "runningApps_one": "{{count}} 个运行中",
+    "runningApps_other": "{{count}} 个运行中",
+    "activeContainers_one": "{{count}} 个活跃",
+    "activeContainers_other": "{{count}} 个活跃"
+  },
+  "sections": {
+    "apps": "应用",
+    "sites": "站点",
+    "allContainers": "所有容器"
+  },
+  "empty": {
+    "noApps": "暂无应用",
+    "noSites": "暂无站点",
+    "noContainers": "暂无运行中的容器"
+  },
+  "table": {
+    "domain": "域名",
+    "app": "应用",
+    "upstream": "上游",
+    "name": "名称",
+    "cpu": "CPU",
+    "memory": "内存",
+    "pids": "进程数",
+    "netIo": "网络 I/O"
+  },
+  "memoryCard": {
+    "title_one": "{{count}} 个容器的内存总量",
+    "title_other": "{{count}} 个容器的内存总量",
+    "ofHost": "占宿主机内存上限的 {{pct}}%"
+  },
+  "appCard": {
+    "liveStats": "实时统计",
+    "noStats": "暂无统计 — 容器未运行",
+    "processCount": "进程数",
+    "networkIo": "网络 I/O",
+    "blockIo": "磁盘 I/O",
+    "processCountLabel": "进程",
+    "networkLabel": "网络",
+    "diskLabel": "磁盘"
+  }
+}

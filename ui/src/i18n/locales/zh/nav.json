@@ -1,0 +1,11 @@
+{
+  "dashboard": "总览",
+  "sites": "站点",
+  "apps": "应用",
+  "system": "系统",
+  "language": "语言",
+  "languageEnglish": "English",
+  "languageChinese": "中文",
+  "dockerUnreachable": "Docker 守护进程不可达",
+  "refresh": "刷新"
+}

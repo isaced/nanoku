@@ -1,16 +1,18 @@
 import { useLocation, useNavigate } from '@tanstack/react-router'
-import { Button, Layout, Menu, Tooltip } from 'antd'
-import { CircleCheck, CircleDashed, CircleX, RefreshCw } from 'lucide-react'
+import { Button, Dropdown, Layout, Menu, Tooltip } from 'antd'
+import { useTranslation } from 'react-i18next'
+import {
+  CircleCheck,
+  CircleDashed,
+  CircleX,
+  Globe,
+  RefreshCw,
+} from 'lucide-react'
 import type { Status } from '../lib/types'
+import { SUPPORTED_LANGUAGES, type SupportedLanguage } from '../i18n'
 
-const navItems = [
-  { key: '/dashboard', label: 'Dashboard' },
-  { key: '/sites', label: 'Sites' },
-  { key: '/apps', label: 'Apps' },
-  { key: '/system', label: 'System' },
-] as const
-
-type NavKey = (typeof navItems)[number]['key']
+const navKeys = ['/dashboard', '/sites', '/apps', '/system'] as const
+type NavKey = (typeof navKeys)[number]
 
 export function TopNav({
   status,
@@ -23,6 +25,18 @@ export function TopNav({
 }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const { t, i18n } = useTranslation('nav')
+
+  const navItems = [
+    { key: '/dashboard', label: t('dashboard') },
+    { key: '/sites', label: t('sites') },
+    { key: '/apps', label: t('apps') },
+    { key: '/system', label: t('system') },
+  ]
+
+  const currentLang: SupportedLanguage = i18n.language?.startsWith('zh')
+    ? 'zh'
+    : 'en'
 
   return (
     <Layout.Header className="!bg-white border-b border-[var(--border)] flex items-center gap-6">
@@ -40,7 +54,37 @@ export function TopNav({
       <div className="flex items-center gap-3 text-xs">
         <DockerBadge status={status} />
         <CaddyBadge status={status} />
-        <Tooltip title="Refresh">
+        <Tooltip title={t('language')}>
+          <Dropdown
+            placement="bottomRight"
+            menu={{
+              selectable: true,
+              selectedKeys: [currentLang],
+              items: [
+                { key: 'en', label: t('languageEnglish') },
+                { key: 'zh', label: t('languageChinese') },
+              ],
+              onClick: ({ key }) => {
+                if (
+                  (SUPPORTED_LANGUAGES as readonly string[]).includes(key) &&
+                  key !== i18n.language
+                ) {
+                  void i18n.changeLanguage(key)
+                }
+              },
+            }}
+          >
+            <Button
+              type="text"
+              size="small"
+              icon={<Globe size={13} />}
+              className="!font-mono"
+            >
+              {currentLang === 'zh' ? '中' : 'EN'}
+            </Button>
+          </Dropdown>
+        </Tooltip>
+        <Tooltip title={t('refresh')}>
           <Button
             type="text"
             size="small"
@@ -59,6 +103,7 @@ export function TopNav({
 }
 
 export function DockerBadge({ status }: { status: Status | null }) {
+  const { t } = useTranslation('nav')
   if (!status) return null
   if (status.dockerConnected) {
     return (
@@ -69,7 +114,7 @@ export function DockerBadge({ status }: { status: Status | null }) {
     )
   }
   return (
-    <Tooltip title="Docker daemon unreachable">
+    <Tooltip title={t('dockerUnreachable')}>
       <span className="inline-flex items-center gap-1.5 text-[var(--danger)]">
         <CircleX size={12} />
         <span className="mono">docker</span>

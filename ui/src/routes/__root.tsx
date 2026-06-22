@@ -1,5 +1,8 @@
 import { Outlet, createRootRoute, HeadContent } from '@tanstack/react-router'
 import { App as AntdApp, ConfigProvider, theme } from 'antd'
+import zhCN from 'antd/locale/zh_CN'
+import enUS from 'antd/locale/en_US'
+import { useTranslation } from 'react-i18next'
 
 import '../styles.css'
 
@@ -16,10 +19,13 @@ export const Route = createRootRoute({
 })
 
 function RootComponent() {
+  const { i18n } = useTranslation()
+  const locale = i18n.language?.startsWith('zh') ? zhCN : enUS
   return (
     <>
       <HeadContent />
       <ConfigProvider
+        locale={locale}
         theme={{
           algorithm: theme.defaultAlgorithm,
           token: {

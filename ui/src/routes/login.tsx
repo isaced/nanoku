@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { App, Button, Input } from 'antd'
 import { ArrowRight, Lock } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { testCredentials } from '../lib/api'
 import { setCredentials } from '../lib/auth'
 
@@ -12,6 +13,7 @@ export const Route = createFileRoute('/login')({
 function Login() {
   const navigate = useNavigate()
   const { message } = App.useApp()
+  const { t } = useTranslation('login')
   const [user, setUser] = useState('admin')
   const [pass, setPass] = useState('')
   const [busy, setBusy] = useState(false)
@@ -23,7 +25,7 @@ function Login() {
     try {
       const ok = await testCredentials(user, pass)
       if (!ok) {
-        message.error('Invalid credentials')
+        message.error(t('invalidCredentials'))
         return
       }
       setCredentials({ user, pass })
@@ -43,16 +45,14 @@ function Login() {
           </span>
         </div>
         <h1 className="text-3xl font-medium tracking-tight mb-2">
-          Sign in to admin
+          {t('title')}
         </h1>
-        <p className="text-sm text-[var(--fg-muted)] mb-8">
-          Self-hosted deployment hub. Enter your admin password.
-        </p>
+        <p className="text-sm text-[var(--fg-muted)] mb-8">{t('subtitle')}</p>
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <label className="block text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-1.5">
-              User
+              {t('user')}
             </label>
             <Input
               value={user}
@@ -63,7 +63,7 @@ function Login() {
           </div>
           <div>
             <label className="block text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-1.5">
-              Password
+              {t('password')}
             </label>
             <Input.Password
               value={pass}
@@ -84,7 +84,7 @@ function Login() {
             icon={<ArrowRight size={14} />}
             iconPosition="end"
           >
-            Continue
+            {t('submit')}
           </Button>
         </form>
       </div>

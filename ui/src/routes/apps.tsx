@@ -5,7 +5,6 @@ import {
   Button,
   Checkbox,
   Collapse,
-  Divider,
   Drawer,
   Form,
   Input,
@@ -13,9 +12,7 @@ import {
   Modal,
   Popconfirm,
   Radio,
-  Select,
   Space,
-  Switch,
   Table,
   Tabs,
   Tag,
@@ -32,16 +29,16 @@ import {
   Pencil,
   Play,
   Plus,
-  Power,
   RefreshCw,
   Rocket,
   Square,
   Trash2,
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { api, ApiError } from '../lib/api'
 import { clearCredentials, getCredentials } from '../lib/auth'
-import type { App as AppType, Container, Deploy, EnvVar, Status } from '../lib/types'
+import type { App as AppType, AppInput, Deploy, EnvVar, Status } from '../lib/types'
 import { TopNav } from '../components/TopNav'
 
 export const Route = createFileRoute('/apps')({
@@ -56,6 +53,7 @@ export const Route = createFileRoute('/apps')({
 function AppsPage() {
   const navigate = useNavigate()
   const { message, modal } = App.useApp()
+  const { t } = useTranslation('apps')
   const [apps, setApps] = useState<AppType[]>([])
   const [status, setStatus] = useState<Status | null>(null)
   const [loading, setLoading] = useState(true)
@@ -122,10 +120,10 @@ function AppsPage() {
     try {
       if (editing) {
         await api.updateApp(editing.id, values)
-        message.success(`Updated ${values.name}`)
+        message.success(t('toast.updated', { name: values.name }))
       } else {
         const created = await api.createApp(values)
-        message.success(`Added ${values.name}`)
+        message.success(t('toast.added', { name: values.name }))
         if (created.webhookSecret && created.imageRepo) {
           setRevealedSecret({
             url: `${window.location.origin}/api/webhook/${created.name}`,
@@ -160,7 +158,7 @@ function AppsPage() {
     setBusyId(app.id)
     try {
       await fn()
-      message.success(`${name} ${app.name}`)
+      message.success(t('toast.' + name, { name: app.name }))
       void reload()
     } catch (err) {
       message.error((err as Error).message)
@@ -171,11 +169,11 @@ function AppsPage() {
 
   function confirmDelete(app: AppType) {
     modal.confirm({
-      title: `Delete ${app.name}?`,
-      content: 'The app and its current Docker container will be removed.',
-      okText: 'Delete',
+      title: t('delete.title', { name: app.name }),
+      content: t('delete.content'),
+      okText: t('actions.delete', { ns: 'common' }),
       okType: 'danger',
-      onOk: () => runAction(app, 'Deleted', () => api.deleteApp(app.id)),
+      onOk: () => runAction(app, 'deleted', () => api.deleteApp(app.id)),
     })
   }
 
@@ -186,11 +184,14 @@ function AppsPage() {
       <main className="flex-1 px-8 py-8 max-w-6xl w-full mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-medium tracking-tight">Apps</h1>
+            <h1 className="text-2xl font-medium tracking-tight">{t('title')}</h1>
             <p className="text-sm text-[var(--fg-muted)] mt-1">
               {apps.length === 0
-                ? 'No apps configured yet.'
-                : `${apps.length} ${apps.length === 1 ? 'app' : 'apps'} · ${status?.runningAppCount ?? 0} running`}
+                ? t('subtitleEmpty')
+                : t(apps.length === 1 ? 'subtitleOne' : 'subtitleOther', {
+                    count: apps.length,
+                    running: status?.runningAppCount ?? 0,
+                  })}
             </p>
           </div>
           <Button
@@ -198,7 +199,7 @@ function AppsPage() {
             icon={<Plus size={14} />}
             onClick={openCreate}
           >
-            New app
+            {t('newApp')}
           </Button>
         </div>
 
@@ -211,7 +212,7 @@ function AppsPage() {
             locale={{ emptyText: <EmptyState onCreate={openCreate} /> }}
             columns={[
               {
-                title: 'Name',
+                title: t('table.name'),
                 dataIndex: 'name',
                 render: (n: string, row) => (
                   <button
@@ -224,7 +225,7 @@ function AppsPage() {
                 ),
               },
               {
-                title: 'Method',
+                title: t('table.method'),
                 dataIndex: 'deployMethod',
                 width: 90,
                 render: (m: string) => (
@@ -237,16 +238,16 @@ function AppsPage() {
                 ),
               },
               {
-                title: 'Image',
+                title: t('table.image'),
                 dataIndex: 'image',
                 render: (i: string, row) => (
                   <span className="mono text-xs text-[var(--fg-muted)]">
-                    {i || (row.deployMethod === 'compose' ? '(from compose)' : '—')}
+                    {i || (row.deployMethod === 'compose' ? t('table.imageFromCompose') : '—')}
                   </span>
                 ),
               },
               {
-                title: 'Port',
+                title: t('table.port'),
                 dataIndex: 'port',
                 width: 80,
                 align: 'right',
@@ -255,7 +256,7 @@ function AppsPage() {
                 ),
               },
               {
-                title: 'Status',
+                title: t('table.status'),
                 key: 'status',
                 width: 200,
                 render: (_: unknown, row) => <StatusCell app={row} />,
@@ -268,39 +269,39 @@ function AppsPage() {
                 render: (_: unknown, row) => (
                   <Space size={4}>
                     {!row.container && (
-                      <Tooltip title="Deploy">
+                      <Tooltip title={t('table.actions.deploy')}>
                         <Button
                           type="text"
                           size="small"
                           loading={busyId === row.id}
                           icon={<Rocket size={14} />}
                           onClick={() =>
-                            runAction(row, 'Deployed', () => api.deployApp(row.id))
+                            runAction(row, 'deployed', () => api.deployApp(row.id))
                           }
                         />
                       </Tooltip>
                     )}
                     {row.container?.status === 'running' && (
                       <>
-                        <Tooltip title="Stop">
+                        <Tooltip title={t('table.actions.stop')}>
                           <Button
                             type="text"
                             size="small"
                             loading={busyId === row.id}
                             icon={<Square size={14} />}
                             onClick={() =>
-                              runAction(row, 'Stopped', () => api.stopApp(row.id))
+                              runAction(row, 'stopped', () => api.stopApp(row.id))
                             }
                           />
                         </Tooltip>
-                        <Tooltip title="Restart">
+                        <Tooltip title={t('table.actions.restart')}>
                           <Button
                             type="text"
                             size="small"
                             loading={busyId === row.id}
                             icon={<RefreshCw size={14} />}
                             onClick={() =>
-                              runAction(row, 'Restarted', () =>
+                              runAction(row, 'restarted', () =>
                                 api.restartApp(row.id),
                               )
                             }
@@ -309,34 +310,34 @@ function AppsPage() {
                       </>
                     )}
                     {row.container && row.container.status !== 'running' && (
-                      <Tooltip title="Start">
+                      <Tooltip title={t('table.actions.start')}>
                         <Button
                           type="text"
                           size="small"
                           loading={busyId === row.id}
                           icon={<Play size={14} />}
                           onClick={() =>
-                            runAction(row, 'Started', () => api.startApp(row.id))
+                            runAction(row, 'started', () => api.startApp(row.id))
                           }
                         />
                       </Tooltip>
                     )}
                     {row.container && (
-                      <Tooltip title="Redeploy">
+                      <Tooltip title={t('table.actions.redeploy')}>
                         <Button
                           type="text"
                           size="small"
                           loading={busyId === row.id}
                           icon={<ContainerIcon size={14} />}
                           onClick={() =>
-                            runAction(row, 'Redeployed', () =>
+                            runAction(row, 'redeployed', () =>
                               api.deployApp(row.id),
                             )
                           }
                         />
                       </Tooltip>
                     )}
-                    <Tooltip title="Edit">
+                    <Tooltip title={t('table.actions.edit')}>
                       <Button
                         type="text"
                         size="small"
@@ -344,7 +345,7 @@ function AppsPage() {
                         onClick={() => openEdit(row)}
                       />
                     </Tooltip>
-                    <Tooltip title="Delete">
+                    <Tooltip title={t('table.actions.delete')}>
                       <Button
                         type="text"
                         size="small"
@@ -361,34 +362,34 @@ function AppsPage() {
       </main>
 
       <Modal
-        title={editing ? 'Edit app' : 'New app'}
+        title={editing ? t('editor.editTitle') : t('editor.newTitle')}
         open={editorOpen}
         onOk={onSubmit}
         onCancel={() => setEditorOpen(false)}
-        okText={editing ? 'Save' : 'Create'}
+        okText={editing ? t('editor.save') : t('editor.create')}
+        cancelText={t('actions.cancel', { ns: 'common' })}
         destroyOnClose
         width={680}
       >
         <Form form={form} layout="vertical" preserve={false}>
           <Form.Item
             name="name"
-            label="Name"
+            label={t('editor.name')}
             rules={[
-              { required: true, message: 'Name is required' },
+              { required: true, message: t('editor.nameRequired') },
               {
                 pattern: /^[a-z][a-z0-9-]{0,62}$/,
-                message:
-                  'Must start with a-z and contain only lowercase letters, digits, dashes',
+                message: t('editor.namePattern'),
               },
             ]}
-            extra="Used as Docker container / compose project prefix."
+            extra={t('editor.nameExtra')}
           >
-            <Input placeholder="myapp" autoFocus />
+            <Input placeholder={t('editor.namePlaceholder')} autoFocus />
           </Form.Item>
 
           <Form.Item
             name="deployMethod"
-            label="Deploy method"
+            label={t('editor.deployMethod')}
             rules={[{ required: true }]}
             initialValue="docker"
           >
@@ -404,14 +405,14 @@ function AppsPage() {
                 <>
                   <Form.Item
                     name="composePath"
-                    label="Compose file path on host (optional)"
-                    extra="If set, overrides the inline content below. Use an absolute path the nanoku process can read."
+                    label={t('editor.composePath')}
+                    extra={t('editor.composePathExtra')}
                   >
-                    <Input placeholder="/opt/myapp/docker-compose.yml" />
+                    <Input placeholder={t('editor.composePathPlaceholder')} />
                   </Form.Item>
                   <Form.Item
                     name="composeContent"
-                    label="Compose YAML"
+                    label={t('editor.composeContent')}
                     rules={[
                       {
                         validator: (_, value) => {
@@ -419,18 +420,18 @@ function AppsPage() {
                           if (pathVal && String(pathVal).trim()) return Promise.resolve()
                           if (!value || !String(value).trim()) {
                             return Promise.reject(
-                              new Error('Provide a compose file path or inline YAML'),
+                              new Error(t('editor.composeContentRequired')),
                             )
                           }
                           return Promise.resolve()
                         },
                       },
                     ]}
-                    extra="Multi-service stacks are supported. Container names will be prefixed with the app name."
+                    extra={t('editor.composeContentExtra')}
                   >
                     <Input.TextArea
                       rows={10}
-                      placeholder={'services:\n  web:\n    image: nginx:1.27\n    ports: ["8080:80"]'}
+                      placeholder={t('editor.composeContentPlaceholder')}
                       className="mono text-xs"
                     />
                   </Form.Item>
@@ -439,20 +440,20 @@ function AppsPage() {
                 <>
                   <Form.Item
                     name="image"
-                    label="Image"
-                    rules={[{ required: true, message: 'Image is required' }]}
-                    extra="Docker image, e.g. nginx:1.27"
+                    label={t('editor.image')}
+                    rules={[{ required: true, message: t('editor.imageRequired') }]}
+                    extra={t('editor.imageExtra')}
                   >
-                    <Input placeholder="nginxdemos/hello:plain-text" />
+                    <Input placeholder={t('editor.imagePlaceholder')} />
                   </Form.Item>
                   <Form.Item
                     name="port"
-                    label="Internal port"
+                    label={t('editor.port')}
                     rules={[
-                      { required: true, message: 'Port is required' },
+                      { required: true, message: t('editor.portRequired') },
                       { type: 'number', min: 1, max: 65535 },
                     ]}
-                    extra="Port the app listens on inside the container."
+                    extra={t('editor.portExtra')}
                   >
                     <InputNumber min={1} max={65535} className="w-full" />
                   </Form.Item>
@@ -463,11 +464,11 @@ function AppsPage() {
 
           <RegistrySection editing={editing} />
 
-          <Form.Item name="branch" label="Branch" initialValue="main">
-            <Input placeholder="main" />
+          <Form.Item name="branch" label={t('editor.branch')} initialValue="main">
+            <Input placeholder={t('editor.branchPlaceholder')} />
           </Form.Item>
-          <Form.Item name="repoUrl" label="Repo URL (optional)">
-            <Input placeholder="https://github.com/you/repo" />
+          <Form.Item name="repoUrl" label={t('editor.repoUrl')}>
+            <Input placeholder={t('editor.repoUrlPlaceholder')} />
           </Form.Item>
 
           <WebhookSection
@@ -498,6 +499,7 @@ function AppsPage() {
 }
 
 function DeployMethodSwitch({ value, onChange }: { value?: string; onChange?: (v: string) => void }) {
+  const { t } = useTranslation('apps')
   return (
     <Radio.Group
       value={value}
@@ -505,61 +507,58 @@ function DeployMethodSwitch({ value, onChange }: { value?: string; onChange?: (v
       optionType="button"
       buttonStyle="solid"
     >
-      <Radio.Button value="docker">Docker</Radio.Button>
-      <Radio.Button value="compose">Docker Compose</Radio.Button>
+      <Radio.Button value="docker">{t('deployMethod.docker')}</Radio.Button>
+      <Radio.Button value="compose">{t('deployMethod.compose')}</Radio.Button>
     </Radio.Group>
   )
 }
 
 function RegistrySection({ editing }: { editing: AppType | null }) {
+  const { t } = useTranslation('apps')
   return (
     <div className="border border-[var(--border)] rounded-lg p-3 mb-2 bg-[var(--bg-input)]/30">
       <div className="flex items-center gap-2 mb-2">
         <Key size={13} className="text-[var(--fg-muted)]" />
         <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
-          Private registry (optional)
+          {t('registry.title')}
         </span>
         {editing?.registryConfigured && (
           <Tag color="blue" className="!m-0 ml-auto">
-            configured
+            {t('registry.configured')}
           </Tag>
         )}
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Form.Item
           name="registryUrl"
-          label="Registry URL"
-          extra="Empty = public registry"
+          label={t('registry.url')}
+          extra={t('registry.urlExtra')}
           className="!mb-2"
         >
-          <Input placeholder="ghcr.io" />
+          <Input placeholder={t('registry.urlPlaceholder')} />
         </Form.Item>
         <Form.Item
           name="registryUsername"
-          label="Username"
+          label={t('registry.username')}
           className="!mb-2"
         >
-          <Input placeholder="user" />
+          <Input placeholder={t('registry.usernamePlaceholder')} />
         </Form.Item>
       </div>
       <Form.Item
         name="registryPassword"
-        label={editing?.registryConfigured ? 'New password (leave empty to keep)' : 'Password'}
-        extra={
-          editing?.registryConfigured
-            ? 'Stored encrypted at rest is on the roadmap; currently stored in the SQLite DB.'
-            : undefined
-        }
+        label={editing?.registryConfigured ? t('registry.passwordNew') : t('registry.password')}
+        extra={editing?.registryConfigured ? t('registry.passwordExtra') : undefined}
         className="!mb-0"
       >
         <Input.Password
-          placeholder={editing?.registryConfigured ? '•••••• (unchanged)' : 'password / token'}
+          placeholder={editing?.registryConfigured ? t('registry.passwordPlaceholderKeep') : t('registry.passwordPlaceholder')}
           autoComplete="off"
         />
       </Form.Item>
       {editing?.registryConfigured && (
         <Form.Item name="clearRegistry" valuePropName="checked" className="!mb-0 mt-2">
-          <Checkbox>Clear stored credentials</Checkbox>
+          <Checkbox>{t('registry.clear')}</Checkbox>
         </Form.Item>
       )}
     </div>
@@ -573,32 +572,34 @@ function WebhookSection({
   editing: AppType | null
   onRotate: () => void
 }) {
+  const { t } = useTranslation('apps')
   return (
     <div className="border border-[var(--border)] rounded-lg p-3 mb-2 bg-[var(--bg-input)]/30">
       <div className="flex items-center gap-2 mb-2">
         <Bell size={13} className="text-[var(--fg-muted)]" />
         <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
-          GitHub webhook deploy (optional)
+          {t('webhook.sectionTitle')}
         </span>
         {editing?.webhookConfigured && (
           <Tag color="green" className="!m-0 ml-auto">
-            active
+            {t('common:status.active', { ns: 'common' })}
           </Tag>
         )}
       </div>
       <Form.Item
         name="imageRepo"
-        label="Image repository"
+        label={t('webhook.imageRepo')}
         extra={
-          <span>
-            OCI image repository without tag, e.g. <code>ghcr.io/you/myapp</code>.
-            On webhook fire, nanoku pulls <code>{'<repo>:<payload-tag>'}</code>.
-            Build runs in your GitHub Actions — nanoku only pulls the image.
-          </span>
+          <Trans
+            ns="apps"
+            i18nKey="webhook.imageRepoExtra"
+            values={{ repoTag: '<repo>:<payload-tag>' }}
+            components={{ code: <code className="mono" /> }}
+          />
         }
         className="!mb-2"
       >
-        <Input placeholder="ghcr.io/you/myapp" />
+        <Input placeholder={t('webhook.imageRepoPlaceholder')} />
       </Form.Item>
       {editing?.webhookConfigured && (
         <div className="flex items-center justify-between mt-2">
@@ -606,13 +607,13 @@ function WebhookSection({
             POST {window.location.origin}/api/webhook/{editing.name}
           </span>
           <Popconfirm
-            title="Rotate webhook secret?"
-            description="A new random secret will be generated. You'll see it once. Old secret stops working immediately."
-            okText="Rotate"
+            title={t('webhook.rotateTitle')}
+            description={t('webhook.rotateDescription')}
+            okText={t('webhook.rotateButton')}
             onConfirm={onRotate}
           >
             <Button size="small" icon={<RefreshCw size={12} />}>
-              Rotate secret
+              {t('webhook.rotateButton')}
             </Button>
           </Popconfirm>
         </div>
@@ -622,6 +623,7 @@ function WebhookSection({
 }
 
 function CopyableValue({ value, label }: { value: string; label: string }) {
+  const { t } = useTranslation('common')
   return (
     <div className="flex items-center gap-2">
       <Input
@@ -636,7 +638,7 @@ function CopyableValue({ value, label }: { value: string; label: string }) {
           void navigator.clipboard.writeText(value)
         }}
       >
-        Copy
+        {t('actions.copy')}
       </Button>
     </div>
   )
@@ -700,51 +702,70 @@ function WebhookSecretModal({
   secret: string
   onClose: () => void
 }) {
+  const { t } = useTranslation('apps')
   const yaml = githubActionsWorkflowYaml(appName, url, secret)
   return (
     <Modal
       title={
         <span className="inline-flex items-center gap-2">
           <Bell size={16} />
-          Webhook configured for {appName}
+          {t('webhook.secretModalTitle', { name: appName })}
         </span>
       }
       open
       onOk={onClose}
       onCancel={onClose}
-      okText="Done"
+      okText={t('actions.done', { ns: 'common' })}
       cancelButtonProps={{ style: { display: 'none' } }}
       width={680}
     >
       <Alert
         type="warning"
         showIcon
-        message="Copy the secret now. You won't be able to see it again."
+        message={t('webhook.secretWarning')}
         className="!mb-3"
       />
       <div className="space-y-3">
         <div>
           <div className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-1">
-            Webhook URL
+            {t('webhook.url')}
           </div>
-          <CopyableValue value={url} label="Webhook URL" />
+          <CopyableValue value={url} label={t('webhook.urlLabel')} />
         </div>
         <div>
           <div className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-1">
-            Secret (HMAC-SHA256 key)
+            {t('webhook.secret')}
           </div>
-          <CopyableValue value={secret} label="Webhook secret" />
+          <CopyableValue value={secret} label={t('webhook.secretLabel')} />
         </div>
         <div className="text-xs text-[var(--fg-muted)] mt-3 leading-relaxed">
-          Configure in GitHub under <strong>Repo → Settings → Webhooks → Add</strong>:
+          <Trans
+            ns="apps"
+            i18nKey="webhook.configGuide"
+            components={{ strong: <strong /> }}
+          />
           <ul className="list-disc ml-5 mt-1 space-y-0.5">
-            <li>Payload URL: the URL above</li>
-            <li>Content type: <code>application/json</code></li>
-            <li>Secret: the secret above</li>
-            <li>Events: "Just the push event"</li>
+            <li>{t('webhook.configUrl')}</li>
+            <li>
+              <Trans
+                ns="apps"
+                i18nKey="webhook.configContentType"
+                components={{ code: <code /> }}
+              />
+            </li>
+            <li>{t('webhook.configSecret')}</li>
+            <li>{t('webhook.configEvents')}</li>
           </ul>
-          On push, your GitHub Actions workflow builds and pushes the image,
-          then POSTs <code>{'{ "tag": "<sha>", "commit_message": "<msg>" }'}</code> to the URL.
+          <span className="block mt-1">
+            <Trans
+              ns="apps"
+              i18nKey="webhook.configPost"
+              values={{
+                payload: '{ "tag": "<sha>", "commit_message": "<msg>" }',
+              }}
+              components={{ code: <code /> }}
+            />
+          </span>
         </div>
         <Collapse
           ghost
@@ -753,7 +774,11 @@ function WebhookSecretModal({
               key: 'yaml',
               label: (
                 <span className="text-xs">
-                  <code>.github/workflows/deploy.yml</code> — copy into your app repo
+                  <Trans
+                    ns="apps"
+                    i18nKey="webhook.yamlTitle"
+                    components={{ code: <code /> }}
+                  />
                 </span>
               ),
               children: (
@@ -765,7 +790,7 @@ function WebhookSecretModal({
                       void navigator.clipboard.writeText(yaml)
                     }}
                   >
-                    Copy YAML
+                    {t('webhook.yamlCopy')}
                   </Button>
                   <pre className="mono text-[11px] leading-relaxed bg-[var(--bg-input)] border border-[var(--border)] rounded-lg p-3 overflow-auto max-h-72 whitespace-pre text-[var(--fg-muted)]">
                     {yaml}
@@ -781,8 +806,23 @@ function WebhookSecretModal({
 }
 
 function StatusCell({ app }: { app: AppType }) {
+  const { t } = useTranslation('common')
+  const translate = (s: string) =>
+    s === 'exited'
+      ? t('status.exited')
+      : s === 'created'
+        ? t('status.created')
+        : s === 'not deployed'
+          ? t('status.notDeployed')
+          : s
   if (!app.container) {
-    return <Tag className="!m-0">not deployed</Tag>
+    return (
+      <Tag className="!m-0">
+        <span className="inline-flex items-center gap-1">
+          <CircleDashed size={10} /> {t('status.notDeployed')}
+        </span>
+      </Tag>
+    )
   }
   const s = app.container.status
   if (s === 'running') {
@@ -797,7 +837,7 @@ function StatusCell({ app }: { app: AppType }) {
     return (
       <span className="inline-flex items-center gap-1.5 text-[var(--fg-muted)]">
         <CircleDashed size={12} />
-        <span className="mono text-xs">{s} · {app.container.name}</span>
+        <span className="mono text-xs">{translate(s)} · {app.container.name}</span>
       </span>
     )
   }
@@ -810,17 +850,18 @@ function StatusCell({ app }: { app: AppType }) {
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
+  const { t } = useTranslation('apps')
   return (
     <div className="py-16 text-center">
       <div className="inline-flex items-center justify-center size-12 rounded-full border border-[var(--border)] mb-4">
         <Plus size={20} className="text-[var(--fg-muted)]" />
       </div>
-      <p className="text-sm text-[var(--fg)] mb-1">No apps yet</p>
+      <p className="text-sm text-[var(--fg)] mb-1">{t('emptyState.title')}</p>
       <p className="text-xs text-[var(--fg-muted)] mb-4">
-        Add your first app to deploy a container.
+        {t('emptyState.subtitle')}
       </p>
       <Button type="primary" onClick={onCreate}>
-        Add app
+        {t('emptyState.addApp')}
       </Button>
     </div>
   )
@@ -836,6 +877,7 @@ function AppDetail({
   onChanged: () => void
 }) {
   const { message } = App.useApp()
+  const { t } = useTranslation('apps')
   const [app, setApp] = useState<AppType | null>(null)
   const [env, setEnv] = useState<EnvVar[]>([])
   const [deploys, setDeploys] = useState<Deploy[]>([])
@@ -866,7 +908,7 @@ function AppDetail({
 
   async function loadLogs() {
     if (!app?.container) {
-      setLogs('// no container')
+      setLogs(t('detail.noContainer'))
       return
     }
     setLogsLoading(true)
@@ -898,14 +940,14 @@ function AppDetail({
       .filter((r) => r.key !== '')
     const keys = cleaned.map((r) => r.key)
     if (new Set(keys).size !== keys.length) {
-      message.error('duplicate keys')
+      message.error(t('detail.duplicateKeys'))
       return
     }
     setSavingEnv(true)
     try {
       await api.replaceAppEnv(appId, cleaned)
       message.success(
-        `Saved ${cleaned.length} env var${cleaned.length === 1 ? '' : 's'} — redeploy required`,
+        t('detail.saveEnvSuccess', { count: cleaned.length }),
       )
       void refresh()
       void onChanged()
@@ -926,30 +968,32 @@ function AppDetail({
           <span className="mono text-base">{app.name}</span>
           {app.container && <Tag className="!m-0">{app.container.status}</Tag>}
         </div>
-      ) : 'Loading…'}
+      ) : t('common:status.loading', { ns: 'common' })}
       destroyOnClose
     >
       {!app ? (
-        <div className="py-12 text-center text-[var(--fg-muted)]">Loading…</div>
+        <div className="py-12 text-center text-[var(--fg-muted)]">
+          {t('common:status.loading', { ns: 'common' })}
+        </div>
       ) : (
         <Tabs
           defaultActiveKey="overview"
           items={[
             {
               key: 'overview',
-              label: 'Overview',
+              label: t('detail.tabOverview'),
               children: (
                 <div className="space-y-3 text-sm">
-                  <Field label="Image" value={app.image} mono />
-                  <Field label="Internal port" value={String(app.port)} mono />
-                  <Field label="Branch" value={app.branch} mono />
-                  {app.repoUrl && <Field label="Repo" value={app.repoUrl} mono />}
-                  <Field label="Created" value={app.createdAt} mono />
+                  <Field label={t('detail.image')} value={app.image} mono />
+                  <Field label={t('detail.internalPort')} value={String(app.port)} mono />
+                  <Field label={t('detail.branch')} value={app.branch} mono />
+                  {app.repoUrl && <Field label={t('detail.repo')} value={app.repoUrl} mono />}
+                  <Field label={t('detail.created')} value={app.createdAt} mono />
                   {app.container && (
                     <>
-                      <Field label="Container" value={app.container.name} mono />
+                      <Field label={t('detail.container')} value={app.container.name} mono />
                       <Field
-                        label="Started"
+                        label={t('detail.started')}
                         value={app.container.startedAt ?? '—'}
                         mono
                       />
@@ -963,26 +1007,28 @@ function AppDetail({
                           Webhook
                         </span>
                         <Tag color="green" className="!m-0 ml-auto">
-                          active
+                          {t('detail.webhookActive')}
                         </Tag>
                       </div>
                       <div className="mono text-xs text-[var(--fg-muted)] break-all">
                         POST {window.location.origin}/api/webhook/{app.name}
                       </div>
                       <div className="mono text-xs text-[var(--fg-muted)] mt-1">
-                        image: {app.imageRepo}
+                        {t('detail.imageLabel')}: {app.imageRepo}
                       </div>
                       <div className="mt-2">
                         <Popconfirm
-                          title="Rotate webhook secret?"
-                          description="A new random secret will be generated. You'll see it once."
-                          okText="Rotate"
+                          title={t('webhook.rotateTitle')}
+                          description={t('webhook.rotateDescriptionShort')}
+                          okText={t('webhook.rotateButton')}
                           onConfirm={async () => {
                             try {
                               const updated = await api.rotateWebhookSecret(app.id)
                               if (updated.webhookSecret) {
                                 message.success(
-                                  `Rotated. New URL: ${window.location.origin}/api/webhook/${app.name}`,
+                                  t('webhook.rotatedToast', {
+                                    url: `${window.location.origin}/api/webhook/${app.name}`,
+                                  }),
                                 )
                               }
                               void refresh()
@@ -993,7 +1039,7 @@ function AppDetail({
                           }}
                         >
                           <Button size="small" icon={<RefreshCw size={12} />}>
-                            Rotate secret
+                            {t('webhook.rotateButton')}
                           </Button>
                         </Popconfirm>
                       </div>
@@ -1004,7 +1050,7 @@ function AppDetail({
             },
             {
               key: 'env',
-              label: `Env vars (${env.length})`,
+              label: t('detail.tabEnv', { count: env.length }),
               children: (
                 <div className="space-y-3">
                   <div className="space-y-2">
@@ -1015,13 +1061,13 @@ function AppDetail({
                       >
                         <Input
                           className="!w-40 mono text-xs"
-                          placeholder="KEY"
+                          placeholder={t('detail.keyPlaceholder')}
                           value={row.key}
                           onChange={(e) => setRow(i, { key: e.target.value })}
                         />
                         <Input
                           className="flex-1 mono text-xs"
-                          placeholder="value"
+                          placeholder={t('detail.valuePlaceholder')}
                           value={row.value}
                           onChange={(e) => setRow(i, { value: e.target.value })}
                         />
@@ -1039,14 +1085,14 @@ function AppDetail({
                       icon={<Plus size={13} />}
                       onClick={addRow}
                     >
-                      Add var
+                      {t('detail.addVar')}
                     </Button>
                   </div>
                   <Popconfirm
-                    title="Save and redeploy?"
-                    description="Existing container keeps running until you redeploy."
-                    okText="Save only"
-                    cancelText="Cancel"
+                    title={t('detail.saveAndRedeployTitle')}
+                    description={t('detail.saveAndRedeployDescription')}
+                    okText={t('detail.saveEnv')}
+                    cancelText={t('actions.cancel', { ns: 'common' })}
                     onConfirm={saveEnv}
                   >
                     <Button
@@ -1054,21 +1100,21 @@ function AppDetail({
                       loading={savingEnv}
                       disabled={envDraft.length === 0}
                     >
-                      Save env vars
+                      {t('detail.saveEnv')}
                     </Button>
                   </Popconfirm>
                   <p className="text-xs text-[var(--fg-muted)]">
-                    Changes apply on next deploy. Click the rocket on the app row.
+                    {t('detail.saveEnvHint')}
                   </p>
                 </div>
               ),
             },
             {
               key: 'deploys',
-              label: `Deploys (${deploys.length})`,
+              label: t('detail.tabDeploys', { count: deploys.length }),
               children: deploys.length === 0 ? (
                 <div className="py-8 text-center text-[var(--fg-muted)] text-sm">
-                  No deploys yet.
+                  {t('detail.noDeploys')}
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1103,7 +1149,7 @@ function AppDetail({
                       )}
                       {d.containerName && (
                         <div className="mono text-xs text-[var(--fg-muted)] mt-1">
-                          container: {d.containerName}
+                          {t('detail.containerLabel')}: {d.containerName}
                         </div>
                       )}
                       {d.error && (
@@ -1122,7 +1168,7 @@ function AppDetail({
             },
             {
               key: 'logs',
-              label: 'Logs',
+              label: t('detail.tabLogs'),
               children: (
                 <div className="space-y-2">
                   <Button
@@ -1131,10 +1177,10 @@ function AppDetail({
                     onClick={loadLogs}
                     loading={logsLoading}
                   >
-                    Load logs
+                    {t('detail.loadLogs')}
                   </Button>
                   <pre className="mono text-xs leading-relaxed bg-[var(--bg-input)] border border-[var(--border)] rounded-lg p-3 overflow-auto max-h-96 whitespace-pre-wrap break-all text-[var(--fg-muted)]">
-                    {logs || '// click Load logs'}
+                    {logs || t('detail.loadLogsHint')}
                   </pre>
                 </div>
               ),

@@ -17,6 +17,7 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { api, ApiError } from '../lib/api'
 import { clearCredentials, getCredentials } from '../lib/auth'
 import type { Status, SystemStatus } from '../lib/types'
@@ -31,9 +32,12 @@ export const Route = createFileRoute('/system')({
   component: SystemPage,
 })
 
+const SELF_CONTAINER_ENV = 'NANOKU_SELF_CONTAINER'
+
 function SystemPage() {
   const navigate = useNavigate()
   const { message } = App.useApp()
+  const { t } = useTranslation('system')
   const [status, setStatus] = useState<Status | null>(null)
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null)
   const [loading, setLoading] = useState(true)
@@ -113,13 +117,11 @@ function SystemPage() {
       <main className="flex-1 px-8 py-8 max-w-6xl w-full mx-auto w-full">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-medium tracking-tight">System</h1>
-            <p className="text-sm text-[var(--fg-muted)] mt-1">
-              Live logs for nanoku itself and the managed Caddy container.
-            </p>
+            <h1 className="text-2xl font-medium tracking-tight">{t('title')}</h1>
+            <p className="text-sm text-[var(--fg-muted)] mt-1">{t('subtitle')}</p>
           </div>
           <Space>
-            <span className="text-xs text-[var(--fg-muted)]">Tail lines</span>
+            <span className="text-xs text-[var(--fg-muted)]">{t('tailLines')}</span>
             <InputNumber
               min={50}
               max={5000}
@@ -136,7 +138,7 @@ function SystemPage() {
               }}
               loading={caddyLoading || selfLoading}
             >
-              Refresh both
+              {t('refreshBoth')}
             </Button>
           </Space>
         </div>
@@ -144,7 +146,7 @@ function SystemPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <LogPanel
             icon={<ShieldCheck size={14} />}
-            title="Nanoku self"
+            title={t('logPanel.nanokuSelf')}
             containerName={systemStatus?.nanokuContainerName}
             status={systemStatus?.nanokuContainerConfigured ? 'configured' : undefined}
             loading={selfLoading}
@@ -155,27 +157,21 @@ function SystemPage() {
                 <div className="text-xs text-[var(--fg-muted)] space-y-1">
                   <div className="flex items-center gap-1.5">
                     <Info size={12} />
-                    <span>
-                      Set{' '}
-                      <code className="mono text-[var(--fg)]">
-                        NANOKU_SELF_CONTAINER=&lt;name&gt;
-                      </code>{' '}
-                      to enable.
-                    </span>
+                    <Trans
+                      ns="system"
+                      i18nKey="nanokuHint.set"
+                      values={{ envVar: SELF_CONTAINER_ENV }}
+                      components={{ code: <code className="mono text-[var(--fg)]" /> }}
+                    />
                   </div>
-                  <div>
-                    When nanoku runs in Docker, set the env var to the
-                    container name (e.g. <span className="mono">nanoku</span>)
-                    and restart. Logs will then stream here via{' '}
-                    <span className="mono">docker logs</span>.
-                  </div>
+                  <div>{t('nanokuHint.docker')}</div>
                 </div>
               ) : null
             }
           />
           <LogPanel
             icon={<ContainerIcon size={14} />}
-            title="Caddy"
+            title={t('logPanel.caddy')}
             containerName={systemStatus?.caddyContainer}
             status={status?.caddyStatus}
             loading={caddyLoading}
@@ -185,8 +181,7 @@ function SystemPage() {
               !systemStatus?.dockerAvailable ? (
                 <div className="text-xs text-[var(--fg-muted)] flex items-center gap-1.5">
                   <Info size={12} />
-                  Docker unavailable — start nanoku with the docker socket
-                  mounted.
+                  {t('dockerHint')}
                 </div>
               ) : null
             }
@@ -216,6 +211,7 @@ function LogPanel({
   onRefresh: () => void
   emptyHint?: React.ReactNode
 }) {
+  const { t } = useTranslation('system')
   return (
     <section className="border border-[var(--border)] rounded-lg bg-[var(--bg-elevated)] overflow-hidden flex flex-col">
       <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between gap-3">
@@ -227,7 +223,7 @@ function LogPanel({
           )}
           {status && <StatusTag status={status} />}
         </div>
-        <Tooltip title="Refresh">
+        <Tooltip title={t('logPanel.refresh')}>
           <Button
             type="text"
             size="small"
@@ -248,7 +244,7 @@ function LogPanel({
           <div className="p-4">{emptyHint}</div>
         ) : (
           <pre className="mono text-xs leading-relaxed bg-[var(--bg-input)] p-3 overflow-auto h-96 whitespace-pre-wrap break-all text-[var(--fg-muted)]">
-            {logs || '// click refresh to load'}
+            {logs || t('logPanel.clickRefresh')}
           </pre>
         )}
       </div>

@@ -1,0 +1,55 @@
+{
+  "title": "Dashboard",
+  "subtitle": "Sites, apps, and live container resource usage.",
+  "updatedAt": "updated {{time}}",
+  "autoRefresh": "Auto-refresh every 5s",
+  "auto": "Auto",
+  "refresh": "Refresh",
+  "stats": {
+    "sites": "Sites",
+    "apps": "Apps",
+    "containers": "Containers",
+    "totalCpu": "Total CPU",
+    "enabledSites_one": "{{count}} enabled",
+    "enabledSites_other": "{{count}} enabled",
+    "runningApps_one": "{{count}} running",
+    "runningApps_other": "{{count}} running",
+    "activeContainers_one": "{{count}} active",
+    "activeContainers_other": "{{count}} active"
+  },
+  "sections": {
+    "apps": "Apps",
+    "sites": "Sites",
+    "allContainers": "All containers"
+  },
+  "empty": {
+    "noApps": "No apps yet",
+    "noSites": "No sites",
+    "noContainers": "No containers running"
+  },
+  "table": {
+    "domain": "Domain",
+    "app": "App",
+    "upstream": "Upstream",
+    "name": "Name",
+    "cpu": "CPU",
+    "memory": "Memory",
+    "pids": "PIDs",
+    "netIo": "Net I/O"
+  },
+  "memoryCard": {
+    "title_one": "Total memory across {{count}} container",
+    "title_other": "Total memory across {{count}} containers",
+    "ofHost": "{{pct}}% of host memory limit"
+  },
+  "appCard": {
+    "liveStats": "Live stats",
+    "noStats": "No stats — container not running",
+    "processCount": "Process count",
+    "networkIo": "Network I/O",
+    "blockIo": "Block I/O",
+    "processCountLabel": "pids",
+    "networkLabel": "net",
+    "diskLabel": "disk"
+  }
+}

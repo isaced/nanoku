@@ -6,22 +6,18 @@ import {
   Input,
   Modal,
   Select,
-  Switch,
   Table,
   Tag,
   Tooltip,
 } from 'antd'
 import {
-  CircleCheck,
-  CircleDashed,
-  CircleX,
   Pencil,
   Plus,
   Power,
-  RefreshCw,
   Trash2,
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api, ApiError } from '../lib/api'
 import { clearCredentials, getCredentials } from '../lib/auth'
 import type { App as AppType, Site, Status } from '../lib/types'
@@ -39,6 +35,7 @@ export const Route = createFileRoute('/sites')({
 function SitesPage() {
   const navigate = useNavigate()
   const { message, modal } = App.useApp()
+  const { t } = useTranslation('sites')
   const [sites, setSites] = useState<Site[]>([])
   const [status, setStatus] = useState<Status | null>(null)
   const [apps, setApps] = useState<AppType[]>([])
@@ -107,10 +104,10 @@ function SitesPage() {
     try {
       if (editing) {
         await api.updateSite(editing.id, payload)
-        message.success(`Updated ${values.domain}`)
+        message.success(t('toast.updated', { domain: values.domain }))
       } else {
         await api.createSite(payload)
-        message.success(`Added ${values.domain}`)
+        message.success(t('toast.added', { domain: values.domain }))
       }
       setEditorOpen(false)
       void reload()
@@ -123,7 +120,9 @@ function SitesPage() {
     try {
       await api.toggleSite(s.id)
       message.success(
-        s.enabled ? `Disabled ${s.domain}` : `Enabled ${s.domain}`,
+        s.enabled
+          ? t('toast.disabled', { domain: s.domain })
+          : t('toast.enabled', { domain: s.domain }),
       )
       void reload()
     } catch (err) {
@@ -133,14 +132,14 @@ function SitesPage() {
 
   function onDelete(s: Site) {
     modal.confirm({
-      title: `Delete ${s.domain}?`,
-      content: 'The Caddyfile will be regenerated and Caddy reloaded.',
-      okText: 'Delete',
+      title: t('delete.title', { domain: s.domain }),
+      content: t('delete.content'),
+      okText: t('actions.delete', { ns: 'common' }),
       okType: 'danger',
       onOk: async () => {
         try {
           await api.deleteSite(s.id)
-          message.success(`Deleted ${s.domain}`)
+          message.success(t('toast.deleted', { domain: s.domain }))
           void reload()
         } catch (err) {
           message.error((err as Error).message)
@@ -156,11 +155,14 @@ function SitesPage() {
       <main className="flex-1 px-8 py-8 max-w-6xl w-full mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-medium tracking-tight">Sites</h1>
+            <h1 className="text-2xl font-medium tracking-tight">{t('title')}</h1>
             <p className="text-sm text-[var(--fg-muted)] mt-1">
               {sites.length === 0
-                ? 'No sites configured yet.'
-                : `${sites.length} ${sites.length === 1 ? 'site' : 'sites'} · ${status?.enabledSiteCount ?? 0} active`}
+                ? t('subtitleEmpty')
+                : t(sites.length === 1 ? 'subtitleOne' : 'subtitleOther', {
+                    count: sites.length,
+                    active: status?.enabledSiteCount ?? 0,
+                  })}
             </p>
           </div>
           <Button
@@ -168,7 +170,7 @@ function SitesPage() {
             icon={<Plus size={14} />}
             onClick={openCreate}
           >
-            New site
+            {t('newSite')}
           </Button>
         </div>
 
@@ -181,19 +183,19 @@ function SitesPage() {
             locale={{ emptyText: <EmptyState onCreate={openCreate} /> }}
             columns={[
               {
-                title: 'Domain',
+                title: t('table.domain'),
                 dataIndex: 'domain',
                 render: (d: string, row) => (
                   <div className="flex items-center gap-3">
                     <span className="mono text-sm">{d}</span>
                     {!row.enabled && (
-                      <Tag className="!m-0">disabled</Tag>
+                      <Tag className="!m-0">{t('common:status.disabled', { ns: 'common' })}</Tag>
                     )}
                   </div>
                 ),
               },
               {
-                title: 'Upstream',
+                title: t('table.upstream'),
                 dataIndex: 'upstream',
                 render: (u: string, row) => (
                   <div className="flex items-center gap-2">
@@ -213,7 +215,13 @@ function SitesPage() {
                 align: 'right',
                 render: (_: unknown, row) => (
                   <div className="flex items-center justify-end gap-1">
-                    <Tooltip title={row.enabled ? 'Disable' : 'Enable'}>
+                    <Tooltip
+                      title={
+                        row.enabled
+                          ? t('table.actions.disable')
+                          : t('table.actions.enable')
+                      }
+                    >
                       <Button
                         type="text"
                         size="small"
@@ -230,7 +238,7 @@ function SitesPage() {
                         onClick={() => onToggle(row)}
                       />
                     </Tooltip>
-                    <Tooltip title="Edit">
+                    <Tooltip title={t('table.actions.edit')}>
                       <Button
                         type="text"
                         size="small"
@@ -238,7 +246,7 @@ function SitesPage() {
                         onClick={() => openEdit(row)}
                       />
                     </Tooltip>
-                    <Tooltip title="Delete">
+                    <Tooltip title={t('table.actions.delete')}>
                       <Button
                         type="text"
                         size="small"
@@ -256,7 +264,7 @@ function SitesPage() {
         {status && (
           <div className="mt-8">
             <h2 className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-3">
-              Generated Caddyfile
+              {t('generatedCaddyfile')}
             </h2>
             <CaddyfilePreview />
           </div>
@@ -264,31 +272,32 @@ function SitesPage() {
       </main>
 
       <Modal
-        title={editing ? 'Edit site' : 'New site'}
+        title={editing ? t('editor.editTitle') : t('editor.newTitle')}
         open={editorOpen}
         onOk={onSubmit}
         onCancel={() => setEditorOpen(false)}
-        okText={editing ? 'Save' : 'Create'}
+        okText={editing ? t('editor.save') : t('editor.create')}
+        cancelText={t('actions.cancel', { ns: 'common' })}
         destroyOnClose
       >
         <Form form={form} layout="vertical" preserve={false}>
           <Form.Item
             name="domain"
-            label="Domain"
+            label={t('editor.domain')}
             rules={[
-              { required: true, message: 'Domain is required' },
+              { required: true, message: t('editor.domainRequired') },
               {
                 pattern: /^[a-z0-9.-]+\.[a-z]{2,}$/i,
-                message: 'Must look like a domain (e.g. app.example.com)',
+                message: t('editor.domainPattern'),
               },
             ]}
           >
-            <Input placeholder="app.example.com" autoFocus />
+            <Input placeholder={t('editor.domainPlaceholder')} autoFocus />
           </Form.Item>
-          <Form.Item name="appId" label="App (optional)">
+          <Form.Item name="appId" label={t('editor.app')}>
             <Select
               allowClear
-              placeholder="Link to a deployed app"
+              placeholder={t('editor.appPlaceholder')}
               options={apps.map((a) => ({
                 value: a.id,
                 label: `${a.name} · ${a.image} :${a.port}`,
@@ -302,25 +311,25 @@ function SitesPage() {
             {({ getFieldValue }) => (
               <Form.Item
                 name="upstream"
-                label="Upstream"
+                label={t('editor.upstream')}
                 rules={
                   getFieldValue('appId')
                     ? []
                     : [
-                        { required: true, message: 'Upstream is required' },
+                        { required: true, message: t('editor.upstreamRequired') },
                       ]
                 }
                 extra={
                   getFieldValue('appId')
-                    ? 'Upstream auto-resolved from the app container.'
-                    : 'host:port, URL, or docker container name'
+                    ? t('editor.upstreamExtraApp')
+                    : t('editor.upstreamExtraFree')
                 }
               >
                 <Input
                   placeholder={
                     getFieldValue('appId')
-                      ? '(auto-resolved)'
-                      : 'localhost:3000'
+                      ? t('editor.upstreamPlaceholderApp')
+                      : t('editor.upstreamPlaceholderFree')
                   }
                   disabled={!!getFieldValue('appId')}
                 />
@@ -334,23 +343,25 @@ function SitesPage() {
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
+  const { t } = useTranslation('sites')
   return (
     <div className="py-16 text-center">
       <div className="inline-flex items-center justify-center size-12 rounded-full border border-[var(--border)] mb-4">
         <Plus size={20} className="text-[var(--fg-muted)]" />
       </div>
-      <p className="text-sm text-[var(--fg)] mb-1">No sites yet</p>
+      <p className="text-sm text-[var(--fg)] mb-1">{t('emptyState.title')}</p>
       <p className="text-xs text-[var(--fg-muted)] mb-4">
-        Add your first domain to start routing traffic through Caddy.
+        {t('emptyState.subtitle')}
       </p>
       <Button type="primary" onClick={onCreate}>
-        Add site
+        {t('emptyState.addSite')}
       </Button>
     </div>
   )
 }
 
 function CaddyfilePreview() {
+  const { t } = useTranslation('sites')
   const [content, setContent] = useState<string>('')
   const [loading, setLoading] = useState(true)
 
@@ -363,7 +374,7 @@ function CaddyfilePreview() {
         if (!cancel) setContent(c)
       })
       .catch(() => {
-        if (!cancel) setContent('// failed to load')
+        if (!cancel) setContent(t('caddyfile.failed'))
       })
       .finally(() => {
         if (!cancel) setLoading(false)
@@ -371,11 +382,11 @@ function CaddyfilePreview() {
     return () => {
       cancel = true
     }
-  }, [])
+  }, [t])
 
   return (
     <pre className="mono text-xs leading-relaxed bg-[var(--bg-input)] border border-[var(--border)] rounded-lg p-4 overflow-auto max-h-96 text-[var(--fg-muted)]">
-      {loading ? 'loading…' : content || '# empty'}
+      {loading ? t('caddyfile.loading') : content || t('caddyfile.empty')}
     </pre>
   )
 }

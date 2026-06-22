@@ -1,0 +1,17 @@
+{
+  "title": "系统",
+  "subtitle": "nanoku 自身和托管 Caddy 容器的实时日志。",
+  "tailLines": "Tail 行数",
+  "refreshBoth": "刷新两侧",
+  "logPanel": {
+    "nanokuSelf": "Nanoku 自身",
+    "caddy": "Caddy",
+    "refresh": "刷新",
+    "clickRefresh": "// 点击刷新按钮加载"
+  },
+  "nanokuHint": {
+    "set": "设置 <code>{{envVar}}=&lt;name&gt;</code> 即可启用。",
+    "docker": "若 nanoku 部署在 Docker 中，请将环境变量设为容器名（如 <span class=\"mono\">nanoku</span>），然后重启。日志将通过 <span class=\"mono\">docker logs</span> 在此展示。"
+  },
+  "dockerHint": "Docker 不可用 — 请挂载 Docker socket 后再启动 nanoku。"
+}

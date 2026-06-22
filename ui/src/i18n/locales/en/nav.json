@@ -1,0 +1,11 @@
+{
+  "dashboard": "Dashboard",
+  "sites": "Sites",
+  "apps": "Apps",
+  "system": "System",
+  "language": "Language",
+  "languageEnglish": "English",
+  "languageChinese": "中文",
+  "dockerUnreachable": "Docker daemon unreachable",
+  "refresh": "Refresh"
+}

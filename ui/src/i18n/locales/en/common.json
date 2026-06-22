@@ -1,0 +1,40 @@
+{
+  "actions": {
+    "refresh": "Refresh",
+    "save": "Save",
+    "create": "Create",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "copy": "Copy",
+    "done": "Done",
+    "rotate": "Rotate",
+    "add": "Add"
+  },
+  "status": {
+    "loading": "Loading…",
+    "empty": "Empty",
+    "running": "running",
+    "exited": "exited",
+    "created": "created",
+    "configured": "configured",
+    "notDeployed": "not deployed",
+    "active": "active",
+    "skipped": "skipped",
+    "notFound": "not found",
+    "disabled": "disabled"
+  },
+  "common": {
+    "domain": "Domain",
+    "name": "Name",
+    "image": "Image",
+    "port": "Port",
+    "status": "Status",
+    "branch": "Branch",
+    "method": "Method",
+    "enabled": "enabled",
+    "cpu": "CPU",
+    "memory": "Memory",
+    "updated": "updated"
+  }
+}

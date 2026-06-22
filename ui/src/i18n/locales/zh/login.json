@@ -1,0 +1,8 @@
+{
+  "title": "登录管理后台",
+  "subtitle": "自托管的部署中心。请输入管理员密码。",
+  "user": "用户名",
+  "password": "密码",
+  "submit": "登录",
+  "invalidCredentials": "用户名或密码错误"
+}

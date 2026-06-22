@@ -1,0 +1,8 @@
+{
+  "title": "Sign in to admin",
+  "subtitle": "Self-hosted deployment hub. Enter your admin password.",
+  "user": "User",
+  "password": "Password",
+  "submit": "Continue",
+  "invalidCredentials": "Invalid credentials"
+}
