@@ -62,16 +62,22 @@ func Authenticate(ctx context.Context, d *db.DB, username, password string) (*db
 
 // SeedFirstAdmin creates an initial admin user from the env-supplied
 // username and password. Returns nil if a user already exists.
+//
+// Bootstrapping from env vars is a first-boot-only affordance: once any user
+// row exists the env vars are ignored so a deployed instance is never locked
+// to the env credentials. On a fresh DB with missing username or password we
+// fail fast — otherwise nanoku would boot into a state where nobody can log
+// in (no seeded admin, no way to create one short of editing the DB).
 func SeedFirstAdmin(ctx context.Context, d *db.DB, username, password string) error {
-	if username == "" || password == "" {
-		return nil
-	}
 	exists, err := d.User.Query().Limit(1).Exist(ctx)
 	if err != nil {
 		return err
 	}
 	if exists {
 		return nil
+	}
+	if username == "" || password == "" {
+		return errors.New("fresh database but NANOKU_ADMIN_USER/NANOKU_ADMIN_PASSWORD not set; cannot bootstrap admin (set them once, then unset after first login)")
 	}
 	hash, err := HashPassword(password)
 	if err != nil {
