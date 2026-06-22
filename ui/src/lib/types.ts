@@ -30,8 +30,6 @@ export type App = {
   name: string;
   image: string;
   port: number;
-  repoUrl?: string;
-  branch: string;
   container?: Container;
   envVars?: EnvVar[];
 
@@ -44,9 +42,8 @@ export type App = {
   registryUrl?: string;
   registryUsername?: string;
 
-  webhookConfigured: boolean;
-  imageRepo?: string;
-  webhookSecret?: string;
+  triggerConfigured: boolean;
+  triggerToken?: string;
 
   createdAt: string;
   updatedAt: string;
@@ -56,16 +53,14 @@ export type AppInput = {
   name?: string;
   image?: string;
   port?: number;
-  repoUrl?: string;
-  branch?: string;
   deployMethod?: 'docker' | 'compose';
   composePath?: string;
   composeContent?: string;
   registryUrl?: string;
   registryUsername?: string;
   registryPassword?: string;
-  imageRepo?: string;
   clearRegistry?: boolean;
+  enableTrigger?: boolean;
 };
 
 export type EnvVar = {

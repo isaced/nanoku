@@ -61,7 +61,7 @@ function AppsPage() {
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<AppType | null>(null)
   const [detailAppId, setDetailAppId] = useState<number | null>(null)
-  const [revealedSecret, setRevealedSecret] = useState<{ url: string; secret: string; appName: string } | null>(null)
+  const [revealedToken, setRevealedToken] = useState<{ url: string; token: string; appName: string } | null>(null)
   const [form] = Form.useForm<AppInput>()
 
   const reload = useCallback(async () => {
@@ -93,7 +93,7 @@ function AppsPage() {
   function openCreate() {
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ branch: 'main', port: 80, deployMethod: 'docker' })
+    form.setFieldsValue({ port: 80, deployMethod: 'docker' })
     setEditorOpen(true)
   }
 
@@ -103,14 +103,12 @@ function AppsPage() {
       name: a.name,
       image: a.image,
       port: a.port,
-      repoUrl: a.repoUrl ?? '',
-      branch: a.branch,
       deployMethod: a.deployMethod ?? 'docker',
       composePath: a.composePath ?? '',
       composeContent: a.composeContent ?? '',
       registryUrl: a.registryUrl ?? '',
       registryUsername: a.registryUsername ?? '',
-      imageRepo: a.imageRepo ?? '',
+      enableTrigger: a.triggerConfigured,
     })
     setEditorOpen(true)
   }
@@ -124,10 +122,10 @@ function AppsPage() {
       } else {
         const created = await api.createApp(values)
         message.success(t('toast.added', { name: values.name }))
-        if (created.webhookSecret && created.imageRepo) {
-          setRevealedSecret({
-            url: `${window.location.origin}/api/webhook/${created.name}`,
-            secret: created.webhookSecret,
+        if (created.triggerToken) {
+          setRevealedToken({
+            url: `${window.location.origin}/api/apps/${created.name}/trigger`,
+            token: created.triggerToken,
             appName: created.name,
           })
         }
@@ -139,13 +137,13 @@ function AppsPage() {
     }
   }
 
-  async function rotateSecret(a: AppType) {
+  async function rotateToken(a: AppType) {
     try {
-      const updated = await api.rotateWebhookSecret(a.id)
-      if (updated.webhookSecret) {
-        setRevealedSecret({
-          url: `${window.location.origin}/api/webhook/${a.name}`,
-          secret: updated.webhookSecret,
+      const updated = await api.rotateTriggerToken(a.id)
+      if (updated.triggerToken) {
+        setRevealedToken({
+          url: `${window.location.origin}/api/apps/${a.name}/trigger`,
+          token: updated.triggerToken,
           appName: a.name,
         })
       }
@@ -464,26 +462,19 @@ function AppsPage() {
 
           <RegistrySection editing={editing} />
 
-          <Form.Item name="branch" label={t('editor.branch')} initialValue="main">
-            <Input placeholder={t('editor.branchPlaceholder')} />
-          </Form.Item>
-          <Form.Item name="repoUrl" label={t('editor.repoUrl')}>
-            <Input placeholder={t('editor.repoUrlPlaceholder')} />
-          </Form.Item>
-
-          <WebhookSection
+          <TriggerSection
             editing={editing}
-            onRotate={() => editing && rotateSecret(editing)}
+            onRotate={() => editing && rotateToken(editing)}
           />
         </Form>
       </Modal>
 
-      {revealedSecret && (
-        <WebhookSecretModal
-          appName={revealedSecret.appName}
-          url={revealedSecret.url}
-          secret={revealedSecret.secret}
-          onClose={() => setRevealedSecret(null)}
+      {revealedToken && (
+        <TriggerTokenModal
+          appName={revealedToken.appName}
+          url={revealedToken.url}
+          token={revealedToken.token}
+          onClose={() => setRevealedToken(null)}
         />
       )}
 
@@ -565,7 +556,7 @@ function RegistrySection({ editing }: { editing: AppType | null }) {
   )
 }
 
-function WebhookSection({
+function TriggerSection({
   editing,
   onRotate,
 }: {
@@ -573,50 +564,70 @@ function WebhookSection({
   onRotate: () => void
 }) {
   const { t } = useTranslation('apps')
+  // The trigger URL is derivable from the app name and current origin;
+  // we surface it directly in the form so the user can copy it without
+  // opening the rotate modal. The token never re-appears here — that
+  // is one-shot at create / rotate only.
+  const url = editing
+    ? `${window.location.origin}/api/apps/${editing.name}/trigger`
+    : ''
   return (
     <div className="border border-[var(--border)] rounded-lg p-3 mb-2 bg-[var(--bg-input)]/30">
       <div className="flex items-center gap-2 mb-2">
         <Bell size={13} className="text-[var(--fg-muted)]" />
         <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
-          {t('webhook.sectionTitle')}
+          {t('trigger.sectionTitle')}
         </span>
-        {editing?.webhookConfigured && (
+        {editing?.triggerConfigured && (
           <Tag color="green" className="!m-0 ml-auto">
             {t('common:status.active', { ns: 'common' })}
           </Tag>
         )}
       </div>
-      <Form.Item
-        name="imageRepo"
-        label={t('webhook.imageRepo')}
-        extra={
-          <Trans
-            ns="apps"
-            i18nKey="webhook.imageRepoExtra"
-            values={{ repoTag: '<repo>:<payload-tag>' }}
-            components={{ code: <code className="mono" /> }}
-          />
-        }
-        className="!mb-2"
-      >
-        <Input placeholder={t('webhook.imageRepoPlaceholder')} />
-      </Form.Item>
-      {editing?.webhookConfigured && (
-        <div className="flex items-center justify-between mt-2">
-          <span className="text-xs text-[var(--fg-muted)] mono">
-            POST {window.location.origin}/api/webhook/{editing.name}
-          </span>
-          <Popconfirm
-            title={t('webhook.rotateTitle')}
-            description={t('webhook.rotateDescription')}
-            okText={t('webhook.rotateButton')}
-            onConfirm={onRotate}
-          >
-            <Button size="small" icon={<RefreshCw size={12} />}>
-              {t('webhook.rotateButton')}
-            </Button>
-          </Popconfirm>
-        </div>
+      {editing ? (
+        editing.triggerConfigured ? (
+          <div className="space-y-3">
+            <div>
+              <div className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-1">
+                {t('trigger.url')}
+              </div>
+              <CopyableValue value={url} label={t('trigger.urlLabel')} />
+            </div>
+            <details className="text-xs">
+              <summary className="cursor-pointer text-[var(--fg-muted)] hover:text-[var(--fg)] select-none">
+                {t('trigger.usageTitle')}
+              </summary>
+              <div className="mt-2">
+                <TriggerUsage url={url} appName={editing.name} />
+              </div>
+            </details>
+            <div>
+              <Popconfirm
+                title={t('trigger.rotateTitle')}
+                description={t('trigger.rotateDescription')}
+                okText={t('trigger.rotateButton')}
+                onConfirm={onRotate}
+              >
+                <Button size="small" icon={<RefreshCw size={12} />}>
+                  {t('trigger.rotateButton')}
+                </Button>
+              </Popconfirm>
+            </div>
+          </div>
+        ) : (
+          <div className="text-xs text-[var(--fg-muted)]">
+            {t('trigger.disabledHint')}
+          </div>
+        )
+      ) : (
+        <Form.Item
+          name="enableTrigger"
+          valuePropName="checked"
+          className="!mb-0"
+          extra={t('trigger.enableExtra')}
+        >
+          <Checkbox>{t('trigger.enableLabel')}</Checkbox>
+        </Form.Item>
       )}
     </div>
   )
@@ -644,10 +655,34 @@ function CopyableValue({ value, label }: { value: string; label: string }) {
   )
 }
 
-function githubActionsWorkflowYaml(appName: string, url: string, secret: string) {
+// buildTriggerCurl renders a copy-paste shell snippet that POSTs to the
+// trigger URL. `bearer` is the value that goes after `Authorization: ` —
+// the caller decides whether to embed a real token or use a
+// `$NANOKU_TRIGGER_TOKEN` env var placeholder.
+function buildTriggerCurl(url: string, bearer: string) {
+  const body = JSON.stringify({ tag: '<sha>', commit_message: '<msg>' })
+  return [
+    'BODY=' + shellQuote(body),
+    'curl -fsS -X POST ' + shellQuote(url) + ' \\',
+    '  -H "Authorization: Bearer ' + bearer + '" \\',
+    '  -H "Content-Type: application/json" \\',
+    '  -d "$BODY"',
+  ].join('\n')
+}
+
+function shellQuote(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'"
+}
+
+// buildWorkflowYaml is the GitHub Actions deploy template.
+//
+// IMPORTANT: the YAML never embeds the actual token. It references the
+// user's repo secret via `${{ secrets.NANOKU_TRIGGER_TOKEN }}` — public
+// repos are fine to share this file as-is. The token's first appearance
+// to the user is in the modal, where they copy it into the secret.
+function buildWorkflowYaml(appName: string, url: string) {
   // GitHub Actions uses ${{ ... }} for expressions. In JS template literals
   // we must escape every literal `$` so it isn't treated as interpolation.
-  // `${{` in the final string should read literally — hence `\${{` here.
   const $ = '$'
   return [
     'name: deploy',
@@ -677,39 +712,101 @@ function githubActionsWorkflowYaml(appName: string, url: string, secret: string)
     `      - name: Notify Nanoku (${appName})`,
     '        env:',
     `          URL: ${url}`,
-    `          SECRET: ${secret}`,
+    `          TOKEN: ${$}{{ secrets.NANOKU_TRIGGER_TOKEN }}`,
     `          SHA: ${$}{{ github.sha }}`,
     `          MSG: ${$}{{ github.event.head_commit.message }}`,
     '        run: |',
-    '          BODY="{\\"tag\\":\\"\${SHA}\\",\\"commit_message\\":\\"\${MSG//\\"/\\\\\\"}\\".\\"}"',
-    '          SIG="sha256=$(printf \'%s\' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | awk \'{print $2}\')"',
+    '          BODY=$(jq -nc --arg t "$SHA" --arg m "$MSG" \'{tag: $t, commit_message: $m}\')',
     '          curl -fsS -X POST "$URL" \\',
+    '            -H "Authorization: Bearer $TOKEN" \\',
     '            -H "Content-Type: application/json" \\',
-    '            -H "X-Hub-Signature-256: $SIG" \\',
     '            -d "$BODY"',
     '',
   ].join('\n')
 }
 
-function WebhookSecretModal({
+function CodeBlock({ value }: { value: string }) {
+  const { t } = useTranslation('common')
+  return (
+    <div className="space-y-1">
+      <Button
+        size="small"
+        icon={<Copy size={12} />}
+        onClick={() => {
+          void navigator.clipboard.writeText(value)
+        }}
+      >
+        {t('actions.copy')}
+      </Button>
+      <pre className="mono text-[11px] leading-relaxed bg-[var(--bg-input)] border border-[var(--border)] rounded-lg p-3 overflow-auto max-h-48 whitespace-pre text-[var(--fg-muted)]">
+        {value}
+      </pre>
+    </div>
+  )
+}
+
+// TriggerUsage renders the curl + workflow YAML examples. `token` is the
+// real bearer credential; when omitted, the curl uses
+// `$NANOKU_TRIGGER_TOKEN` as a placeholder so the editing view (which
+// doesn't have the token) can show the same shape.
+function TriggerUsage({
+  url,
+  appName,
+  token,
+}: {
+  url: string
+  appName: string
+  token?: string
+}) {
+  const { t } = useTranslation('apps')
+  const bearer = token ?? '$NANOKU_TRIGGER_TOKEN'
+  const curl = buildTriggerCurl(url, bearer)
+  const yaml = buildWorkflowYaml(appName, url)
+  return (
+    <div className="space-y-3">
+      {!token && (
+        <div className="text-[11px] text-[var(--fg-muted)] leading-relaxed">
+          {t('trigger.usagePlaceholder', { var: 'NANOKU_TRIGGER_TOKEN' })}
+        </div>
+      )}
+      <div>
+        <div className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-1">
+          {t('trigger.curlTitle')}
+        </div>
+        <CodeBlock value={curl} />
+      </div>
+      <div>
+        <div className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-1">
+          <Trans
+            ns="apps"
+            i18nKey="trigger.yamlTitle"
+            components={{ code: <code /> }}
+          />
+        </div>
+        <CodeBlock value={yaml} />
+      </div>
+    </div>
+  )
+}
+
+function TriggerTokenModal({
   appName,
   url,
-  secret,
+  token,
   onClose,
 }: {
   appName: string
   url: string
-  secret: string
+  token: string
   onClose: () => void
 }) {
   const { t } = useTranslation('apps')
-  const yaml = githubActionsWorkflowYaml(appName, url, secret)
   return (
     <Modal
       title={
         <span className="inline-flex items-center gap-2">
           <Bell size={16} />
-          {t('webhook.secretModalTitle', { name: appName })}
+          {t('trigger.tokenModalTitle', { name: appName })}
         </span>
       }
       open
@@ -722,84 +819,32 @@ function WebhookSecretModal({
       <Alert
         type="warning"
         showIcon
-        message={t('webhook.secretWarning')}
+        message={t('trigger.tokenWarning')}
         className="!mb-3"
       />
       <div className="space-y-3">
         <div>
           <div className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-1">
-            {t('webhook.url')}
+            {t('trigger.url')}
           </div>
-          <CopyableValue value={url} label={t('webhook.urlLabel')} />
+          <CopyableValue value={url} label={t('trigger.urlLabel')} />
         </div>
         <div>
           <div className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-1">
-            {t('webhook.secret')}
+            {t('trigger.token')}
           </div>
-          <CopyableValue value={secret} label={t('webhook.secretLabel')} />
+          <CopyableValue value={token} label={t('trigger.tokenLabel')} />
         </div>
         <div className="text-xs text-[var(--fg-muted)] mt-3 leading-relaxed">
           <Trans
             ns="apps"
-            i18nKey="webhook.configGuide"
-            components={{ strong: <strong /> }}
+            i18nKey="trigger.protocolGuide"
+            components={{ code: <code />, strong: <strong /> }}
           />
-          <ul className="list-disc ml-5 mt-1 space-y-0.5">
-            <li>{t('webhook.configUrl')}</li>
-            <li>
-              <Trans
-                ns="apps"
-                i18nKey="webhook.configContentType"
-                components={{ code: <code /> }}
-              />
-            </li>
-            <li>{t('webhook.configSecret')}</li>
-            <li>{t('webhook.configEvents')}</li>
-          </ul>
-          <span className="block mt-1">
-            <Trans
-              ns="apps"
-              i18nKey="webhook.configPost"
-              values={{
-                payload: '{ "tag": "<sha>", "commit_message": "<msg>" }',
-              }}
-              components={{ code: <code /> }}
-            />
-          </span>
         </div>
-        <Collapse
-          ghost
-          items={[
-            {
-              key: 'yaml',
-              label: (
-                <span className="text-xs">
-                  <Trans
-                    ns="apps"
-                    i18nKey="webhook.yamlTitle"
-                    components={{ code: <code /> }}
-                  />
-                </span>
-              ),
-              children: (
-                <div className="space-y-2">
-                  <Button
-                    size="small"
-                    icon={<Copy size={12} />}
-                    onClick={() => {
-                      void navigator.clipboard.writeText(yaml)
-                    }}
-                  >
-                    {t('webhook.yamlCopy')}
-                  </Button>
-                  <pre className="mono text-[11px] leading-relaxed bg-[var(--bg-input)] border border-[var(--border)] rounded-lg p-3 overflow-auto max-h-72 whitespace-pre text-[var(--fg-muted)]">
-                    {yaml}
-                  </pre>
-                </div>
-              ),
-            },
-          ]}
-        />
+        <div className="border-t border-[var(--border)] pt-3">
+          <TriggerUsage url={url} appName={appName} token={token} />
+        </div>
       </div>
     </Modal>
   )
@@ -986,8 +1031,6 @@ function AppDetail({
                 <div className="space-y-3 text-sm">
                   <Field label={t('detail.image')} value={app.image} mono />
                   <Field label={t('detail.internalPort')} value={String(app.port)} mono />
-                  <Field label={t('detail.branch')} value={app.branch} mono />
-                  {app.repoUrl && <Field label={t('detail.repo')} value={app.repoUrl} mono />}
                   <Field label={t('detail.created')} value={app.createdAt} mono />
                   {app.container && (
                     <>
@@ -999,38 +1042,33 @@ function AppDetail({
                       />
                     </>
                   )}
-                  {app.webhookConfigured && (
+                  {app.triggerConfigured && (
                     <div className="border border-[var(--border)] rounded-md p-3 mt-3 bg-[var(--bg-input)]/40">
                       <div className="flex items-center gap-2 mb-2">
                         <Bell size={13} className="text-[var(--fg-muted)]" />
                         <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
-                          Webhook
+                          {t('detail.trigger')}
                         </span>
                         <Tag color="green" className="!m-0 ml-auto">
-                          {t('detail.webhookActive')}
+                          {t('detail.triggerActive')}
                         </Tag>
                       </div>
                       <div className="mono text-xs text-[var(--fg-muted)] break-all">
-                        POST {window.location.origin}/api/webhook/{app.name}
-                      </div>
-                      <div className="mono text-xs text-[var(--fg-muted)] mt-1">
-                        {t('detail.imageLabel')}: {app.imageRepo}
+                        POST {window.location.origin}/api/apps/{app.name}/trigger
                       </div>
                       <div className="mt-2">
                         <Popconfirm
-                          title={t('webhook.rotateTitle')}
-                          description={t('webhook.rotateDescriptionShort')}
-                          okText={t('webhook.rotateButton')}
+                          title={t('trigger.rotateTitle')}
+                          description={t('trigger.rotateDescriptionShort')}
+                          okText={t('trigger.rotateButton')}
                           onConfirm={async () => {
                             try {
-                              const updated = await api.rotateWebhookSecret(app.id)
-                              if (updated.webhookSecret) {
-                                message.success(
-                                  t('webhook.rotatedToast', {
-                                    url: `${window.location.origin}/api/webhook/${app.name}`,
-                                  }),
-                                )
-                              }
+                              await api.rotateTriggerToken(app.id)
+                              message.success(
+                                t('trigger.rotatedToast', {
+                                  url: `${window.location.origin}/api/apps/${app.name}/trigger`,
+                                }),
+                              )
                               void refresh()
                               void onChanged()
                             } catch (err) {
@@ -1039,7 +1077,7 @@ function AppDetail({
                           }}
                         >
                           <Button size="small" icon={<RefreshCw size={12} />}>
-                            {t('webhook.rotateButton')}
+                            {t('trigger.rotateButton')}
                           </Button>
                         </Popconfirm>
                       </div>

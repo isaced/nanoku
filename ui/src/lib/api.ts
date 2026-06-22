@@ -74,7 +74,7 @@ export const api = {
   deleteApp: (id: number) =>
     request<void>(`/api/apps/${id}`, { method: 'DELETE' }),
   deployApp: (id: number) =>
-    request<App>(`/api/apps/${id}/deploy`, { method: 'POST' }),
+    request<App>(`/api/apps/${id}/deployments`, { method: 'POST' }),
   startApp: (id: number) =>
     request<App>(`/api/apps/${id}/start`, { method: 'POST' }),
   stopApp: (id: number) =>
@@ -90,9 +90,9 @@ export const api = {
       { method: 'PUT', body: JSON.stringify(vars) },
     ),
   listAppDeploys: (id: number) =>
-    request<Deploy[]>(`/api/apps/${id}/deploys`),
-  rotateWebhookSecret: (id: number) =>
-    request<App>(`/api/apps/${id}/rotate-webhook-secret`, { method: 'POST' }),
+    request<Deploy[]>(`/api/apps/${id}/deployments`),
+  rotateTriggerToken: (id: number) =>
+    request<App>(`/api/apps/${id}/rotate-trigger-token`, { method: 'POST' }),
 
   systemStatus: () => request<SystemStatus>('/api/system/status'),
   systemLogs: (source: 'caddy' | 'nanoku', tail = 200) =>
