@@ -1,0 +1,393 @@
+import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
+import {
+  App,
+  Button,
+  InputNumber,
+  Space,
+  Tag,
+  Tooltip,
+} from 'antd'
+import {
+  AlertTriangle,
+  CircleCheck,
+  CircleDashed,
+  CircleX,
+  Container as ContainerIcon,
+  Info,
+  RefreshCw,
+  ShieldCheck,
+} from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { api, ApiError } from '../lib/api'
+import { clearCredentials, getCredentials } from '../lib/auth'
+import type { Status, SystemStatus } from '../lib/types'
+
+export const Route = createFileRoute('/system')({
+  beforeLoad: () => {
+    if (!getCredentials()) {
+      throw redirect({ to: '/login' })
+    }
+  },
+  component: SystemPage,
+})
+
+function SystemPage() {
+  const navigate = useNavigate()
+  const { message } = App.useApp()
+  const [status, setStatus] = useState<Status | null>(null)
+  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [caddyLogs, setCaddyLogs] = useState<string>('')
+  const [caddyLoading, setCaddyLoading] = useState(false)
+  const [selfLogs, setSelfLogs] = useState<string>('')
+  const [selfLoading, setSelfLoading] = useState(false)
+  const [tail, setTail] = useState<number>(200)
+
+  const reload = useCallback(async () => {
+    if (!getCredentials()) {
+      navigate({ to: '/login' })
+      return
+    }
+    setLoading(true)
+    try {
+      const [st, sys] = await Promise.all([api.status(), api.systemStatus()])
+      setStatus(st)
+      setSystemStatus(sys)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        clearCredentials()
+        navigate({ to: '/login' })
+      } else {
+        message.error((err as Error).message)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [message, navigate])
+
+  useEffect(() => {
+    void reload()
+  }, [reload])
+
+  const loadCaddy = useCallback(async () => {
+    setCaddyLoading(true)
+    try {
+      const out = await api.systemLogs('caddy', tail)
+      setCaddyLogs(out)
+    } catch (err) {
+      message.error((err as Error).message)
+    } finally {
+      setCaddyLoading(false)
+    }
+  }, [message, tail])
+
+  const loadSelf = useCallback(async () => {
+    if (!systemStatus?.nanokuContainerConfigured) return
+    setSelfLoading(true)
+    try {
+      const out = await api.systemLogs('nanoku', tail)
+      setSelfLogs(out)
+    } catch (err) {
+      message.error((err as Error).message)
+    } finally {
+      setSelfLoading(false)
+    }
+  }, [message, tail, systemStatus?.nanokuContainerConfigured])
+
+  useEffect(() => {
+    if (systemStatus?.dockerAvailable) {
+      void loadCaddy()
+    }
+  }, [loadCaddy, systemStatus?.dockerAvailable])
+
+  useEffect(() => {
+    if (systemStatus?.nanokuContainerConfigured) {
+      void loadSelf()
+    }
+  }, [loadSelf, systemStatus?.nanokuContainerConfigured])
+
+  return (
+    <div className="flex-1 flex flex-col">
+      <Header status={status} onRefresh={reload} loading={loading} />
+
+      <main className="flex-1 px-8 py-8 max-w-6xl w-full mx-auto w-full">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-medium tracking-tight">System</h1>
+            <p className="text-sm text-[var(--fg-muted)] mt-1">
+              Live logs for nanoku itself and the managed Caddy container.
+            </p>
+          </div>
+          <Space>
+            <span className="text-xs text-[var(--fg-muted)]">Tail lines</span>
+            <InputNumber
+              min={50}
+              max={5000}
+              step={50}
+              value={tail}
+              onChange={(v) => v && setTail(v as number)}
+              className="!w-24"
+            />
+            <Button
+              icon={<RefreshCw size={13} />}
+              onClick={() => {
+                void loadCaddy()
+                void loadSelf()
+              }}
+              loading={caddyLoading || selfLoading}
+            >
+              Refresh both
+            </Button>
+          </Space>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <LogPanel
+            icon={<ShieldCheck size={14} />}
+            title="Nanoku self"
+            containerName={systemStatus?.nanokuContainerName}
+            status={systemStatus?.nanokuContainerConfigured ? 'configured' : undefined}
+            loading={selfLoading}
+            logs={selfLogs}
+            onRefresh={loadSelf}
+            emptyHint={
+              !systemStatus?.nanokuContainerConfigured ? (
+                <div className="text-xs text-[var(--fg-muted)] space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <Info size={12} />
+                    <span>
+                      Set{' '}
+                      <code className="mono text-[var(--fg)]">
+                        NANOKU_SELF_CONTAINER=&lt;name&gt;
+                      </code>{' '}
+                      to enable.
+                    </span>
+                  </div>
+                  <div>
+                    When nanoku runs in Docker, set the env var to the
+                    container name (e.g. <span className="mono">nanoku</span>)
+                    and restart. Logs will then stream here via{' '}
+                    <span className="mono">docker logs</span>.
+                  </div>
+                </div>
+              ) : null
+            }
+          />
+          <LogPanel
+            icon={<ContainerIcon size={14} />}
+            title="Caddy"
+            containerName={systemStatus?.caddyContainer}
+            status={status?.caddyStatus}
+            loading={caddyLoading}
+            logs={caddyLogs}
+            onRefresh={loadCaddy}
+            emptyHint={
+              !systemStatus?.dockerAvailable ? (
+                <div className="text-xs text-[var(--fg-muted)] flex items-center gap-1.5">
+                  <Info size={12} />
+                  Docker unavailable — start nanoku with the docker socket
+                  mounted.
+                </div>
+              ) : null
+            }
+          />
+        </div>
+      </main>
+    </div>
+  )
+}
+
+function LogPanel({
+  icon,
+  title,
+  containerName,
+  status,
+  loading,
+  logs,
+  onRefresh,
+  emptyHint,
+}: {
+  icon: React.ReactNode
+  title: string
+  containerName?: string
+  status?: string
+  loading: boolean
+  logs: string
+  onRefresh: () => void
+  emptyHint?: React.ReactNode
+}) {
+  return (
+    <section className="border border-[var(--border)] rounded-lg bg-[var(--bg-elevated)] overflow-hidden flex flex-col">
+      <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[var(--fg-muted)]">{icon}</span>
+          <span className="mono text-sm">{title}</span>
+          {containerName && (
+            <Tag className="!m-0 mono text-[10px]">{containerName}</Tag>
+          )}
+          {status && <StatusTag status={status} />}
+        </div>
+        <Tooltip title="Refresh">
+          <Button
+            type="text"
+            size="small"
+            icon={
+              <RefreshCw
+                size={13}
+                className={loading ? 'animate-spin' : ''}
+              />
+            }
+            onClick={onRefresh}
+            loading={loading}
+            disabled={!containerName}
+          />
+        </Tooltip>
+      </div>
+      <div className="flex-1 min-h-0">
+        {emptyHint ? (
+          <div className="p-4">{emptyHint}</div>
+        ) : (
+          <pre className="mono text-xs leading-relaxed bg-[var(--bg-input)] p-3 overflow-auto h-96 whitespace-pre-wrap break-all text-[var(--fg-muted)]">
+            {logs || '// click refresh to load'}
+          </pre>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function StatusTag({ status }: { status: string }) {
+  if (status === 'running' || status === 'configured') {
+    const color = status === 'running' ? 'green' : 'blue'
+    return (
+      <Tag color={color} className="!m-0">
+        <span className="inline-flex items-center gap-1">
+          <CircleCheck size={10} /> {status}
+        </span>
+      </Tag>
+    )
+  }
+  if (status === 'not_found' || status === 'skipped') {
+    return (
+      <Tag className="!m-0">
+        <span className="inline-flex items-center gap-1">
+          <CircleDashed size={10} /> {status}
+        </span>
+      </Tag>
+    )
+  }
+  return (
+    <Tag color="red" className="!m-0">
+      <span className="inline-flex items-center gap-1">
+        <CircleX size={10} /> {status}
+      </span>
+    </Tag>
+  )
+}
+
+function Header({
+  status,
+  onRefresh,
+  loading,
+}: {
+  status: Status | null
+  onRefresh: () => void
+  loading: boolean
+}) {
+  return (
+    <header className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
+      <div className="px-8 h-14 flex items-center justify-between max-w-6xl mx-auto w-full">
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <div className="size-2 rounded-full bg-[var(--accent)]" />
+            <span className="mono text-sm tracking-wider">nanoku</span>
+          </div>
+          <nav className="flex items-center gap-4 text-xs">
+            <a
+              href="/sites"
+              className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
+            >
+              Sites
+            </a>
+            <a
+              href="/apps"
+              className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
+            >
+              Apps
+            </a>
+            <a
+              href="/system"
+              className="text-[var(--fg)]"
+            >
+              System
+            </a>
+          </nav>
+        </div>
+        <div className="flex items-center gap-3 text-xs">
+          <DockerBadge status={status} />
+          <CaddyBadge status={status} />
+          <Tooltip title="Refresh">
+            <Button
+              type="text"
+              size="small"
+              icon={
+                <RefreshCw
+                  size={13}
+                  className={loading ? 'animate-spin' : ''}
+                />
+              }
+              onClick={onRefresh}
+            />
+          </Tooltip>
+        </div>
+      </div>
+    </header>
+  )
+}
+
+function DockerBadge({ status }: { status: Status | null }) {
+  if (!status) return null
+  if (status.dockerConnected) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[var(--success)]">
+        <CircleCheck size={12} />
+        <span className="mono">docker</span>
+      </span>
+    )
+  }
+  return (
+    <Tooltip title="Docker daemon unreachable">
+      <span className="inline-flex items-center gap-1.5 text-[var(--danger)]">
+        <CircleX size={12} />
+        <span className="mono">docker</span>
+      </span>
+    </Tooltip>
+  )
+}
+
+function CaddyBadge({ status }: { status: Status | null }) {
+  if (!status) return null
+  const s = status.caddyStatus
+  if (s === 'running') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[var(--success)]">
+        <CircleCheck size={12} />
+        <span className="mono">caddy</span>
+      </span>
+    )
+  }
+  if (s === 'not_found' || s === 'skipped') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[var(--fg-muted)]">
+        <CircleDashed size={12} />
+        <span className="mono">caddy · {s}</span>
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[var(--danger)]">
+      <CircleX size={12} />
+      <span className="mono">caddy · {s}</span>
+    </span>
+  )
+}

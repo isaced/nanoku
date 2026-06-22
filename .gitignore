@@ -30,3 +30,17 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Go build output
+bin/
+
+# SQLite database (WAL mode)
+nanoku.db
+nanoku.db-shm
+nanoku.db-wal
+
+# JetBrains run configs + runtime logs
+.run/
+
+# Vite SSR build output
+internal/api/dist/
