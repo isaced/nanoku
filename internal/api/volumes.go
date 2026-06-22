@@ -108,7 +108,7 @@ func toVolumeDTO(v *db.Volume) VolumeDTO {
 }
 
 func (h *Handlers) ListAppVolumes(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r.URL.Path, "/api/apps/")
+	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
 		return
@@ -137,7 +137,7 @@ func (h *Handlers) ListAppVolumes(w http.ResponseWriter, r *http.Request) {
 // resolved source for unnamed type=volume rows is written back so a later
 // redeploy binds to the same physical volume.
 func (h *Handlers) ReplaceAppVolumes(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r.URL.Path, "/api/apps/")
+	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
 		return

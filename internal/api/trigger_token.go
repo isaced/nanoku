@@ -27,14 +27,18 @@ func randomToken() (string, error) {
 // copy it before discarding the response; subsequent Get/List calls do
 // not return it.
 func (h *Handlers) RotateTriggerToken(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r.URL.Path, "/api/apps/")
+	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
 		return
 	}
 	a, err := h.DB.App.Get(r.Context(), id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, err)
+		if isNotFound(err) {
+			writeErr(w, http.StatusNotFound, errors.New("app not found"))
+			return
+		}
+		writeInternalErr(w, err)
 		return
 	}
 	if a.TriggerToken == nil || *a.TriggerToken == "" {
@@ -43,12 +47,12 @@ func (h *Handlers) RotateTriggerToken(w http.ResponseWriter, r *http.Request) {
 	}
 	tok, err := randomToken()
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, fmt.Errorf("generate token: %w", err))
+		writeInternalErr(w, fmt.Errorf("generate token: %w", err))
 		return
 	}
 	a, err = h.DB.App.UpdateOneID(id).SetTriggerToken(tok).Save(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	dto := h.toAppDTO(r.Context(), a)

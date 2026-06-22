@@ -171,13 +171,13 @@ func toDeployDTO(d *db.Deploy) DeployDTO {
 // toAppDTO loads the current container for the app (1 query) and assembles DTO.
 func (h *Handlers) toAppDTO(ctx context.Context, a *db.App) AppDTO {
 	out := AppDTO{
-		ID:                   a.ID,
-		Name:                 a.Name,
-		Image:                appImage(a),
-		Port:                 appPort(a),
+		ID:                    a.ID,
+		Name:                  a.Name,
+		Image:                 appImage(a),
+		Port:                  appPort(a),
 		DeleteVolumesOnRemove: a.DeleteVolumesOnRemove,
-		CreatedAt:            a.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:            a.UpdatedAt.UTC().Format(time.RFC3339),
+		CreatedAt:             a.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:             a.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	out.DeployMethod = a.DeployMethod
 	if a.DeployMethod == "compose" {
@@ -311,7 +311,7 @@ func appPort(a *db.App) int {
 func (h *Handlers) ListApps(w http.ResponseWriter, r *http.Request) {
 	apps, err := h.DB.App.Query().Order(app.ByName()).All(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	out := make([]AppDTO, 0, len(apps))
@@ -393,7 +393,7 @@ func (h *Handlers) CreateApp(w http.ResponseWriter, r *http.Request) {
 	if in.EnableTrigger != nil && *in.EnableTrigger {
 		tok, err := randomToken()
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, fmt.Errorf("generate trigger token: %w", err))
+			writeInternalErr(w, fmt.Errorf("generate trigger token: %w", err))
 			return
 		}
 		create.SetTriggerToken(tok)
@@ -422,14 +422,18 @@ func (h *Handlers) CreateApp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) GetApp(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r.URL.Path, "/api/apps/")
+	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
 		return
 	}
 	a, err := h.DB.App.Get(r.Context(), id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, err)
+		if isNotFound(err) {
+			writeErr(w, http.StatusNotFound, errors.New("app not found"))
+			return
+		}
+		writeInternalErr(w, err)
 		return
 	}
 	dto := h.toAppDTO(r.Context(), a)
@@ -444,14 +448,18 @@ func (h *Handlers) GetApp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r.URL.Path, "/api/apps/")
+	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
 		return
 	}
 	a, err := h.DB.App.Get(r.Context(), id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, err)
+		if isNotFound(err) {
+			writeErr(w, http.StatusNotFound, errors.New("app not found"))
+			return
+		}
+		writeInternalErr(w, err)
 		return
 	}
 	var in AppInput
@@ -537,7 +545,7 @@ func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
 			if a.TriggerToken == nil || *a.TriggerToken == "" {
 				tok, err := randomToken()
 				if err != nil {
-					writeErr(w, http.StatusInternalServerError, fmt.Errorf("generate trigger token: %w", err))
+					writeInternalErr(w, fmt.Errorf("generate trigger token: %w", err))
 					return
 				}
 				upd.SetTriggerToken(tok)
@@ -561,14 +569,18 @@ func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) DeleteApp(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r.URL.Path, "/api/apps/")
+	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
 		return
 	}
 	a, err := h.DB.App.Get(r.Context(), id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, err)
+		if isNotFound(err) {
+			writeErr(w, http.StatusNotFound, errors.New("app not found"))
+			return
+		}
+		writeInternalErr(w, err)
 		return
 	}
 	if h.Docker != nil {
@@ -580,7 +592,7 @@ func (h *Handlers) DeleteApp(w http.ResponseWriter, r *http.Request) {
 		}
 		if cur, err := a.QueryCurrentContainer().Only(r.Context()); err == nil && cur != nil {
 			if err := h.Docker.RemoveContainer(r.Context(), cur.Name); err != nil {
-				writeErr(w, http.StatusInternalServerError, fmt.Errorf("remove container: %w", err))
+				writeInternalErr(w, fmt.Errorf("remove container: %w", err))
 				return
 			}
 		}
@@ -600,14 +612,14 @@ func (h *Handlers) DeleteApp(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := h.DB.App.DeleteOneID(id).Exec(r.Context()); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handlers) DeployApp(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r.URL.Path, "/api/apps/")
+	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
 		return
@@ -618,9 +630,27 @@ func (h *Handlers) DeployApp(w http.ResponseWriter, r *http.Request) {
 	}
 	a, err := h.DB.App.Get(r.Context(), id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, err)
+		if isNotFound(err) {
+			writeErr(w, http.StatusNotFound, errors.New("app not found"))
+			return
+		}
+		writeInternalErr(w, err)
 		return
 	}
+
+	// Serialize deploys per app. Manual UI deploys take the same lock as the
+	// HTTP trigger path so an external trigger can't race a manual redeploy
+	// (or vice versa) on the same container / caddyfile. Different apps still
+	// deploy in parallel.
+	if h.DeployLock == nil {
+		writeErr(w, http.StatusInternalServerError, errors.New("deploy lock not configured"))
+		return
+	}
+	if !h.DeployLock.TryAcquire(a.ID) {
+		writeErr(w, http.StatusConflict, errors.New("another deploy is already running for this app"))
+		return
+	}
+	defer h.DeployLock.Release(a.ID)
 
 	// start deploy record
 	dep, err := h.DB.Deploy.Create().
@@ -630,14 +660,14 @@ func (h *Handlers) DeployApp(w http.ResponseWriter, r *http.Request) {
 		SetStartedAt(time.Now().UTC()).
 		Save(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 
 	envVars, err := a.QueryEnvVars().All(r.Context())
 	if err != nil {
 		h.markDeployFailed(r.Context(), dep.ID, err)
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	envKVs := make([]string, 0, len(envVars))
@@ -757,12 +787,12 @@ func (h *Handlers) DeployApp(w http.ResponseWriter, r *http.Request) {
 		Save(r.Context())
 	if err != nil {
 		h.markDeployFailed(r.Context(), dep.ID, err)
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	if err := h.DB.App.UpdateOneID(a.ID).SetCurrentContainerID(cont.ID).Exec(r.Context()); err != nil {
 		h.markDeployFailed(r.Context(), dep.ID, err)
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	_, _ = h.DB.Deploy.UpdateOneID(dep.ID).SetStatus("success").SetFinishedAt(time.Now().UTC()).Save(r.Context())
@@ -799,7 +829,7 @@ func (h *Handlers) RestartApp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) containerAction(w http.ResponseWriter, r *http.Request, action string) {
-	id, ok := pathID(r.URL.Path, "/api/apps/")
+	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
 		return
@@ -810,7 +840,11 @@ func (h *Handlers) containerAction(w http.ResponseWriter, r *http.Request, actio
 	}
 	a, err := h.DB.App.Get(r.Context(), id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, err)
+		if isNotFound(err) {
+			writeErr(w, http.StatusNotFound, errors.New("app not found"))
+			return
+		}
+		writeInternalErr(w, err)
 		return
 	}
 	cur, _ := a.QueryCurrentContainer().Only(r.Context())
@@ -880,7 +914,7 @@ func (h *Handlers) containerAction(w http.ResponseWriter, r *http.Request, actio
 }
 
 func (h *Handlers) AppLogs(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r.URL.Path, "/api/apps/")
+	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
 		return
@@ -897,7 +931,11 @@ func (h *Handlers) AppLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	a, err := h.DB.App.Get(r.Context(), id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, err)
+		if isNotFound(err) {
+			writeErr(w, http.StatusNotFound, errors.New("app not found"))
+			return
+		}
+		writeInternalErr(w, err)
 		return
 	}
 	cur, err := a.QueryCurrentContainer().Only(r.Context())
@@ -915,18 +953,22 @@ func (h *Handlers) AppLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) ListAppEnvVars(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r.URL.Path, "/api/apps/")
+	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
 		return
 	}
 	if _, err := h.DB.App.Get(r.Context(), id); err != nil {
-		writeErr(w, http.StatusNotFound, err)
+		if isNotFound(err) {
+			writeErr(w, http.StatusNotFound, errors.New("app not found"))
+			return
+		}
+		writeInternalErr(w, err)
 		return
 	}
 	env, err := h.DB.EnvVar.Query().Where(envvar.HasAppWith(app.IDEQ(id))).All(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	out := make([]EnvVarDTO, 0, len(env))
@@ -938,14 +980,18 @@ func (h *Handlers) ListAppEnvVars(w http.ResponseWriter, r *http.Request) {
 
 // ReplaceAppEnvVars replaces the full env var set for an app. Requires re-deploy to take effect.
 func (h *Handlers) ReplaceAppEnvVars(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r.URL.Path, "/api/apps/")
+	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
 		return
 	}
 	a, err := h.DB.App.Get(r.Context(), id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, err)
+		if isNotFound(err) {
+			writeErr(w, http.StatusNotFound, errors.New("app not found"))
+			return
+		}
+		writeInternalErr(w, err)
 		return
 	}
 	var in []EnvVarInput
@@ -974,12 +1020,12 @@ func (h *Handlers) ReplaceAppEnvVars(w http.ResponseWriter, r *http.Request) {
 	// wipe + recreate in a tx so partial failures don't leave junk
 	tx, err := h.DB.Tx(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	if _, err := tx.EnvVar.Delete().Where(envvar.HasAppWith(app.IDEQ(a.ID))).Exec(r.Context()); err != nil {
 		_ = tx.Rollback()
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	for _, kv := range in {
@@ -989,23 +1035,23 @@ func (h *Handlers) ReplaceAppEnvVars(w http.ResponseWriter, r *http.Request) {
 			SetValue(kv.Value).
 			Save(r.Context()); err != nil {
 			_ = tx.Rollback()
-			writeErr(w, http.StatusInternalServerError, err)
+			writeInternalErr(w, err)
 			return
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"count":  len(in),
-		"hint":   "redeploy required for changes to take effect",
-		"appId":  a.ID,
+		"count": len(in),
+		"hint":  "redeploy required for changes to take effect",
+		"appId": a.ID,
 	})
 }
 
 func (h *Handlers) ListAppDeploys(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r.URL.Path, "/api/apps/")
+	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
 		return
@@ -1017,7 +1063,7 @@ func (h *Handlers) ListAppDeploys(w http.ResponseWriter, r *http.Request) {
 		Limit(50).
 		All(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	out := make([]DeployDTO, 0, len(deps))

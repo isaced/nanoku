@@ -72,7 +72,7 @@ func toDTO(s *db.Site) SiteDTO {
 func (h *Handlers) ListSites(w http.ResponseWriter, r *http.Request) {
 	sites, err := h.DB.Site.Query().WithApp(func(q *db.AppQuery) { q.WithCurrentContainer() }).Order(sitepkg.ByDomain()).All(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	out := make([]SiteDTO, 0, len(sites))
@@ -87,7 +87,7 @@ func (h *Handlers) ListSites(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) UpdateSite(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r.URL.Path, "/api/sites/")
+	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
 		return
@@ -133,7 +133,7 @@ func (h *Handlers) UpdateSite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.regenerateAndReload(r); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	fresh, ferr := h.DB.Site.Query().WithApp(func(q *db.AppQuery) { q.WithCurrentContainer() }).Where(sitepkg.IDEQ(id)).Only(r.Context())
@@ -194,7 +194,7 @@ func (h *Handlers) CreateSite(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.regenerateAndReload(r); err != nil {
 		_ = h.DB.Site.DeleteOneID(site.ID).Exec(r.Context())
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	fresh, ferr := h.DB.Site.Query().WithApp(func(q *db.AppQuery) { q.WithCurrentContainer() }).Where(sitepkg.IDEQ(site.ID)).Only(r.Context())
@@ -206,7 +206,7 @@ func (h *Handlers) CreateSite(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) DeleteSite(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r.URL.Path, "/api/sites/")
+	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
 		return
@@ -216,30 +216,34 @@ func (h *Handlers) DeleteSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.regenerateAndReload(r); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handlers) ToggleSite(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r.URL.Path, "/api/sites/")
+	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
 		return
 	}
 	site, err := h.DB.Site.Get(r.Context(), id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, err)
+		if isNotFound(err) {
+			writeErr(w, http.StatusNotFound, errors.New("site not found"))
+			return
+		}
+		writeInternalErr(w, err)
 		return
 	}
 	updated, err := h.DB.Site.UpdateOneID(id).SetEnabled(!site.Enabled).Save(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	if err := h.regenerateAndReload(r); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	fresh, ferr := h.DB.Site.Query().WithApp(func(q *db.AppQuery) { q.WithCurrentContainer() }).Where(sitepkg.IDEQ(id)).Only(r.Context())
@@ -348,10 +352,21 @@ func (h *Handlers) regenerateAndReloadCtx(ctx context.Context) error {
 	return h.Docker.ReloadCaddy(ctx)
 }
 
-func pathID(path, prefix string) (int, bool) {
-	rest := strings.TrimPrefix(path, prefix)
-	parts := strings.SplitN(rest, "/", 2)
-	id, err := strconv.Atoi(parts[0])
+// pathID parses the integer `{id}` path parameter from the request. It relies
+// on the Go 1.22+ pattern router (the route must declare `{id}`), so it can't
+// misparse a non-numeric segment like `/api/apps/abc/env` as id=0 the way the
+// old string-prefix parser did.
+func pathID(r *http.Request) (int, bool) {
+	return pathIntID(r, "id")
+}
+
+// pathIntID parses an integer path parameter by name from the request.
+func pathIntID(r *http.Request, name string) (int, bool) {
+	v := r.PathValue(name)
+	if v == "" {
+		return 0, false
+	}
+	id, err := strconv.Atoi(v)
 	if err != nil {
 		return 0, false
 	}

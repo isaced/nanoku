@@ -32,33 +32,33 @@ func TestValidateVolumeMount(t *testing.T) {
 			in:   VolumeInput{Type: strPtr("volume"), Source: strPtr("my-vol"), Target: strPtr("/data")},
 		},
 		{
-			name: "bind requires absolute source",
-			in:   VolumeInput{Type: strPtr("bind"), Source: strPtr("relative/path"), Target: strPtr("/data")},
+			name:    "bind requires absolute source",
+			in:      VolumeInput{Type: strPtr("bind"), Source: strPtr("relative/path"), Target: strPtr("/data")},
 			wantErr: "absolute host path",
 		},
 		{
-			name: "bind requires source",
-			in:   VolumeInput{Type: strPtr("bind"), Target: strPtr("/data")},
+			name:    "bind requires source",
+			in:      VolumeInput{Type: strPtr("bind"), Target: strPtr("/data")},
 			wantErr: "required for type=bind",
 		},
 		{
-			name: "target must be absolute",
-			in:   VolumeInput{Type: strPtr("volume"), Target: strPtr("relative")},
+			name:    "target must be absolute",
+			in:      VolumeInput{Type: strPtr("volume"), Target: strPtr("relative")},
 			wantErr: "absolute path",
 		},
 		{
-			name: "invalid volume name",
-			in:   VolumeInput{Type: strPtr("volume"), Source: strPtr("UPPER"), Target: strPtr("/data")},
+			name:    "invalid volume name",
+			in:      VolumeInput{Type: strPtr("volume"), Source: strPtr("UPPER"), Target: strPtr("/data")},
 			wantErr: "not a valid docker volume name",
 		},
 		{
-			name: "type required",
-			in:   VolumeInput{Target: strPtr("/data")},
+			name:    "type required",
+			in:      VolumeInput{Target: strPtr("/data")},
 			wantErr: "type is required",
 		},
 		{
-			name: "unknown type",
-			in:   VolumeInput{Type: strPtr("tmpfs"), Target: strPtr("/data")},
+			name:    "unknown type",
+			in:      VolumeInput{Type: strPtr("tmpfs"), Target: strPtr("/data")},
 			wantErr: "must be 'volume' or 'bind'",
 		},
 		{
@@ -115,6 +115,7 @@ func TestReplaceAppVolumes_AutoNamesAndPersists(t *testing.T) {
 		{Type: strPtr("bind"), Source: strPtr("/srv/cache"), Target: strPtr("/tmp/cache"), ReadOnly: boolPtr(true)},
 	})
 	r := httptest.NewRequest(http.MethodPut, "/api/apps/"+strconv.Itoa(a.ID)+"/volumes", bytes.NewReader(body))
+	r.SetPathValue("id", strconv.Itoa(a.ID))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	(&Handlers{DB: d}).ReplaceAppVolumes(w, r)
@@ -154,6 +155,7 @@ func TestReplaceAppVolumes_ReplacesAndNotAppends(t *testing.T) {
 	})
 	doPut := func(b []byte) {
 		r := httptest.NewRequest(http.MethodPut, "/api/apps/"+strconv.Itoa(a.ID)+"/volumes", bytes.NewReader(b))
+		r.SetPathValue("id", strconv.Itoa(a.ID))
 		r.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		(&Handlers{DB: d}).ReplaceAppVolumes(w, r)
@@ -211,6 +213,7 @@ func TestReplaceAppVolumes_RejectsBadInput(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			body, _ := json.Marshal(tc.body)
 			r := httptest.NewRequest(http.MethodPut, "/api/apps/"+strconv.Itoa(a.ID)+"/volumes", bytes.NewReader(body))
+			r.SetPathValue("id", strconv.Itoa(a.ID))
 			r.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 			(&Handlers{DB: d}).ReplaceAppVolumes(w, r)
@@ -248,6 +251,7 @@ func TestListAppVolumes(t *testing.T) {
 	}
 
 	r := httptest.NewRequest(http.MethodGet, "/api/apps/"+strconv.Itoa(a.ID)+"/volumes", nil)
+	r.SetPathValue("id", strconv.Itoa(a.ID))
 	w := httptest.NewRecorder()
 	(&Handlers{DB: d}).ListAppVolumes(w, r)
 	if w.Code != http.StatusOK {
