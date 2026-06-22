@@ -25,11 +25,11 @@ export const STORAGE_KEY = 'nanoku.lang'
 
 function detectInitialLanguage(): SupportedLanguage {
   if (typeof window === 'undefined') return DEFAULT_LANGUAGE
-  const stored = window.localStorage.getItem(STORAGE_KEY)
+  const stored = window.localStorage?.getItem(STORAGE_KEY)
   if (stored && (SUPPORTED_LANGUAGES as readonly string[]).includes(stored)) {
     return stored as SupportedLanguage
   }
-  const nav = window.navigator.language.toLowerCase()
+  const nav = window.navigator?.language.toLowerCase() ?? ''
   if (nav.startsWith('zh')) return 'zh'
   return DEFAULT_LANGUAGE
 }
