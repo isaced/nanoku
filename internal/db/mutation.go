@@ -19,6 +19,7 @@ import (
 	"github.com/isaced/nanoku/internal/db/session"
 	"github.com/isaced/nanoku/internal/db/site"
 	"github.com/isaced/nanoku/internal/db/user"
+	"github.com/isaced/nanoku/internal/db/volume"
 )
 
 const (
@@ -37,6 +38,7 @@ const (
 	TypeSession   = "Session"
 	TypeSite      = "Site"
 	TypeUser      = "User"
+	TypeVolume    = "Volume"
 )
 
 // AppMutation represents an operation that mutates the App nodes in the graph.
@@ -58,6 +60,7 @@ type AppMutation struct {
 	registry_username        *string
 	registry_password        *string
 	trigger_token            *string
+	delete_volumes_on_remove *bool
 	clearedFields            map[string]struct{}
 	sites                    map[int]struct{}
 	removedsites             map[int]struct{}
@@ -71,6 +74,9 @@ type AppMutation struct {
 	env_vars                 map[int]struct{}
 	removedenv_vars          map[int]struct{}
 	clearedenv_vars          bool
+	volumes                  map[int]struct{}
+	removedvolumes           map[int]struct{}
+	clearedvolumes           bool
 	current_container        *int
 	clearedcurrent_container bool
 	done                     bool
@@ -733,6 +739,42 @@ func (m *AppMutation) ResetTriggerToken() {
 	delete(m.clearedFields, app.FieldTriggerToken)
 }
 
+// SetDeleteVolumesOnRemove sets the "delete_volumes_on_remove" field.
+func (m *AppMutation) SetDeleteVolumesOnRemove(b bool) {
+	m.delete_volumes_on_remove = &b
+}
+
+// DeleteVolumesOnRemove returns the value of the "delete_volumes_on_remove" field in the mutation.
+func (m *AppMutation) DeleteVolumesOnRemove() (r bool, exists bool) {
+	v := m.delete_volumes_on_remove
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeleteVolumesOnRemove returns the old "delete_volumes_on_remove" field's value of the App entity.
+// If the App object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AppMutation) OldDeleteVolumesOnRemove(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeleteVolumesOnRemove is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeleteVolumesOnRemove requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeleteVolumesOnRemove: %w", err)
+	}
+	return oldValue.DeleteVolumesOnRemove, nil
+}
+
+// ResetDeleteVolumesOnRemove resets all changes to the "delete_volumes_on_remove" field.
+func (m *AppMutation) ResetDeleteVolumesOnRemove() {
+	m.delete_volumes_on_remove = nil
+}
+
 // AddSiteIDs adds the "sites" edge to the Site entity by ids.
 func (m *AppMutation) AddSiteIDs(ids ...int) {
 	if m.sites == nil {
@@ -949,6 +991,60 @@ func (m *AppMutation) ResetEnvVars() {
 	m.removedenv_vars = nil
 }
 
+// AddVolumeIDs adds the "volumes" edge to the Volume entity by ids.
+func (m *AppMutation) AddVolumeIDs(ids ...int) {
+	if m.volumes == nil {
+		m.volumes = make(map[int]struct{})
+	}
+	for i := range ids {
+		m.volumes[ids[i]] = struct{}{}
+	}
+}
+
+// ClearVolumes clears the "volumes" edge to the Volume entity.
+func (m *AppMutation) ClearVolumes() {
+	m.clearedvolumes = true
+}
+
+// VolumesCleared reports if the "volumes" edge to the Volume entity was cleared.
+func (m *AppMutation) VolumesCleared() bool {
+	return m.clearedvolumes
+}
+
+// RemoveVolumeIDs removes the "volumes" edge to the Volume entity by IDs.
+func (m *AppMutation) RemoveVolumeIDs(ids ...int) {
+	if m.removedvolumes == nil {
+		m.removedvolumes = make(map[int]struct{})
+	}
+	for i := range ids {
+		delete(m.volumes, ids[i])
+		m.removedvolumes[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedVolumes returns the removed IDs of the "volumes" edge to the Volume entity.
+func (m *AppMutation) RemovedVolumesIDs() (ids []int) {
+	for id := range m.removedvolumes {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// VolumesIDs returns the "volumes" edge IDs in the mutation.
+func (m *AppMutation) VolumesIDs() (ids []int) {
+	for id := range m.volumes {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetVolumes resets all changes to the "volumes" edge.
+func (m *AppMutation) ResetVolumes() {
+	m.volumes = nil
+	m.clearedvolumes = false
+	m.removedvolumes = nil
+}
+
 // SetCurrentContainerID sets the "current_container" edge to the Container entity by id.
 func (m *AppMutation) SetCurrentContainerID(id int) {
 	m.current_container = &id
@@ -1022,7 +1118,7 @@ func (m *AppMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AppMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.created_at != nil {
 		fields = append(fields, app.FieldCreatedAt)
 	}
@@ -1059,6 +1155,9 @@ func (m *AppMutation) Fields() []string {
 	if m.trigger_token != nil {
 		fields = append(fields, app.FieldTriggerToken)
 	}
+	if m.delete_volumes_on_remove != nil {
+		fields = append(fields, app.FieldDeleteVolumesOnRemove)
+	}
 	return fields
 }
 
@@ -1091,6 +1190,8 @@ func (m *AppMutation) Field(name string) (ent.Value, bool) {
 		return m.RegistryPassword()
 	case app.FieldTriggerToken:
 		return m.TriggerToken()
+	case app.FieldDeleteVolumesOnRemove:
+		return m.DeleteVolumesOnRemove()
 	}
 	return nil, false
 }
@@ -1124,6 +1225,8 @@ func (m *AppMutation) OldField(ctx context.Context, name string) (ent.Value, err
 		return m.OldRegistryPassword(ctx)
 	case app.FieldTriggerToken:
 		return m.OldTriggerToken(ctx)
+	case app.FieldDeleteVolumesOnRemove:
+		return m.OldDeleteVolumesOnRemove(ctx)
 	}
 	return nil, fmt.Errorf("unknown App field %s", name)
 }
@@ -1216,6 +1319,13 @@ func (m *AppMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTriggerToken(v)
+		return nil
+	case app.FieldDeleteVolumesOnRemove:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeleteVolumesOnRemove(v)
 		return nil
 	}
 	return fmt.Errorf("unknown App field %s", name)
@@ -1368,13 +1478,16 @@ func (m *AppMutation) ResetField(name string) error {
 	case app.FieldTriggerToken:
 		m.ResetTriggerToken()
 		return nil
+	case app.FieldDeleteVolumesOnRemove:
+		m.ResetDeleteVolumesOnRemove()
+		return nil
 	}
 	return fmt.Errorf("unknown App field %s", name)
 }
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *AppMutation) AddedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.sites != nil {
 		edges = append(edges, app.EdgeSites)
 	}
@@ -1386,6 +1499,9 @@ func (m *AppMutation) AddedEdges() []string {
 	}
 	if m.env_vars != nil {
 		edges = append(edges, app.EdgeEnvVars)
+	}
+	if m.volumes != nil {
+		edges = append(edges, app.EdgeVolumes)
 	}
 	if m.current_container != nil {
 		edges = append(edges, app.EdgeCurrentContainer)
@@ -1421,6 +1537,12 @@ func (m *AppMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case app.EdgeVolumes:
+		ids := make([]ent.Value, 0, len(m.volumes))
+		for id := range m.volumes {
+			ids = append(ids, id)
+		}
+		return ids
 	case app.EdgeCurrentContainer:
 		if id := m.current_container; id != nil {
 			return []ent.Value{*id}
@@ -1431,7 +1553,7 @@ func (m *AppMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *AppMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.removedsites != nil {
 		edges = append(edges, app.EdgeSites)
 	}
@@ -1443,6 +1565,9 @@ func (m *AppMutation) RemovedEdges() []string {
 	}
 	if m.removedenv_vars != nil {
 		edges = append(edges, app.EdgeEnvVars)
+	}
+	if m.removedvolumes != nil {
+		edges = append(edges, app.EdgeVolumes)
 	}
 	return edges
 }
@@ -1475,13 +1600,19 @@ func (m *AppMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case app.EdgeVolumes:
+		ids := make([]ent.Value, 0, len(m.removedvolumes))
+		for id := range m.removedvolumes {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *AppMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.clearedsites {
 		edges = append(edges, app.EdgeSites)
 	}
@@ -1493,6 +1624,9 @@ func (m *AppMutation) ClearedEdges() []string {
 	}
 	if m.clearedenv_vars {
 		edges = append(edges, app.EdgeEnvVars)
+	}
+	if m.clearedvolumes {
+		edges = append(edges, app.EdgeVolumes)
 	}
 	if m.clearedcurrent_container {
 		edges = append(edges, app.EdgeCurrentContainer)
@@ -1512,6 +1646,8 @@ func (m *AppMutation) EdgeCleared(name string) bool {
 		return m.cleareddeploys
 	case app.EdgeEnvVars:
 		return m.clearedenv_vars
+	case app.EdgeVolumes:
+		return m.clearedvolumes
 	case app.EdgeCurrentContainer:
 		return m.clearedcurrent_container
 	}
@@ -1544,6 +1680,9 @@ func (m *AppMutation) ResetEdge(name string) error {
 		return nil
 	case app.EdgeEnvVars:
 		m.ResetEnvVars()
+		return nil
+	case app.EdgeVolumes:
+		m.ResetVolumes()
 		return nil
 	case app.EdgeCurrentContainer:
 		m.ResetCurrentContainer()
@@ -5946,4 +6085,689 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown User edge %s", name)
+}
+
+// VolumeMutation represents an operation that mutates the Volume nodes in the graph.
+type VolumeMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int
+	created_at    *time.Time
+	updated_at    *time.Time
+	_type         *volume.Type
+	source        *string
+	target        *string
+	read_only     *bool
+	clearedFields map[string]struct{}
+	app           *int
+	clearedapp    bool
+	done          bool
+	oldValue      func(context.Context) (*Volume, error)
+	predicates    []predicate.Volume
+}
+
+var _ ent.Mutation = (*VolumeMutation)(nil)
+
+// volumeOption allows management of the mutation configuration using functional options.
+type volumeOption func(*VolumeMutation)
+
+// newVolumeMutation creates new mutation for the Volume entity.
+func newVolumeMutation(c config, op Op, opts ...volumeOption) *VolumeMutation {
+	m := &VolumeMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeVolume,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withVolumeID sets the ID field of the mutation.
+func withVolumeID(id int) volumeOption {
+	return func(m *VolumeMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Volume
+		)
+		m.oldValue = func(ctx context.Context) (*Volume, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Volume.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withVolume sets the old Volume of the mutation.
+func withVolume(node *Volume) volumeOption {
+	return func(m *VolumeMutation) {
+		m.oldValue = func(context.Context) (*Volume, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m VolumeMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m VolumeMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *VolumeMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *VolumeMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Volume.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *VolumeMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *VolumeMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Volume entity.
+// If the Volume object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VolumeMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *VolumeMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *VolumeMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *VolumeMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the Volume entity.
+// If the Volume object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VolumeMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *VolumeMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetType sets the "type" field.
+func (m *VolumeMutation) SetType(v volume.Type) {
+	m._type = &v
+}
+
+// GetType returns the value of the "type" field in the mutation.
+func (m *VolumeMutation) GetType() (r volume.Type, exists bool) {
+	v := m._type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldType returns the old "type" field's value of the Volume entity.
+// If the Volume object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VolumeMutation) OldType(ctx context.Context) (v volume.Type, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldType: %w", err)
+	}
+	return oldValue.Type, nil
+}
+
+// ResetType resets all changes to the "type" field.
+func (m *VolumeMutation) ResetType() {
+	m._type = nil
+}
+
+// SetSource sets the "source" field.
+func (m *VolumeMutation) SetSource(s string) {
+	m.source = &s
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *VolumeMutation) Source() (r string, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSource returns the old "source" field's value of the Volume entity.
+// If the Volume object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VolumeMutation) OldSource(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSource: %w", err)
+	}
+	return oldValue.Source, nil
+}
+
+// ClearSource clears the value of the "source" field.
+func (m *VolumeMutation) ClearSource() {
+	m.source = nil
+	m.clearedFields[volume.FieldSource] = struct{}{}
+}
+
+// SourceCleared returns if the "source" field was cleared in this mutation.
+func (m *VolumeMutation) SourceCleared() bool {
+	_, ok := m.clearedFields[volume.FieldSource]
+	return ok
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *VolumeMutation) ResetSource() {
+	m.source = nil
+	delete(m.clearedFields, volume.FieldSource)
+}
+
+// SetTarget sets the "target" field.
+func (m *VolumeMutation) SetTarget(s string) {
+	m.target = &s
+}
+
+// Target returns the value of the "target" field in the mutation.
+func (m *VolumeMutation) Target() (r string, exists bool) {
+	v := m.target
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTarget returns the old "target" field's value of the Volume entity.
+// If the Volume object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VolumeMutation) OldTarget(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTarget is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTarget requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTarget: %w", err)
+	}
+	return oldValue.Target, nil
+}
+
+// ResetTarget resets all changes to the "target" field.
+func (m *VolumeMutation) ResetTarget() {
+	m.target = nil
+}
+
+// SetReadOnly sets the "read_only" field.
+func (m *VolumeMutation) SetReadOnly(b bool) {
+	m.read_only = &b
+}
+
+// ReadOnly returns the value of the "read_only" field in the mutation.
+func (m *VolumeMutation) ReadOnly() (r bool, exists bool) {
+	v := m.read_only
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReadOnly returns the old "read_only" field's value of the Volume entity.
+// If the Volume object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VolumeMutation) OldReadOnly(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReadOnly is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReadOnly requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReadOnly: %w", err)
+	}
+	return oldValue.ReadOnly, nil
+}
+
+// ResetReadOnly resets all changes to the "read_only" field.
+func (m *VolumeMutation) ResetReadOnly() {
+	m.read_only = nil
+}
+
+// SetAppID sets the "app" edge to the App entity by id.
+func (m *VolumeMutation) SetAppID(id int) {
+	m.app = &id
+}
+
+// ClearApp clears the "app" edge to the App entity.
+func (m *VolumeMutation) ClearApp() {
+	m.clearedapp = true
+}
+
+// AppCleared reports if the "app" edge to the App entity was cleared.
+func (m *VolumeMutation) AppCleared() bool {
+	return m.clearedapp
+}
+
+// AppID returns the "app" edge ID in the mutation.
+func (m *VolumeMutation) AppID() (id int, exists bool) {
+	if m.app != nil {
+		return *m.app, true
+	}
+	return
+}
+
+// AppIDs returns the "app" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// AppID instead. It exists only for internal usage by the builders.
+func (m *VolumeMutation) AppIDs() (ids []int) {
+	if id := m.app; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetApp resets all changes to the "app" edge.
+func (m *VolumeMutation) ResetApp() {
+	m.app = nil
+	m.clearedapp = false
+}
+
+// Where appends a list predicates to the VolumeMutation builder.
+func (m *VolumeMutation) Where(ps ...predicate.Volume) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the VolumeMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *VolumeMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Volume, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *VolumeMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *VolumeMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Volume).
+func (m *VolumeMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *VolumeMutation) Fields() []string {
+	fields := make([]string, 0, 6)
+	if m.created_at != nil {
+		fields = append(fields, volume.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, volume.FieldUpdatedAt)
+	}
+	if m._type != nil {
+		fields = append(fields, volume.FieldType)
+	}
+	if m.source != nil {
+		fields = append(fields, volume.FieldSource)
+	}
+	if m.target != nil {
+		fields = append(fields, volume.FieldTarget)
+	}
+	if m.read_only != nil {
+		fields = append(fields, volume.FieldReadOnly)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *VolumeMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case volume.FieldCreatedAt:
+		return m.CreatedAt()
+	case volume.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case volume.FieldType:
+		return m.GetType()
+	case volume.FieldSource:
+		return m.Source()
+	case volume.FieldTarget:
+		return m.Target()
+	case volume.FieldReadOnly:
+		return m.ReadOnly()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *VolumeMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case volume.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case volume.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case volume.FieldType:
+		return m.OldType(ctx)
+	case volume.FieldSource:
+		return m.OldSource(ctx)
+	case volume.FieldTarget:
+		return m.OldTarget(ctx)
+	case volume.FieldReadOnly:
+		return m.OldReadOnly(ctx)
+	}
+	return nil, fmt.Errorf("unknown Volume field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *VolumeMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case volume.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case volume.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case volume.FieldType:
+		v, ok := value.(volume.Type)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetType(v)
+		return nil
+	case volume.FieldSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
+	case volume.FieldTarget:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTarget(v)
+		return nil
+	case volume.FieldReadOnly:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReadOnly(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Volume field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *VolumeMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *VolumeMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *VolumeMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Volume numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *VolumeMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(volume.FieldSource) {
+		fields = append(fields, volume.FieldSource)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *VolumeMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *VolumeMutation) ClearField(name string) error {
+	switch name {
+	case volume.FieldSource:
+		m.ClearSource()
+		return nil
+	}
+	return fmt.Errorf("unknown Volume nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *VolumeMutation) ResetField(name string) error {
+	switch name {
+	case volume.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case volume.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case volume.FieldType:
+		m.ResetType()
+		return nil
+	case volume.FieldSource:
+		m.ResetSource()
+		return nil
+	case volume.FieldTarget:
+		m.ResetTarget()
+		return nil
+	case volume.FieldReadOnly:
+		m.ResetReadOnly()
+		return nil
+	}
+	return fmt.Errorf("unknown Volume field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *VolumeMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.app != nil {
+		edges = append(edges, volume.EdgeApp)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *VolumeMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case volume.EdgeApp:
+		if id := m.app; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *VolumeMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *VolumeMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *VolumeMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedapp {
+		edges = append(edges, volume.EdgeApp)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *VolumeMutation) EdgeCleared(name string) bool {
+	switch name {
+	case volume.EdgeApp:
+		return m.clearedapp
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *VolumeMutation) ClearEdge(name string) error {
+	switch name {
+	case volume.EdgeApp:
+		m.ClearApp()
+		return nil
+	}
+	return fmt.Errorf("unknown Volume unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *VolumeMutation) ResetEdge(name string) error {
+	switch name {
+	case volume.EdgeApp:
+		m.ResetApp()
+		return nil
+	}
+	return fmt.Errorf("unknown Volume edge %s", name)
 }

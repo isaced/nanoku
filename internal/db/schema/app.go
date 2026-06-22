@@ -69,6 +69,12 @@ func (App) Fields() []ent.Field {
 			Nillable().
 			Sensitive().
 			Comment("Bearer token for /api/apps/{name}/trigger."),
+
+		// If true, deleting this app also runs `docker volume rm` on every
+		// auto-named nanoku volume it owns (nanoku-<app>-vol-*). Bind mounts
+		// and user-named volumes are always left alone.
+		field.Bool("delete_volumes_on_remove").
+			Default(false),
 	}
 }
 
@@ -78,6 +84,7 @@ func (App) Edges() []ent.Edge {
 		edge.To("containers", Container.Type),
 		edge.To("deploys", Deploy.Type),
 		edge.To("env_vars", EnvVar.Type),
+		edge.To("volumes", Volume.Type),
 		edge.To("current_container", Container.Type).
 			Unique().
 			Comment("The container currently serving traffic for this app."),

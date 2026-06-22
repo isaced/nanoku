@@ -18,6 +18,7 @@ import (
 	"github.com/isaced/nanoku/internal/db/envvar"
 	"github.com/isaced/nanoku/internal/db/predicate"
 	"github.com/isaced/nanoku/internal/db/site"
+	"github.com/isaced/nanoku/internal/db/volume"
 )
 
 // AppQuery is the builder for querying App entities.
@@ -31,6 +32,7 @@ type AppQuery struct {
 	withContainers       *ContainerQuery
 	withDeploys          *DeployQuery
 	withEnvVars          *EnvVarQuery
+	withVolumes          *VolumeQuery
 	withCurrentContainer *ContainerQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -149,6 +151,28 @@ func (_q *AppQuery) QueryEnvVars() *EnvVarQuery {
 			sqlgraph.From(app.Table, app.FieldID, selector),
 			sqlgraph.To(envvar.Table, envvar.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, app.EnvVarsTable, app.EnvVarsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryVolumes chains the current query on the "volumes" edge.
+func (_q *AppQuery) QueryVolumes() *VolumeQuery {
+	query := (&VolumeClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(app.Table, app.FieldID, selector),
+			sqlgraph.To(volume.Table, volume.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, app.VolumesTable, app.VolumesColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -374,6 +398,7 @@ func (_q *AppQuery) Clone() *AppQuery {
 		withContainers:       _q.withContainers.Clone(),
 		withDeploys:          _q.withDeploys.Clone(),
 		withEnvVars:          _q.withEnvVars.Clone(),
+		withVolumes:          _q.withVolumes.Clone(),
 		withCurrentContainer: _q.withCurrentContainer.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
@@ -422,6 +447,17 @@ func (_q *AppQuery) WithEnvVars(opts ...func(*EnvVarQuery)) *AppQuery {
 		opt(query)
 	}
 	_q.withEnvVars = query
+	return _q
+}
+
+// WithVolumes tells the query-builder to eager-load the nodes that are connected to
+// the "volumes" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *AppQuery) WithVolumes(opts ...func(*VolumeQuery)) *AppQuery {
+	query := (&VolumeClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withVolumes = query
 	return _q
 }
 
@@ -514,11 +550,12 @@ func (_q *AppQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*App, err
 	var (
 		nodes       = []*App{}
 		_spec       = _q.querySpec()
-		loadedTypes = [5]bool{
+		loadedTypes = [6]bool{
 			_q.withSites != nil,
 			_q.withContainers != nil,
 			_q.withDeploys != nil,
 			_q.withEnvVars != nil,
+			_q.withVolumes != nil,
 			_q.withCurrentContainer != nil,
 		}
 	)
@@ -565,6 +602,13 @@ func (_q *AppQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*App, err
 		if err := _q.loadEnvVars(ctx, query, nodes,
 			func(n *App) { n.Edges.EnvVars = []*EnvVar{} },
 			func(n *App, e *EnvVar) { n.Edges.EnvVars = append(n.Edges.EnvVars, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withVolumes; query != nil {
+		if err := _q.loadVolumes(ctx, query, nodes,
+			func(n *App) { n.Edges.Volumes = []*Volume{} },
+			func(n *App, e *Volume) { n.Edges.Volumes = append(n.Edges.Volumes, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -696,6 +740,37 @@ func (_q *AppQuery) loadEnvVars(ctx context.Context, query *EnvVarQuery, nodes [
 		node, ok := nodeids[*fk]
 		if !ok {
 			return fmt.Errorf(`unexpected referenced foreign-key "app_env_vars" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *AppQuery) loadVolumes(ctx context.Context, query *VolumeQuery, nodes []*App, init func(*App), assign func(*App, *Volume)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int]*App)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	query.withFKs = true
+	query.Where(predicate.Volume(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(app.VolumesColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.app_volumes
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "app_volumes" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "app_volumes" returned %v for node %v`, *fk, n.ID)
 		}
 		assign(node, n)
 	}

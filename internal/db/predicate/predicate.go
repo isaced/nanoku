@@ -26,3 +26,6 @@ type Site func(*sql.Selector)
 
 // User is the predicate function for user builders.
 type User func(*sql.Selector)
+
+// Volume is the predicate function for volume builders.
+type Volume func(*sql.Selector)

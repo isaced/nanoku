@@ -42,6 +42,8 @@ type App struct {
 	RegistryPassword *string `json:"-"`
 	// Bearer token for /api/apps/{name}/trigger.
 	TriggerToken *string `json:"-"`
+	// DeleteVolumesOnRemove holds the value of the "delete_volumes_on_remove" field.
+	DeleteVolumesOnRemove bool `json:"delete_volumes_on_remove,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the AppQuery when eager-loading is set.
 	Edges        AppEdges `json:"edges"`
@@ -58,11 +60,13 @@ type AppEdges struct {
 	Deploys []*Deploy `json:"deploys,omitempty"`
 	// EnvVars holds the value of the env_vars edge.
 	EnvVars []*EnvVar `json:"env_vars,omitempty"`
+	// Volumes holds the value of the volumes edge.
+	Volumes []*Volume `json:"volumes,omitempty"`
 	// The container currently serving traffic for this app.
 	CurrentContainer *Container `json:"current_container,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [5]bool
+	loadedTypes [6]bool
 }
 
 // SitesOrErr returns the Sites value or an error if the edge
@@ -101,12 +105,21 @@ func (e AppEdges) EnvVarsOrErr() ([]*EnvVar, error) {
 	return nil, &NotLoadedError{edge: "env_vars"}
 }
 
+// VolumesOrErr returns the Volumes value or an error if the edge
+// was not loaded in eager-loading.
+func (e AppEdges) VolumesOrErr() ([]*Volume, error) {
+	if e.loadedTypes[4] {
+		return e.Volumes, nil
+	}
+	return nil, &NotLoadedError{edge: "volumes"}
+}
+
 // CurrentContainerOrErr returns the CurrentContainer value or an error if the edge
 // was not loaded in eager-loading, or loaded but was not found.
 func (e AppEdges) CurrentContainerOrErr() (*Container, error) {
 	if e.CurrentContainer != nil {
 		return e.CurrentContainer, nil
-	} else if e.loadedTypes[4] {
+	} else if e.loadedTypes[5] {
 		return nil, &NotFoundError{label: container.Label}
 	}
 	return nil, &NotLoadedError{edge: "current_container"}
@@ -117,6 +130,8 @@ func (*App) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case app.FieldDeleteVolumesOnRemove:
+			values[i] = new(sql.NullBool)
 		case app.FieldID, app.FieldPort:
 			values[i] = new(sql.NullInt64)
 		case app.FieldName, app.FieldImage, app.FieldDeployMethod, app.FieldComposeContent, app.FieldComposePath, app.FieldRegistryURL, app.FieldRegistryUsername, app.FieldRegistryPassword, app.FieldTriggerToken:
@@ -223,6 +238,12 @@ func (_m *App) assignValues(columns []string, values []any) error {
 				_m.TriggerToken = new(string)
 				*_m.TriggerToken = value.String
 			}
+		case app.FieldDeleteVolumesOnRemove:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field delete_volumes_on_remove", values[i])
+			} else if value.Valid {
+				_m.DeleteVolumesOnRemove = value.Bool
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -254,6 +275,11 @@ func (_m *App) QueryDeploys() *DeployQuery {
 // QueryEnvVars queries the "env_vars" edge of the App entity.
 func (_m *App) QueryEnvVars() *EnvVarQuery {
 	return NewAppClient(_m.config).QueryEnvVars(_m)
+}
+
+// QueryVolumes queries the "volumes" edge of the App entity.
+func (_m *App) QueryVolumes() *VolumeQuery {
+	return NewAppClient(_m.config).QueryVolumes(_m)
 }
 
 // QueryCurrentContainer queries the "current_container" edge of the App entity.
@@ -327,6 +353,9 @@ func (_m *App) String() string {
 	builder.WriteString("registry_password=<sensitive>")
 	builder.WriteString(", ")
 	builder.WriteString("trigger_token=<sensitive>")
+	builder.WriteString(", ")
+	builder.WriteString("delete_volumes_on_remove=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DeleteVolumesOnRemove))
 	builder.WriteByte(')')
 	return builder.String()
 }

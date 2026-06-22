@@ -19,6 +19,7 @@ import (
 	"github.com/isaced/nanoku/internal/db/session"
 	"github.com/isaced/nanoku/internal/db/site"
 	"github.com/isaced/nanoku/internal/db/user"
+	"github.com/isaced/nanoku/internal/db/volume"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -86,6 +87,7 @@ func checkColumn(t, c string) error {
 			session.Table:   session.ValidColumn,
 			site.Table:      site.ValidColumn,
 			user.Table:      user.ValidColumn,
+			volume.Table:    volume.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

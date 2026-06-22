@@ -20,6 +20,7 @@ import (
 	"github.com/isaced/nanoku/internal/db/container"
 	"github.com/isaced/nanoku/internal/db/deploy"
 	"github.com/isaced/nanoku/internal/db/envvar"
+	"github.com/isaced/nanoku/internal/db/volume"
 	"github.com/isaced/nanoku/internal/docker"
 )
 
@@ -32,6 +33,7 @@ type AppDTO struct {
 	Port      int           `json:"port"`
 	Container *ContainerDTO `json:"container,omitempty"`
 	EnvVars   []EnvVarDTO   `json:"envVars,omitempty"`
+	Volumes   []VolumeDTO   `json:"volumes,omitempty"`
 
 	// Deployment method: "docker" (default) or "compose".
 	DeployMethod string `json:"deployMethod"`
@@ -57,6 +59,11 @@ type AppDTO struct {
 	// the `triggerConfigured` UI affordance).
 	TriggerConfigured bool   `json:"triggerConfigured"`
 	TriggerToken      string `json:"triggerToken,omitempty"`
+
+	// If true, deleting this app also removes its auto-named nanoku
+	// volumes (nanoku-<app>-vol-*). Bind mounts and user-named volumes
+	// are never touched.
+	DeleteVolumesOnRemove bool `json:"deleteVolumesOnRemove"`
 
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
@@ -98,6 +105,10 @@ type AppInput struct {
 	//   Update: nil leaves state alone; true mints a token if none exists;
 	//           false clears the token (trigger endpoint returns 404).
 	EnableTrigger *bool `json:"enableTrigger"`
+	// DeleteVolumesOnRemove controls whether DeleteApp also wipes the
+	// app's auto-named nanoku volumes. Bind mounts and user-named
+	// volumes are never touched regardless.
+	DeleteVolumesOnRemove *bool `json:"deleteVolumesOnRemove"`
 }
 
 type DeployDTO struct {
@@ -160,12 +171,13 @@ func toDeployDTO(d *db.Deploy) DeployDTO {
 // toAppDTO loads the current container for the app (1 query) and assembles DTO.
 func (h *Handlers) toAppDTO(ctx context.Context, a *db.App) AppDTO {
 	out := AppDTO{
-		ID:        a.ID,
-		Name:      a.Name,
-		Image:     appImage(a),
-		Port:      appPort(a),
-		CreatedAt: a.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt: a.UpdatedAt.UTC().Format(time.RFC3339),
+		ID:                   a.ID,
+		Name:                 a.Name,
+		Image:                appImage(a),
+		Port:                 appPort(a),
+		DeleteVolumesOnRemove: a.DeleteVolumesOnRemove,
+		CreatedAt:            a.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:            a.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	out.DeployMethod = a.DeployMethod
 	if a.DeployMethod == "compose" {
@@ -199,6 +211,13 @@ func (h *Handlers) toAppDTO(ctx context.Context, a *db.App) AppDTO {
 			out.Container = &dto
 		}
 	}
+	vols, verr := a.QueryVolumes().Order(volume.ByID()).All(ctx)
+	if verr == nil {
+		out.Volumes = make([]VolumeDTO, 0, len(vols))
+		for _, v := range vols {
+			out.Volumes = append(out.Volumes, toVolumeDTO(v))
+		}
+	}
 	return out
 }
 
@@ -207,6 +226,29 @@ func (h *Handlers) toAppDTO(ctx context.Context, a *db.App) AppDTO {
 // compose_path is empty).
 func (h *Handlers) composeFilePath(appName string) string {
 	return filepath.Join(h.ComposeBaseDir, appName, "docker-compose.yml")
+}
+
+// loadMounts returns the app's volume rows as docker.VolumeMounts in
+// stored order. Used by DeployApp / trigger_deploy.
+func loadMounts(ctx context.Context, a *db.App) ([]docker.VolumeMount, error) {
+	vols, err := a.QueryVolumes().Order(volume.ByID()).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]docker.VolumeMount, 0, len(vols))
+	for _, v := range vols {
+		src := ""
+		if v.Source != nil {
+			src = *v.Source
+		}
+		out = append(out, docker.VolumeMount{
+			Type:     string(v.Type),
+			Source:   src,
+			Target:   v.Target,
+			ReadOnly: v.ReadOnly,
+		})
+	}
+	return out, nil
 }
 
 // writeComposeFile atomically writes the compose content to disk and
@@ -357,6 +399,9 @@ func (h *Handlers) CreateApp(w http.ResponseWriter, r *http.Request) {
 		create.SetTriggerToken(tok)
 		generatedToken = tok
 	}
+	if in.DeleteVolumesOnRemove != nil {
+		create.SetDeleteVolumesOnRemove(*in.DeleteVolumesOnRemove)
+	}
 
 	a, err := create.Save(r.Context())
 	if err != nil {
@@ -480,6 +525,9 @@ func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
 	} else if in.RegistryPassword != nil && *in.RegistryPassword != "" {
 		upd.SetRegistryPassword(*in.RegistryPassword)
 	}
+	if in.DeleteVolumesOnRemove != nil {
+		upd.SetDeleteVolumesOnRemove(*in.DeleteVolumesOnRemove)
+	}
 	// HTTP trigger:
 	//   EnableTrigger=nil  → leave current state alone
 	//   EnableTrigger=true  → if not yet enabled, mint a new bearer token
@@ -540,6 +588,11 @@ func (h *Handlers) DeleteApp(w http.ResponseWriter, r *http.Request) {
 		conts, _ := h.DB.Container.Query().Where(container.HasAppWith(app.IDEQ(a.ID))).All(r.Context())
 		for _, c := range conts {
 			_ = h.Docker.RemoveContainer(r.Context(), c.Name)
+		}
+		// If the user opted in, also wipe auto-named nanoku volumes for
+		// this app. Bind mounts and user-named volumes are not touched.
+		if a.DeleteVolumesOnRemove {
+			_ = h.Docker.RemoveAppVolumes(r.Context(), a.Name)
 		}
 		// Clean up generated compose file on disk (best-effort).
 		if a.DeployMethod == "compose" && (a.ComposePath == nil || *a.ComposePath == "") {
@@ -641,7 +694,11 @@ func (h *Handlers) DeployApp(w http.ResponseWriter, r *http.Request) {
 		if err := h.Docker.PullImage(r.Context(), img); err != nil {
 			return fmt.Errorf("pull image: %w", err)
 		}
-		_, _, err := h.Docker.CreateAppContainer(r.Context(), a.Name, img, appPort(a), envKVs, 0)
+		mounts, merr := loadMounts(r.Context(), a)
+		if merr != nil {
+			return fmt.Errorf("load mounts: %w", merr)
+		}
+		_, _, err := h.Docker.CreateAppContainer(r.Context(), a.Name, img, appPort(a), envKVs, 0, mounts)
 		return err
 	}
 

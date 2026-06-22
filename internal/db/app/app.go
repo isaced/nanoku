@@ -38,6 +38,8 @@ const (
 	FieldRegistryPassword = "registry_password"
 	// FieldTriggerToken holds the string denoting the trigger_token field in the database.
 	FieldTriggerToken = "trigger_token"
+	// FieldDeleteVolumesOnRemove holds the string denoting the delete_volumes_on_remove field in the database.
+	FieldDeleteVolumesOnRemove = "delete_volumes_on_remove"
 	// EdgeSites holds the string denoting the sites edge name in mutations.
 	EdgeSites = "sites"
 	// EdgeContainers holds the string denoting the containers edge name in mutations.
@@ -46,6 +48,8 @@ const (
 	EdgeDeploys = "deploys"
 	// EdgeEnvVars holds the string denoting the env_vars edge name in mutations.
 	EdgeEnvVars = "env_vars"
+	// EdgeVolumes holds the string denoting the volumes edge name in mutations.
+	EdgeVolumes = "volumes"
 	// EdgeCurrentContainer holds the string denoting the current_container edge name in mutations.
 	EdgeCurrentContainer = "current_container"
 	// Table holds the table name of the app in the database.
@@ -78,6 +82,13 @@ const (
 	EnvVarsInverseTable = "env_vars"
 	// EnvVarsColumn is the table column denoting the env_vars relation/edge.
 	EnvVarsColumn = "app_env_vars"
+	// VolumesTable is the table that holds the volumes relation/edge.
+	VolumesTable = "volumes"
+	// VolumesInverseTable is the table name for the Volume entity.
+	// It exists in this package in order to avoid circular dependency with the "volume" package.
+	VolumesInverseTable = "volumes"
+	// VolumesColumn is the table column denoting the volumes relation/edge.
+	VolumesColumn = "app_volumes"
 	// CurrentContainerTable is the table that holds the current_container relation/edge.
 	CurrentContainerTable = "containers"
 	// CurrentContainerInverseTable is the table name for the Container entity.
@@ -102,6 +113,7 @@ var Columns = []string{
 	FieldRegistryUsername,
 	FieldRegistryPassword,
 	FieldTriggerToken,
+	FieldDeleteVolumesOnRemove,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -127,6 +139,8 @@ var (
 	PortValidator func(int) error
 	// DefaultDeployMethod holds the default value on creation for the "deploy_method" field.
 	DefaultDeployMethod string
+	// DefaultDeleteVolumesOnRemove holds the default value on creation for the "delete_volumes_on_remove" field.
+	DefaultDeleteVolumesOnRemove bool
 )
 
 // OrderOption defines the ordering options for the App queries.
@@ -197,6 +211,11 @@ func ByTriggerToken(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTriggerToken, opts...).ToFunc()
 }
 
+// ByDeleteVolumesOnRemove orders the results by the delete_volumes_on_remove field.
+func ByDeleteVolumesOnRemove(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDeleteVolumesOnRemove, opts...).ToFunc()
+}
+
 // BySitesCount orders the results by sites count.
 func BySitesCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -253,6 +272,20 @@ func ByEnvVars(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByVolumesCount orders the results by volumes count.
+func ByVolumesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newVolumesStep(), opts...)
+	}
+}
+
+// ByVolumes orders the results by volumes terms.
+func ByVolumes(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newVolumesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByCurrentContainerField orders the results by current_container field.
 func ByCurrentContainerField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -285,6 +318,13 @@ func newEnvVarsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(EnvVarsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, EnvVarsTable, EnvVarsColumn),
+	)
+}
+func newVolumesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(VolumesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, VolumesTable, VolumesColumn),
 	)
 }
 func newCurrentContainerStep() *sqlgraph.Step {

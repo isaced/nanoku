@@ -15,6 +15,7 @@ import (
 	"github.com/isaced/nanoku/internal/db/deploy"
 	"github.com/isaced/nanoku/internal/db/envvar"
 	"github.com/isaced/nanoku/internal/db/site"
+	"github.com/isaced/nanoku/internal/db/volume"
 )
 
 // AppCreate is the builder for creating a App entity.
@@ -184,6 +185,20 @@ func (_c *AppCreate) SetNillableTriggerToken(v *string) *AppCreate {
 	return _c
 }
 
+// SetDeleteVolumesOnRemove sets the "delete_volumes_on_remove" field.
+func (_c *AppCreate) SetDeleteVolumesOnRemove(v bool) *AppCreate {
+	_c.mutation.SetDeleteVolumesOnRemove(v)
+	return _c
+}
+
+// SetNillableDeleteVolumesOnRemove sets the "delete_volumes_on_remove" field if the given value is not nil.
+func (_c *AppCreate) SetNillableDeleteVolumesOnRemove(v *bool) *AppCreate {
+	if v != nil {
+		_c.SetDeleteVolumesOnRemove(*v)
+	}
+	return _c
+}
+
 // AddSiteIDs adds the "sites" edge to the Site entity by IDs.
 func (_c *AppCreate) AddSiteIDs(ids ...int) *AppCreate {
 	_c.mutation.AddSiteIDs(ids...)
@@ -242,6 +257,21 @@ func (_c *AppCreate) AddEnvVars(v ...*EnvVar) *AppCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddEnvVarIDs(ids...)
+}
+
+// AddVolumeIDs adds the "volumes" edge to the Volume entity by IDs.
+func (_c *AppCreate) AddVolumeIDs(ids ...int) *AppCreate {
+	_c.mutation.AddVolumeIDs(ids...)
+	return _c
+}
+
+// AddVolumes adds the "volumes" edges to the Volume entity.
+func (_c *AppCreate) AddVolumes(v ...*Volume) *AppCreate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddVolumeIDs(ids...)
 }
 
 // SetCurrentContainerID sets the "current_container" edge to the Container entity by ID.
@@ -310,6 +340,10 @@ func (_c *AppCreate) defaults() {
 		v := app.DefaultDeployMethod
 		_c.mutation.SetDeployMethod(v)
 	}
+	if _, ok := _c.mutation.DeleteVolumesOnRemove(); !ok {
+		v := app.DefaultDeleteVolumesOnRemove
+		_c.mutation.SetDeleteVolumesOnRemove(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -335,6 +369,9 @@ func (_c *AppCreate) check() error {
 	}
 	if _, ok := _c.mutation.DeployMethod(); !ok {
 		return &ValidationError{Name: "deploy_method", err: errors.New(`db: missing required field "App.deploy_method"`)}
+	}
+	if _, ok := _c.mutation.DeleteVolumesOnRemove(); !ok {
+		return &ValidationError{Name: "delete_volumes_on_remove", err: errors.New(`db: missing required field "App.delete_volumes_on_remove"`)}
 	}
 	return nil
 }
@@ -410,6 +447,10 @@ func (_c *AppCreate) createSpec() (*App, *sqlgraph.CreateSpec) {
 		_spec.SetField(app.FieldTriggerToken, field.TypeString, value)
 		_node.TriggerToken = &value
 	}
+	if value, ok := _c.mutation.DeleteVolumesOnRemove(); ok {
+		_spec.SetField(app.FieldDeleteVolumesOnRemove, field.TypeBool, value)
+		_node.DeleteVolumesOnRemove = value
+	}
 	if nodes := _c.mutation.SitesIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -467,6 +508,22 @@ func (_c *AppCreate) createSpec() (*App, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(envvar.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.VolumesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   app.VolumesTable,
+			Columns: []string{app.VolumesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(volume.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {

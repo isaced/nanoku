@@ -70,7 +70,12 @@ func (h *Handlers) executeTriggerDeploy(parentCtx context.Context, appID, deploy
 	for _, e := range envVars {
 		envKVs = append(envKVs, e.Key+"="+e.Value)
 	}
-	_, containerName, err := h.Docker.CreateAppContainer(ctx, a.Name, image, appPort(a), envKVs, 0)
+	mounts, merr := loadMounts(ctx, a)
+	if merr != nil {
+		h.markDeployFailed(ctx, deployID, fmt.Errorf("load mounts: %w", merr))
+		return
+	}
+	_, containerName, err := h.Docker.CreateAppContainer(ctx, a.Name, image, appPort(a), envKVs, 0, mounts)
 	if err != nil {
 		h.markDeployFailed(ctx, deployID, fmt.Errorf("create container: %w", err))
 		return

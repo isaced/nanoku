@@ -293,12 +293,38 @@ func (m *Manager) ListContainersByNamePrefix(ctx context.Context, prefix string)
 	return names, nil
 }
 
+// VolumeMount describes a single `--mount` flag for an app container.
+// Source is the volume name (Type=volume) or host path (Type=bind). When
+// Type=volume and Source is empty, docker.Manager auto-names it as
+// `nanoku-<appName>-vol-<idx>` (see AutoAppVolumeName).
+type VolumeMount struct {
+	Type     string // "volume" | "bind"
+	Source   string
+	Target   string
+	ReadOnly bool
+}
+
+// AutoAppVolumeName returns the canonical name nanoku assigns to an unnamed
+// app volume at the given index. The handler uses this when persisting the
+// resolved name back to the DB so a later redeploy binds to the same
+// physical volume.
+func AutoAppVolumeName(appName string, idx int) string {
+	return fmt.Sprintf("nanoku-%s-vol-%d", appName, idx)
+}
+
+// IsAutoAppVolumeName reports whether name follows the auto-naming
+// convention for a given app (so callers know whether it is safe to delete).
+func IsAutoAppVolumeName(appName, name string) bool {
+	prefix := fmt.Sprintf("nanoku-%s-vol-", appName)
+	return strings.HasPrefix(name, prefix) && len(name) > len(prefix)
+}
+
 // CreateAppContainer runs a new container for an app and returns its docker ID and name.
 // namePrefix: short app slug (e.g. "myapp"); port: container-internal port; env: key=value pairs.
 // hostPort: 0 = no host port mapping (default — proxy via caddy network).
 // env values are written to a temp file and passed via --env-file, so values
 // can never be misinterpreted as docker flags or split across argv slots.
-func (m *Manager) CreateAppContainer(ctx context.Context, namePrefix, image string, port int, env []string, hostPort int) (dockerID string, containerName string, err error) {
+func (m *Manager) CreateAppContainer(ctx context.Context, namePrefix, image string, port int, env []string, hostPort int, mounts []VolumeMount) (dockerID string, containerName string, err error) {
 	if err := m.EnsureNetwork(ctx); err != nil {
 		return "", "", err
 	}
@@ -332,6 +358,13 @@ func (m *Manager) CreateAppContainer(ctx context.Context, namePrefix, image stri
 	if envFilePath != "" {
 		args = append(args, "--env-file", envFilePath)
 	}
+	for i, mt := range mounts {
+		source := mt.Source
+		if mt.Type == "volume" && source == "" {
+			source = AutoAppVolumeName(namePrefix, i)
+		}
+		args = append(args, "--mount", formatMount(mt.Type, source, mt.Target, mt.ReadOnly))
+	}
 	args = append(args, image)
 
 	out, err := m.run(ctx, args...)
@@ -343,6 +376,47 @@ func (m *Manager) CreateAppContainer(ctx context.Context, namePrefix, image stri
 		return "", "", fmt.Errorf("docker run returned empty id")
 	}
 	return id, containerName, nil
+}
+
+// formatMount renders a single `--mount` value. Output is safe to pass via
+// a single argv slot; commas / equals are part of the docker syntax.
+func formatMount(typ, source, target string, readOnly bool) string {
+	parts := []string{
+		"type=" + typ,
+		"source=" + source,
+		"target=" + target,
+	}
+	if readOnly {
+		parts = append(parts, "readonly")
+	}
+	return strings.Join(parts, ",")
+}
+
+// RemoveAppVolumes deletes the auto-named nanoku-owned docker volumes for
+// an app (matches `nanoku-<appName>-vol-*`). Bind mounts and user-supplied
+// volume names are intentionally left alone. Best-effort: a failure on one
+// volume (e.g. still in use) does not stop the rest, and the error from
+// the first failure is returned for logging.
+func (m *Manager) RemoveAppVolumes(ctx context.Context, appName string) error {
+	out, err := m.run(ctx, "volume", "ls",
+		"--filter", "label=nanoku.managed=true",
+		"--format", "{{.Name}}",
+	)
+	if err != nil {
+		return fmt.Errorf("volume ls: %w", err)
+	}
+	prefix := fmt.Sprintf("nanoku-%s-vol-", appName)
+	var firstErr error
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		name := strings.TrimSpace(line)
+		if name == "" || !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		if _, err := m.run(ctx, "volume", "rm", name); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("rm volume %s: %w", name, err)
+		}
+	}
+	return firstErr
 }
 
 func (m *Manager) StartContainer(ctx context.Context, name string) error {

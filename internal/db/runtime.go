@@ -13,6 +13,7 @@ import (
 	"github.com/isaced/nanoku/internal/db/session"
 	"github.com/isaced/nanoku/internal/db/site"
 	"github.com/isaced/nanoku/internal/db/user"
+	"github.com/isaced/nanoku/internal/db/volume"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -60,6 +61,10 @@ func init() {
 	appDescDeployMethod := appFields[3].Descriptor()
 	// app.DefaultDeployMethod holds the default value on creation for the deploy_method field.
 	app.DefaultDeployMethod = appDescDeployMethod.Default.(string)
+	// appDescDeleteVolumesOnRemove is the schema descriptor for delete_volumes_on_remove field.
+	appDescDeleteVolumesOnRemove := appFields[10].Descriptor()
+	// app.DefaultDeleteVolumesOnRemove holds the default value on creation for the delete_volumes_on_remove field.
+	app.DefaultDeleteVolumesOnRemove = appDescDeleteVolumesOnRemove.Default.(bool)
 	containerMixin := schema.Container{}.Mixin()
 	containerMixinFields0 := containerMixin[0].Fields()
 	_ = containerMixinFields0
@@ -153,4 +158,23 @@ func init() {
 	userDescRole := userFields[2].Descriptor()
 	// user.DefaultRole holds the default value on creation for the role field.
 	user.DefaultRole = userDescRole.Default.(string)
+	volumeMixin := schema.Volume{}.Mixin()
+	volumeMixinFields0 := volumeMixin[0].Fields()
+	_ = volumeMixinFields0
+	volumeFields := schema.Volume{}.Fields()
+	_ = volumeFields
+	// volumeDescCreatedAt is the schema descriptor for created_at field.
+	volumeDescCreatedAt := volumeMixinFields0[0].Descriptor()
+	// volume.DefaultCreatedAt holds the default value on creation for the created_at field.
+	volume.DefaultCreatedAt = volumeDescCreatedAt.Default.(func() time.Time)
+	// volumeDescUpdatedAt is the schema descriptor for updated_at field.
+	volumeDescUpdatedAt := volumeMixinFields0[1].Descriptor()
+	// volume.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	volume.DefaultUpdatedAt = volumeDescUpdatedAt.Default.(func() time.Time)
+	// volume.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	volume.UpdateDefaultUpdatedAt = volumeDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// volumeDescReadOnly is the schema descriptor for read_only field.
+	volumeDescReadOnly := volumeFields[3].Descriptor()
+	// volume.DefaultReadOnly holds the default value on creation for the read_only field.
+	volume.DefaultReadOnly = volumeDescReadOnly.Default.(bool)
 }

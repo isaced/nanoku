@@ -17,6 +17,7 @@ import (
 	"github.com/isaced/nanoku/internal/db/envvar"
 	"github.com/isaced/nanoku/internal/db/predicate"
 	"github.com/isaced/nanoku/internal/db/site"
+	"github.com/isaced/nanoku/internal/db/volume"
 )
 
 // AppUpdate is the builder for updating App entities.
@@ -233,6 +234,20 @@ func (_u *AppUpdate) ClearTriggerToken() *AppUpdate {
 	return _u
 }
 
+// SetDeleteVolumesOnRemove sets the "delete_volumes_on_remove" field.
+func (_u *AppUpdate) SetDeleteVolumesOnRemove(v bool) *AppUpdate {
+	_u.mutation.SetDeleteVolumesOnRemove(v)
+	return _u
+}
+
+// SetNillableDeleteVolumesOnRemove sets the "delete_volumes_on_remove" field if the given value is not nil.
+func (_u *AppUpdate) SetNillableDeleteVolumesOnRemove(v *bool) *AppUpdate {
+	if v != nil {
+		_u.SetDeleteVolumesOnRemove(*v)
+	}
+	return _u
+}
+
 // AddSiteIDs adds the "sites" edge to the Site entity by IDs.
 func (_u *AppUpdate) AddSiteIDs(ids ...int) *AppUpdate {
 	_u.mutation.AddSiteIDs(ids...)
@@ -291,6 +306,21 @@ func (_u *AppUpdate) AddEnvVars(v ...*EnvVar) *AppUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.AddEnvVarIDs(ids...)
+}
+
+// AddVolumeIDs adds the "volumes" edge to the Volume entity by IDs.
+func (_u *AppUpdate) AddVolumeIDs(ids ...int) *AppUpdate {
+	_u.mutation.AddVolumeIDs(ids...)
+	return _u
+}
+
+// AddVolumes adds the "volumes" edges to the Volume entity.
+func (_u *AppUpdate) AddVolumes(v ...*Volume) *AppUpdate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddVolumeIDs(ids...)
 }
 
 // SetCurrentContainerID sets the "current_container" edge to the Container entity by ID.
@@ -399,6 +429,27 @@ func (_u *AppUpdate) RemoveEnvVars(v ...*EnvVar) *AppUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveEnvVarIDs(ids...)
+}
+
+// ClearVolumes clears all "volumes" edges to the Volume entity.
+func (_u *AppUpdate) ClearVolumes() *AppUpdate {
+	_u.mutation.ClearVolumes()
+	return _u
+}
+
+// RemoveVolumeIDs removes the "volumes" edge to Volume entities by IDs.
+func (_u *AppUpdate) RemoveVolumeIDs(ids ...int) *AppUpdate {
+	_u.mutation.RemoveVolumeIDs(ids...)
+	return _u
+}
+
+// RemoveVolumes removes "volumes" edges to Volume entities.
+func (_u *AppUpdate) RemoveVolumes(v ...*Volume) *AppUpdate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveVolumeIDs(ids...)
 }
 
 // ClearCurrentContainer clears the "current_container" edge to the Container entity.
@@ -529,6 +580,9 @@ func (_u *AppUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.TriggerTokenCleared() {
 		_spec.ClearField(app.FieldTriggerToken, field.TypeString)
+	}
+	if value, ok := _u.mutation.DeleteVolumesOnRemove(); ok {
+		_spec.SetField(app.FieldDeleteVolumesOnRemove, field.TypeBool, value)
 	}
 	if _u.mutation.SitesCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -703,6 +757,51 @@ func (_u *AppUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(envvar.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.VolumesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   app.VolumesTable,
+			Columns: []string{app.VolumesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(volume.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedVolumesIDs(); len(nodes) > 0 && !_u.mutation.VolumesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   app.VolumesTable,
+			Columns: []string{app.VolumesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(volume.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.VolumesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   app.VolumesTable,
+			Columns: []string{app.VolumesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(volume.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {
@@ -960,6 +1059,20 @@ func (_u *AppUpdateOne) ClearTriggerToken() *AppUpdateOne {
 	return _u
 }
 
+// SetDeleteVolumesOnRemove sets the "delete_volumes_on_remove" field.
+func (_u *AppUpdateOne) SetDeleteVolumesOnRemove(v bool) *AppUpdateOne {
+	_u.mutation.SetDeleteVolumesOnRemove(v)
+	return _u
+}
+
+// SetNillableDeleteVolumesOnRemove sets the "delete_volumes_on_remove" field if the given value is not nil.
+func (_u *AppUpdateOne) SetNillableDeleteVolumesOnRemove(v *bool) *AppUpdateOne {
+	if v != nil {
+		_u.SetDeleteVolumesOnRemove(*v)
+	}
+	return _u
+}
+
 // AddSiteIDs adds the "sites" edge to the Site entity by IDs.
 func (_u *AppUpdateOne) AddSiteIDs(ids ...int) *AppUpdateOne {
 	_u.mutation.AddSiteIDs(ids...)
@@ -1018,6 +1131,21 @@ func (_u *AppUpdateOne) AddEnvVars(v ...*EnvVar) *AppUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.AddEnvVarIDs(ids...)
+}
+
+// AddVolumeIDs adds the "volumes" edge to the Volume entity by IDs.
+func (_u *AppUpdateOne) AddVolumeIDs(ids ...int) *AppUpdateOne {
+	_u.mutation.AddVolumeIDs(ids...)
+	return _u
+}
+
+// AddVolumes adds the "volumes" edges to the Volume entity.
+func (_u *AppUpdateOne) AddVolumes(v ...*Volume) *AppUpdateOne {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddVolumeIDs(ids...)
 }
 
 // SetCurrentContainerID sets the "current_container" edge to the Container entity by ID.
@@ -1126,6 +1254,27 @@ func (_u *AppUpdateOne) RemoveEnvVars(v ...*EnvVar) *AppUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveEnvVarIDs(ids...)
+}
+
+// ClearVolumes clears all "volumes" edges to the Volume entity.
+func (_u *AppUpdateOne) ClearVolumes() *AppUpdateOne {
+	_u.mutation.ClearVolumes()
+	return _u
+}
+
+// RemoveVolumeIDs removes the "volumes" edge to Volume entities by IDs.
+func (_u *AppUpdateOne) RemoveVolumeIDs(ids ...int) *AppUpdateOne {
+	_u.mutation.RemoveVolumeIDs(ids...)
+	return _u
+}
+
+// RemoveVolumes removes "volumes" edges to Volume entities.
+func (_u *AppUpdateOne) RemoveVolumes(v ...*Volume) *AppUpdateOne {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveVolumeIDs(ids...)
 }
 
 // ClearCurrentContainer clears the "current_container" edge to the Container entity.
@@ -1286,6 +1435,9 @@ func (_u *AppUpdateOne) sqlSave(ctx context.Context) (_node *App, err error) {
 	}
 	if _u.mutation.TriggerTokenCleared() {
 		_spec.ClearField(app.FieldTriggerToken, field.TypeString)
+	}
+	if value, ok := _u.mutation.DeleteVolumesOnRemove(); ok {
+		_spec.SetField(app.FieldDeleteVolumesOnRemove, field.TypeBool, value)
 	}
 	if _u.mutation.SitesCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1460,6 +1612,51 @@ func (_u *AppUpdateOne) sqlSave(ctx context.Context) (_node *App, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(envvar.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.VolumesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   app.VolumesTable,
+			Columns: []string{app.VolumesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(volume.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedVolumesIDs(); len(nodes) > 0 && !_u.mutation.VolumesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   app.VolumesTable,
+			Columns: []string{app.VolumesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(volume.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.VolumesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   app.VolumesTable,
+			Columns: []string{app.VolumesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(volume.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {

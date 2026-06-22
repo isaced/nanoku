@@ -106,6 +106,8 @@ func main() {
 	mux.HandleFunc("GET /api/apps/{id}/logs", handlers.AppLogs)
 	mux.HandleFunc("GET /api/apps/{id}/env", handlers.ListAppEnvVars)
 	mux.HandleFunc("PUT /api/apps/{id}/env", handlers.ReplaceAppEnvVars)
+	mux.HandleFunc("GET /api/apps/{id}/volumes", handlers.ListAppVolumes)
+	mux.HandleFunc("PUT /api/apps/{id}/volumes", handlers.ReplaceAppVolumes)
 	mux.HandleFunc("GET /api/apps/{id}/deployments", handlers.ListAppDeploys)
 	mux.HandleFunc("POST /api/apps/{id}/rotate-trigger-token", handlers.RotateTriggerToken)
 

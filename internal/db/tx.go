@@ -26,6 +26,8 @@ type Tx struct {
 	Site *SiteClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
+	// Volume is the client for interacting with the Volume builders.
+	Volume *VolumeClient
 
 	// lazily loaded.
 	client     *Client
@@ -164,6 +166,7 @@ func (tx *Tx) init() {
 	tx.Session = NewSessionClient(tx.config)
 	tx.Site = NewSiteClient(tx.config)
 	tx.User = NewUserClient(tx.config)
+	tx.Volume = NewVolumeClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

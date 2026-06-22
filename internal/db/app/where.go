@@ -115,6 +115,11 @@ func TriggerToken(v string) predicate.App {
 	return predicate.App(sql.FieldEQ(FieldTriggerToken, v))
 }
 
+// DeleteVolumesOnRemove applies equality check predicate on the "delete_volumes_on_remove" field. It's identical to DeleteVolumesOnRemoveEQ.
+func DeleteVolumesOnRemove(v bool) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldDeleteVolumesOnRemove, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.App {
 	return predicate.App(sql.FieldEQ(FieldCreatedAt, v))
@@ -900,6 +905,16 @@ func TriggerTokenContainsFold(v string) predicate.App {
 	return predicate.App(sql.FieldContainsFold(FieldTriggerToken, v))
 }
 
+// DeleteVolumesOnRemoveEQ applies the EQ predicate on the "delete_volumes_on_remove" field.
+func DeleteVolumesOnRemoveEQ(v bool) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldDeleteVolumesOnRemove, v))
+}
+
+// DeleteVolumesOnRemoveNEQ applies the NEQ predicate on the "delete_volumes_on_remove" field.
+func DeleteVolumesOnRemoveNEQ(v bool) predicate.App {
+	return predicate.App(sql.FieldNEQ(FieldDeleteVolumesOnRemove, v))
+}
+
 // HasSites applies the HasEdge predicate on the "sites" edge.
 func HasSites() predicate.App {
 	return predicate.App(func(s *sql.Selector) {
@@ -984,6 +999,29 @@ func HasEnvVars() predicate.App {
 func HasEnvVarsWith(preds ...predicate.EnvVar) predicate.App {
 	return predicate.App(func(s *sql.Selector) {
 		step := newEnvVarsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasVolumes applies the HasEdge predicate on the "volumes" edge.
+func HasVolumes() predicate.App {
+	return predicate.App(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, VolumesTable, VolumesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasVolumesWith applies the HasEdge predicate on the "volumes" edge with a given conditions (other predicates).
+func HasVolumesWith(preds ...predicate.Volume) predicate.App {
+	return predicate.App(func(s *sql.Selector) {
+		step := newVolumesStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

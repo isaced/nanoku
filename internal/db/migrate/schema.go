@@ -23,6 +23,7 @@ var (
 		{Name: "registry_username", Type: field.TypeString, Nullable: true},
 		{Name: "registry_password", Type: field.TypeString, Nullable: true},
 		{Name: "trigger_token", Type: field.TypeString, Nullable: true},
+		{Name: "delete_volumes_on_remove", Type: field.TypeBool, Default: false},
 	}
 	// AppsTable holds the schema information for the "apps" table.
 	AppsTable = &schema.Table{
@@ -219,6 +220,38 @@ var (
 		Columns:    UsersColumns,
 		PrimaryKey: []*schema.Column{UsersColumns[0]},
 	}
+	// VolumesColumns holds the columns for the "volumes" table.
+	VolumesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"volume", "bind"}},
+		{Name: "source", Type: field.TypeString, Nullable: true},
+		{Name: "target", Type: field.TypeString},
+		{Name: "read_only", Type: field.TypeBool, Default: false},
+		{Name: "app_volumes", Type: field.TypeInt, Nullable: true},
+	}
+	// VolumesTable holds the schema information for the "volumes" table.
+	VolumesTable = &schema.Table{
+		Name:       "volumes",
+		Columns:    VolumesColumns,
+		PrimaryKey: []*schema.Column{VolumesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "volumes_apps_volumes",
+				Columns:    []*schema.Column{VolumesColumns[7]},
+				RefColumns: []*schema.Column{AppsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "volume_target_app_volumes",
+				Unique:  true,
+				Columns: []*schema.Column{VolumesColumns[5], VolumesColumns[7]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AppsTable,
@@ -228,6 +261,7 @@ var (
 		SessionsTable,
 		SitesTable,
 		UsersTable,
+		VolumesTable,
 	}
 )
 
@@ -239,4 +273,5 @@ func init() {
 	EnvVarsTable.ForeignKeys[0].RefTable = AppsTable
 	SessionsTable.ForeignKeys[0].RefTable = UsersTable
 	SitesTable.ForeignKeys[0].RefTable = AppsTable
+	VolumesTable.ForeignKeys[0].RefTable = AppsTable
 }
