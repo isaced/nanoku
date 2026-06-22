@@ -28,19 +28,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
+          cache: "npm"
+          cache-dependency-path: ui/package-lock.json
 
       - name: Install UI dependencies
         working-directory: ui
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Build UI
         working-directory: ui
-        run: pnpm build
+        run: npm run build
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6

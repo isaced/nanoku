@@ -1,5 +1,5 @@
 GO ?= go
-PNPM ?= pnpm
+NPM ?= npm
 
 ADMIN_USER ?= admin
 ADMIN_PASSWORD ?= nanoku
@@ -21,7 +21,7 @@ dev:
 	$(MAKE) -j2 dev-ui dev-go
 
 dev-ui:
-	cd ui && $(PNPM) dev
+	cd ui && $(NPM) run dev
 
 dev-go:
 	$(GO) run .
@@ -29,7 +29,7 @@ dev-go:
 build: build-ui build-go
 
 build-ui:
-	cd ui && $(PNPM) build
+	cd ui && $(NPM) run build
 
 build-go:
 	$(GO) build -o bin/nanoku .
