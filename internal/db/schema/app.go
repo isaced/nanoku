@@ -23,17 +23,11 @@ func (App) Fields() []ent.Field {
 		field.String("image").
 			Optional().
 			Nillable().
-			Comment("Docker image, e.g. nginx:1.27. Ignored when deploy_method=compose."),
+			Comment("Docker image, e.g. nginx:1.27. Ignored when deploy_method=compose. For HTTP-triggered deploys (POST /api/apps/{name}/trigger), the bare repo part is used as the image prefix and the trigger payload supplies the tag."),
 		field.Int("port").
 			Min(1).Max(65535).
 			Optional().
 			Comment("Internal port the app listens on. Ignored when deploy_method=compose."),
-		field.String("repo_url").
-			Optional().
-			Nillable().
-			Comment("Git repo URL for future webhook-driven deploys."),
-		field.String("branch").
-			Default("main"),
 
 		// "docker" = run a single container from `image` (current behavior).
 		// "compose" = run `docker compose up -d` against `compose_content` (or
@@ -66,19 +60,15 @@ func (App) Fields() []ent.Field {
 			Nillable().
 			Sensitive(),
 
-		// External-build webhook config. The build itself runs in the user's
-		// GitHub Actions (or any other CI); nanoku just pulls the resulting
-		// image. Webhook payload supplies the tag, image_repo is the
-		// `<registry>/<repo>` prefix (e.g. "ghcr.io/isaced/myapp").
-		field.String("image_repo").
-			Optional().
-			Nillable().
-			Comment("OCI image repository (without tag) used on webhook deploy. e.g. ghcr.io/you/myapp."),
-		field.String("webhook_secret").
+		// Bearer token for HTTP-triggered deploys on
+		// POST /api/apps/{name}/trigger. Compared with
+		// crypto/subtle.ConstantTimeCompare. Single-shot: returned on
+		// create / rotate, never on list / get.
+		field.String("trigger_token").
 			Optional().
 			Nillable().
 			Sensitive().
-			Comment("HMAC-SHA256 key for X-Hub-Signature-256 on /api/webhook/{name}."),
+			Comment("Bearer token for /api/apps/{name}/trigger."),
 	}
 }
 

@@ -108,7 +108,7 @@ const DefaultTrigger = TriggerManual
 // Trigger values.
 const (
 	TriggerManual  Trigger = "manual"
-	TriggerWebhook Trigger = "webhook"
+	TriggerTrigger Trigger = "trigger"
 )
 
 func (t Trigger) String() string {
@@ -118,7 +118,7 @@ func (t Trigger) String() string {
 // TriggerValidator is a validator for the "trigger" field enum values. It is called by the builders before save.
 func TriggerValidator(t Trigger) error {
 	switch t {
-	case TriggerManual, TriggerWebhook:
+	case TriggerManual, TriggerTrigger:
 		return nil
 	default:
 		return fmt.Errorf("deploy: invalid enum value for trigger field: %q", t)

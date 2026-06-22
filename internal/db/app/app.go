@@ -24,10 +24,6 @@ const (
 	FieldImage = "image"
 	// FieldPort holds the string denoting the port field in the database.
 	FieldPort = "port"
-	// FieldRepoURL holds the string denoting the repo_url field in the database.
-	FieldRepoURL = "repo_url"
-	// FieldBranch holds the string denoting the branch field in the database.
-	FieldBranch = "branch"
 	// FieldDeployMethod holds the string denoting the deploy_method field in the database.
 	FieldDeployMethod = "deploy_method"
 	// FieldComposeContent holds the string denoting the compose_content field in the database.
@@ -40,10 +36,8 @@ const (
 	FieldRegistryUsername = "registry_username"
 	// FieldRegistryPassword holds the string denoting the registry_password field in the database.
 	FieldRegistryPassword = "registry_password"
-	// FieldImageRepo holds the string denoting the image_repo field in the database.
-	FieldImageRepo = "image_repo"
-	// FieldWebhookSecret holds the string denoting the webhook_secret field in the database.
-	FieldWebhookSecret = "webhook_secret"
+	// FieldTriggerToken holds the string denoting the trigger_token field in the database.
+	FieldTriggerToken = "trigger_token"
 	// EdgeSites holds the string denoting the sites edge name in mutations.
 	EdgeSites = "sites"
 	// EdgeContainers holds the string denoting the containers edge name in mutations.
@@ -101,16 +95,13 @@ var Columns = []string{
 	FieldName,
 	FieldImage,
 	FieldPort,
-	FieldRepoURL,
-	FieldBranch,
 	FieldDeployMethod,
 	FieldComposeContent,
 	FieldComposePath,
 	FieldRegistryURL,
 	FieldRegistryUsername,
 	FieldRegistryPassword,
-	FieldImageRepo,
-	FieldWebhookSecret,
+	FieldTriggerToken,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -134,8 +125,6 @@ var (
 	NameValidator func(string) error
 	// PortValidator is a validator for the "port" field. It is called by the builders before save.
 	PortValidator func(int) error
-	// DefaultBranch holds the default value on creation for the "branch" field.
-	DefaultBranch string
 	// DefaultDeployMethod holds the default value on creation for the "deploy_method" field.
 	DefaultDeployMethod string
 )
@@ -173,16 +162,6 @@ func ByPort(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPort, opts...).ToFunc()
 }
 
-// ByRepoURL orders the results by the repo_url field.
-func ByRepoURL(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldRepoURL, opts...).ToFunc()
-}
-
-// ByBranch orders the results by the branch field.
-func ByBranch(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldBranch, opts...).ToFunc()
-}
-
 // ByDeployMethod orders the results by the deploy_method field.
 func ByDeployMethod(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDeployMethod, opts...).ToFunc()
@@ -213,14 +192,9 @@ func ByRegistryPassword(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRegistryPassword, opts...).ToFunc()
 }
 
-// ByImageRepo orders the results by the image_repo field.
-func ByImageRepo(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldImageRepo, opts...).ToFunc()
-}
-
-// ByWebhookSecret orders the results by the webhook_secret field.
-func ByWebhookSecret(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldWebhookSecret, opts...).ToFunc()
+// ByTriggerToken orders the results by the trigger_token field.
+func ByTriggerToken(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTriggerToken, opts...).ToFunc()
 }
 
 // BySitesCount orders the results by sites count.

@@ -86,34 +86,6 @@ func (_c *AppCreate) SetNillablePort(v *int) *AppCreate {
 	return _c
 }
 
-// SetRepoURL sets the "repo_url" field.
-func (_c *AppCreate) SetRepoURL(v string) *AppCreate {
-	_c.mutation.SetRepoURL(v)
-	return _c
-}
-
-// SetNillableRepoURL sets the "repo_url" field if the given value is not nil.
-func (_c *AppCreate) SetNillableRepoURL(v *string) *AppCreate {
-	if v != nil {
-		_c.SetRepoURL(*v)
-	}
-	return _c
-}
-
-// SetBranch sets the "branch" field.
-func (_c *AppCreate) SetBranch(v string) *AppCreate {
-	_c.mutation.SetBranch(v)
-	return _c
-}
-
-// SetNillableBranch sets the "branch" field if the given value is not nil.
-func (_c *AppCreate) SetNillableBranch(v *string) *AppCreate {
-	if v != nil {
-		_c.SetBranch(*v)
-	}
-	return _c
-}
-
 // SetDeployMethod sets the "deploy_method" field.
 func (_c *AppCreate) SetDeployMethod(v string) *AppCreate {
 	_c.mutation.SetDeployMethod(v)
@@ -198,30 +170,16 @@ func (_c *AppCreate) SetNillableRegistryPassword(v *string) *AppCreate {
 	return _c
 }
 
-// SetImageRepo sets the "image_repo" field.
-func (_c *AppCreate) SetImageRepo(v string) *AppCreate {
-	_c.mutation.SetImageRepo(v)
+// SetTriggerToken sets the "trigger_token" field.
+func (_c *AppCreate) SetTriggerToken(v string) *AppCreate {
+	_c.mutation.SetTriggerToken(v)
 	return _c
 }
 
-// SetNillableImageRepo sets the "image_repo" field if the given value is not nil.
-func (_c *AppCreate) SetNillableImageRepo(v *string) *AppCreate {
+// SetNillableTriggerToken sets the "trigger_token" field if the given value is not nil.
+func (_c *AppCreate) SetNillableTriggerToken(v *string) *AppCreate {
 	if v != nil {
-		_c.SetImageRepo(*v)
-	}
-	return _c
-}
-
-// SetWebhookSecret sets the "webhook_secret" field.
-func (_c *AppCreate) SetWebhookSecret(v string) *AppCreate {
-	_c.mutation.SetWebhookSecret(v)
-	return _c
-}
-
-// SetNillableWebhookSecret sets the "webhook_secret" field if the given value is not nil.
-func (_c *AppCreate) SetNillableWebhookSecret(v *string) *AppCreate {
-	if v != nil {
-		_c.SetWebhookSecret(*v)
+		_c.SetTriggerToken(*v)
 	}
 	return _c
 }
@@ -348,10 +306,6 @@ func (_c *AppCreate) defaults() {
 		v := app.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
-	if _, ok := _c.mutation.Branch(); !ok {
-		v := app.DefaultBranch
-		_c.mutation.SetBranch(v)
-	}
 	if _, ok := _c.mutation.DeployMethod(); !ok {
 		v := app.DefaultDeployMethod
 		_c.mutation.SetDeployMethod(v)
@@ -378,9 +332,6 @@ func (_c *AppCreate) check() error {
 		if err := app.PortValidator(v); err != nil {
 			return &ValidationError{Name: "port", err: fmt.Errorf(`db: validator failed for field "App.port": %w`, err)}
 		}
-	}
-	if _, ok := _c.mutation.Branch(); !ok {
-		return &ValidationError{Name: "branch", err: errors.New(`db: missing required field "App.branch"`)}
 	}
 	if _, ok := _c.mutation.DeployMethod(); !ok {
 		return &ValidationError{Name: "deploy_method", err: errors.New(`db: missing required field "App.deploy_method"`)}
@@ -431,14 +382,6 @@ func (_c *AppCreate) createSpec() (*App, *sqlgraph.CreateSpec) {
 		_spec.SetField(app.FieldPort, field.TypeInt, value)
 		_node.Port = value
 	}
-	if value, ok := _c.mutation.RepoURL(); ok {
-		_spec.SetField(app.FieldRepoURL, field.TypeString, value)
-		_node.RepoURL = &value
-	}
-	if value, ok := _c.mutation.Branch(); ok {
-		_spec.SetField(app.FieldBranch, field.TypeString, value)
-		_node.Branch = value
-	}
 	if value, ok := _c.mutation.DeployMethod(); ok {
 		_spec.SetField(app.FieldDeployMethod, field.TypeString, value)
 		_node.DeployMethod = value
@@ -463,13 +406,9 @@ func (_c *AppCreate) createSpec() (*App, *sqlgraph.CreateSpec) {
 		_spec.SetField(app.FieldRegistryPassword, field.TypeString, value)
 		_node.RegistryPassword = &value
 	}
-	if value, ok := _c.mutation.ImageRepo(); ok {
-		_spec.SetField(app.FieldImageRepo, field.TypeString, value)
-		_node.ImageRepo = &value
-	}
-	if value, ok := _c.mutation.WebhookSecret(); ok {
-		_spec.SetField(app.FieldWebhookSecret, field.TypeString, value)
-		_node.WebhookSecret = &value
+	if value, ok := _c.mutation.TriggerToken(); ok {
+		_spec.SetField(app.FieldTriggerToken, field.TypeString, value)
+		_node.TriggerToken = &value
 	}
 	if nodes := _c.mutation.SitesIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

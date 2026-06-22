@@ -16,16 +16,13 @@ var (
 		{Name: "name", Type: field.TypeString, Unique: true},
 		{Name: "image", Type: field.TypeString, Nullable: true},
 		{Name: "port", Type: field.TypeInt, Nullable: true},
-		{Name: "repo_url", Type: field.TypeString, Nullable: true},
-		{Name: "branch", Type: field.TypeString, Default: "main"},
 		{Name: "deploy_method", Type: field.TypeString, Default: "docker"},
 		{Name: "compose_content", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "compose_path", Type: field.TypeString, Nullable: true},
 		{Name: "registry_url", Type: field.TypeString, Nullable: true},
 		{Name: "registry_username", Type: field.TypeString, Nullable: true},
 		{Name: "registry_password", Type: field.TypeString, Nullable: true},
-		{Name: "image_repo", Type: field.TypeString, Nullable: true},
-		{Name: "webhook_secret", Type: field.TypeString, Nullable: true},
+		{Name: "trigger_token", Type: field.TypeString, Nullable: true},
 	}
 	// AppsTable holds the schema information for the "apps" table.
 	AppsTable = &schema.Table{
@@ -88,7 +85,7 @@ var (
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "commit_sha", Type: field.TypeString, Nullable: true},
 		{Name: "commit_message", Type: field.TypeString, Nullable: true},
-		{Name: "trigger", Type: field.TypeEnum, Enums: []string{"manual", "webhook"}, Default: "manual"},
+		{Name: "trigger", Type: field.TypeEnum, Enums: []string{"manual", "trigger"}, Default: "manual"},
 		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "running", "success", "failed", "rolled_back"}, Default: "pending"},
 		{Name: "error", Type: field.TypeString, Nullable: true},
 		{Name: "started_at", Type: field.TypeTime, Nullable: true},

@@ -21,7 +21,7 @@ func (Deploy) Fields() []ent.Field {
 		field.String("commit_message").
 			Optional().Nillable(),
 		field.Enum("trigger").
-			Values("manual", "webhook").
+			Values("manual", "trigger").
 			Default("manual"),
 		field.Enum("status").
 			Values("pending", "running", "success", "failed", "rolled_back").

@@ -80,16 +80,6 @@ func Port(v int) predicate.App {
 	return predicate.App(sql.FieldEQ(FieldPort, v))
 }
 
-// RepoURL applies equality check predicate on the "repo_url" field. It's identical to RepoURLEQ.
-func RepoURL(v string) predicate.App {
-	return predicate.App(sql.FieldEQ(FieldRepoURL, v))
-}
-
-// Branch applies equality check predicate on the "branch" field. It's identical to BranchEQ.
-func Branch(v string) predicate.App {
-	return predicate.App(sql.FieldEQ(FieldBranch, v))
-}
-
 // DeployMethod applies equality check predicate on the "deploy_method" field. It's identical to DeployMethodEQ.
 func DeployMethod(v string) predicate.App {
 	return predicate.App(sql.FieldEQ(FieldDeployMethod, v))
@@ -120,14 +110,9 @@ func RegistryPassword(v string) predicate.App {
 	return predicate.App(sql.FieldEQ(FieldRegistryPassword, v))
 }
 
-// ImageRepo applies equality check predicate on the "image_repo" field. It's identical to ImageRepoEQ.
-func ImageRepo(v string) predicate.App {
-	return predicate.App(sql.FieldEQ(FieldImageRepo, v))
-}
-
-// WebhookSecret applies equality check predicate on the "webhook_secret" field. It's identical to WebhookSecretEQ.
-func WebhookSecret(v string) predicate.App {
-	return predicate.App(sql.FieldEQ(FieldWebhookSecret, v))
+// TriggerToken applies equality check predicate on the "trigger_token" field. It's identical to TriggerTokenEQ.
+func TriggerToken(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldTriggerToken, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
@@ -398,146 +383,6 @@ func PortIsNil() predicate.App {
 // PortNotNil applies the NotNil predicate on the "port" field.
 func PortNotNil() predicate.App {
 	return predicate.App(sql.FieldNotNull(FieldPort))
-}
-
-// RepoURLEQ applies the EQ predicate on the "repo_url" field.
-func RepoURLEQ(v string) predicate.App {
-	return predicate.App(sql.FieldEQ(FieldRepoURL, v))
-}
-
-// RepoURLNEQ applies the NEQ predicate on the "repo_url" field.
-func RepoURLNEQ(v string) predicate.App {
-	return predicate.App(sql.FieldNEQ(FieldRepoURL, v))
-}
-
-// RepoURLIn applies the In predicate on the "repo_url" field.
-func RepoURLIn(vs ...string) predicate.App {
-	return predicate.App(sql.FieldIn(FieldRepoURL, vs...))
-}
-
-// RepoURLNotIn applies the NotIn predicate on the "repo_url" field.
-func RepoURLNotIn(vs ...string) predicate.App {
-	return predicate.App(sql.FieldNotIn(FieldRepoURL, vs...))
-}
-
-// RepoURLGT applies the GT predicate on the "repo_url" field.
-func RepoURLGT(v string) predicate.App {
-	return predicate.App(sql.FieldGT(FieldRepoURL, v))
-}
-
-// RepoURLGTE applies the GTE predicate on the "repo_url" field.
-func RepoURLGTE(v string) predicate.App {
-	return predicate.App(sql.FieldGTE(FieldRepoURL, v))
-}
-
-// RepoURLLT applies the LT predicate on the "repo_url" field.
-func RepoURLLT(v string) predicate.App {
-	return predicate.App(sql.FieldLT(FieldRepoURL, v))
-}
-
-// RepoURLLTE applies the LTE predicate on the "repo_url" field.
-func RepoURLLTE(v string) predicate.App {
-	return predicate.App(sql.FieldLTE(FieldRepoURL, v))
-}
-
-// RepoURLContains applies the Contains predicate on the "repo_url" field.
-func RepoURLContains(v string) predicate.App {
-	return predicate.App(sql.FieldContains(FieldRepoURL, v))
-}
-
-// RepoURLHasPrefix applies the HasPrefix predicate on the "repo_url" field.
-func RepoURLHasPrefix(v string) predicate.App {
-	return predicate.App(sql.FieldHasPrefix(FieldRepoURL, v))
-}
-
-// RepoURLHasSuffix applies the HasSuffix predicate on the "repo_url" field.
-func RepoURLHasSuffix(v string) predicate.App {
-	return predicate.App(sql.FieldHasSuffix(FieldRepoURL, v))
-}
-
-// RepoURLIsNil applies the IsNil predicate on the "repo_url" field.
-func RepoURLIsNil() predicate.App {
-	return predicate.App(sql.FieldIsNull(FieldRepoURL))
-}
-
-// RepoURLNotNil applies the NotNil predicate on the "repo_url" field.
-func RepoURLNotNil() predicate.App {
-	return predicate.App(sql.FieldNotNull(FieldRepoURL))
-}
-
-// RepoURLEqualFold applies the EqualFold predicate on the "repo_url" field.
-func RepoURLEqualFold(v string) predicate.App {
-	return predicate.App(sql.FieldEqualFold(FieldRepoURL, v))
-}
-
-// RepoURLContainsFold applies the ContainsFold predicate on the "repo_url" field.
-func RepoURLContainsFold(v string) predicate.App {
-	return predicate.App(sql.FieldContainsFold(FieldRepoURL, v))
-}
-
-// BranchEQ applies the EQ predicate on the "branch" field.
-func BranchEQ(v string) predicate.App {
-	return predicate.App(sql.FieldEQ(FieldBranch, v))
-}
-
-// BranchNEQ applies the NEQ predicate on the "branch" field.
-func BranchNEQ(v string) predicate.App {
-	return predicate.App(sql.FieldNEQ(FieldBranch, v))
-}
-
-// BranchIn applies the In predicate on the "branch" field.
-func BranchIn(vs ...string) predicate.App {
-	return predicate.App(sql.FieldIn(FieldBranch, vs...))
-}
-
-// BranchNotIn applies the NotIn predicate on the "branch" field.
-func BranchNotIn(vs ...string) predicate.App {
-	return predicate.App(sql.FieldNotIn(FieldBranch, vs...))
-}
-
-// BranchGT applies the GT predicate on the "branch" field.
-func BranchGT(v string) predicate.App {
-	return predicate.App(sql.FieldGT(FieldBranch, v))
-}
-
-// BranchGTE applies the GTE predicate on the "branch" field.
-func BranchGTE(v string) predicate.App {
-	return predicate.App(sql.FieldGTE(FieldBranch, v))
-}
-
-// BranchLT applies the LT predicate on the "branch" field.
-func BranchLT(v string) predicate.App {
-	return predicate.App(sql.FieldLT(FieldBranch, v))
-}
-
-// BranchLTE applies the LTE predicate on the "branch" field.
-func BranchLTE(v string) predicate.App {
-	return predicate.App(sql.FieldLTE(FieldBranch, v))
-}
-
-// BranchContains applies the Contains predicate on the "branch" field.
-func BranchContains(v string) predicate.App {
-	return predicate.App(sql.FieldContains(FieldBranch, v))
-}
-
-// BranchHasPrefix applies the HasPrefix predicate on the "branch" field.
-func BranchHasPrefix(v string) predicate.App {
-	return predicate.App(sql.FieldHasPrefix(FieldBranch, v))
-}
-
-// BranchHasSuffix applies the HasSuffix predicate on the "branch" field.
-func BranchHasSuffix(v string) predicate.App {
-	return predicate.App(sql.FieldHasSuffix(FieldBranch, v))
-}
-
-// BranchEqualFold applies the EqualFold predicate on the "branch" field.
-func BranchEqualFold(v string) predicate.App {
-	return predicate.App(sql.FieldEqualFold(FieldBranch, v))
-}
-
-// BranchContainsFold applies the ContainsFold predicate on the "branch" field.
-func BranchContainsFold(v string) predicate.App {
-	return predicate.App(sql.FieldContainsFold(FieldBranch, v))
 }
 
 // DeployMethodEQ applies the EQ predicate on the "deploy_method" field.
@@ -980,154 +825,79 @@ func RegistryPasswordContainsFold(v string) predicate.App {
 	return predicate.App(sql.FieldContainsFold(FieldRegistryPassword, v))
 }
 
-// ImageRepoEQ applies the EQ predicate on the "image_repo" field.
-func ImageRepoEQ(v string) predicate.App {
-	return predicate.App(sql.FieldEQ(FieldImageRepo, v))
+// TriggerTokenEQ applies the EQ predicate on the "trigger_token" field.
+func TriggerTokenEQ(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldTriggerToken, v))
 }
 
-// ImageRepoNEQ applies the NEQ predicate on the "image_repo" field.
-func ImageRepoNEQ(v string) predicate.App {
-	return predicate.App(sql.FieldNEQ(FieldImageRepo, v))
+// TriggerTokenNEQ applies the NEQ predicate on the "trigger_token" field.
+func TriggerTokenNEQ(v string) predicate.App {
+	return predicate.App(sql.FieldNEQ(FieldTriggerToken, v))
 }
 
-// ImageRepoIn applies the In predicate on the "image_repo" field.
-func ImageRepoIn(vs ...string) predicate.App {
-	return predicate.App(sql.FieldIn(FieldImageRepo, vs...))
+// TriggerTokenIn applies the In predicate on the "trigger_token" field.
+func TriggerTokenIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldIn(FieldTriggerToken, vs...))
 }
 
-// ImageRepoNotIn applies the NotIn predicate on the "image_repo" field.
-func ImageRepoNotIn(vs ...string) predicate.App {
-	return predicate.App(sql.FieldNotIn(FieldImageRepo, vs...))
+// TriggerTokenNotIn applies the NotIn predicate on the "trigger_token" field.
+func TriggerTokenNotIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldNotIn(FieldTriggerToken, vs...))
 }
 
-// ImageRepoGT applies the GT predicate on the "image_repo" field.
-func ImageRepoGT(v string) predicate.App {
-	return predicate.App(sql.FieldGT(FieldImageRepo, v))
+// TriggerTokenGT applies the GT predicate on the "trigger_token" field.
+func TriggerTokenGT(v string) predicate.App {
+	return predicate.App(sql.FieldGT(FieldTriggerToken, v))
 }
 
-// ImageRepoGTE applies the GTE predicate on the "image_repo" field.
-func ImageRepoGTE(v string) predicate.App {
-	return predicate.App(sql.FieldGTE(FieldImageRepo, v))
+// TriggerTokenGTE applies the GTE predicate on the "trigger_token" field.
+func TriggerTokenGTE(v string) predicate.App {
+	return predicate.App(sql.FieldGTE(FieldTriggerToken, v))
 }
 
-// ImageRepoLT applies the LT predicate on the "image_repo" field.
-func ImageRepoLT(v string) predicate.App {
-	return predicate.App(sql.FieldLT(FieldImageRepo, v))
+// TriggerTokenLT applies the LT predicate on the "trigger_token" field.
+func TriggerTokenLT(v string) predicate.App {
+	return predicate.App(sql.FieldLT(FieldTriggerToken, v))
 }
 
-// ImageRepoLTE applies the LTE predicate on the "image_repo" field.
-func ImageRepoLTE(v string) predicate.App {
-	return predicate.App(sql.FieldLTE(FieldImageRepo, v))
+// TriggerTokenLTE applies the LTE predicate on the "trigger_token" field.
+func TriggerTokenLTE(v string) predicate.App {
+	return predicate.App(sql.FieldLTE(FieldTriggerToken, v))
 }
 
-// ImageRepoContains applies the Contains predicate on the "image_repo" field.
-func ImageRepoContains(v string) predicate.App {
-	return predicate.App(sql.FieldContains(FieldImageRepo, v))
+// TriggerTokenContains applies the Contains predicate on the "trigger_token" field.
+func TriggerTokenContains(v string) predicate.App {
+	return predicate.App(sql.FieldContains(FieldTriggerToken, v))
 }
 
-// ImageRepoHasPrefix applies the HasPrefix predicate on the "image_repo" field.
-func ImageRepoHasPrefix(v string) predicate.App {
-	return predicate.App(sql.FieldHasPrefix(FieldImageRepo, v))
+// TriggerTokenHasPrefix applies the HasPrefix predicate on the "trigger_token" field.
+func TriggerTokenHasPrefix(v string) predicate.App {
+	return predicate.App(sql.FieldHasPrefix(FieldTriggerToken, v))
 }
 
-// ImageRepoHasSuffix applies the HasSuffix predicate on the "image_repo" field.
-func ImageRepoHasSuffix(v string) predicate.App {
-	return predicate.App(sql.FieldHasSuffix(FieldImageRepo, v))
+// TriggerTokenHasSuffix applies the HasSuffix predicate on the "trigger_token" field.
+func TriggerTokenHasSuffix(v string) predicate.App {
+	return predicate.App(sql.FieldHasSuffix(FieldTriggerToken, v))
 }
 
-// ImageRepoIsNil applies the IsNil predicate on the "image_repo" field.
-func ImageRepoIsNil() predicate.App {
-	return predicate.App(sql.FieldIsNull(FieldImageRepo))
+// TriggerTokenIsNil applies the IsNil predicate on the "trigger_token" field.
+func TriggerTokenIsNil() predicate.App {
+	return predicate.App(sql.FieldIsNull(FieldTriggerToken))
 }
 
-// ImageRepoNotNil applies the NotNil predicate on the "image_repo" field.
-func ImageRepoNotNil() predicate.App {
-	return predicate.App(sql.FieldNotNull(FieldImageRepo))
+// TriggerTokenNotNil applies the NotNil predicate on the "trigger_token" field.
+func TriggerTokenNotNil() predicate.App {
+	return predicate.App(sql.FieldNotNull(FieldTriggerToken))
 }
 
-// ImageRepoEqualFold applies the EqualFold predicate on the "image_repo" field.
-func ImageRepoEqualFold(v string) predicate.App {
-	return predicate.App(sql.FieldEqualFold(FieldImageRepo, v))
+// TriggerTokenEqualFold applies the EqualFold predicate on the "trigger_token" field.
+func TriggerTokenEqualFold(v string) predicate.App {
+	return predicate.App(sql.FieldEqualFold(FieldTriggerToken, v))
 }
 
-// ImageRepoContainsFold applies the ContainsFold predicate on the "image_repo" field.
-func ImageRepoContainsFold(v string) predicate.App {
-	return predicate.App(sql.FieldContainsFold(FieldImageRepo, v))
-}
-
-// WebhookSecretEQ applies the EQ predicate on the "webhook_secret" field.
-func WebhookSecretEQ(v string) predicate.App {
-	return predicate.App(sql.FieldEQ(FieldWebhookSecret, v))
-}
-
-// WebhookSecretNEQ applies the NEQ predicate on the "webhook_secret" field.
-func WebhookSecretNEQ(v string) predicate.App {
-	return predicate.App(sql.FieldNEQ(FieldWebhookSecret, v))
-}
-
-// WebhookSecretIn applies the In predicate on the "webhook_secret" field.
-func WebhookSecretIn(vs ...string) predicate.App {
-	return predicate.App(sql.FieldIn(FieldWebhookSecret, vs...))
-}
-
-// WebhookSecretNotIn applies the NotIn predicate on the "webhook_secret" field.
-func WebhookSecretNotIn(vs ...string) predicate.App {
-	return predicate.App(sql.FieldNotIn(FieldWebhookSecret, vs...))
-}
-
-// WebhookSecretGT applies the GT predicate on the "webhook_secret" field.
-func WebhookSecretGT(v string) predicate.App {
-	return predicate.App(sql.FieldGT(FieldWebhookSecret, v))
-}
-
-// WebhookSecretGTE applies the GTE predicate on the "webhook_secret" field.
-func WebhookSecretGTE(v string) predicate.App {
-	return predicate.App(sql.FieldGTE(FieldWebhookSecret, v))
-}
-
-// WebhookSecretLT applies the LT predicate on the "webhook_secret" field.
-func WebhookSecretLT(v string) predicate.App {
-	return predicate.App(sql.FieldLT(FieldWebhookSecret, v))
-}
-
-// WebhookSecretLTE applies the LTE predicate on the "webhook_secret" field.
-func WebhookSecretLTE(v string) predicate.App {
-	return predicate.App(sql.FieldLTE(FieldWebhookSecret, v))
-}
-
-// WebhookSecretContains applies the Contains predicate on the "webhook_secret" field.
-func WebhookSecretContains(v string) predicate.App {
-	return predicate.App(sql.FieldContains(FieldWebhookSecret, v))
-}
-
-// WebhookSecretHasPrefix applies the HasPrefix predicate on the "webhook_secret" field.
-func WebhookSecretHasPrefix(v string) predicate.App {
-	return predicate.App(sql.FieldHasPrefix(FieldWebhookSecret, v))
-}
-
-// WebhookSecretHasSuffix applies the HasSuffix predicate on the "webhook_secret" field.
-func WebhookSecretHasSuffix(v string) predicate.App {
-	return predicate.App(sql.FieldHasSuffix(FieldWebhookSecret, v))
-}
-
-// WebhookSecretIsNil applies the IsNil predicate on the "webhook_secret" field.
-func WebhookSecretIsNil() predicate.App {
-	return predicate.App(sql.FieldIsNull(FieldWebhookSecret))
-}
-
-// WebhookSecretNotNil applies the NotNil predicate on the "webhook_secret" field.
-func WebhookSecretNotNil() predicate.App {
-	return predicate.App(sql.FieldNotNull(FieldWebhookSecret))
-}
-
-// WebhookSecretEqualFold applies the EqualFold predicate on the "webhook_secret" field.
-func WebhookSecretEqualFold(v string) predicate.App {
-	return predicate.App(sql.FieldEqualFold(FieldWebhookSecret, v))
-}
-
-// WebhookSecretContainsFold applies the ContainsFold predicate on the "webhook_secret" field.
-func WebhookSecretContainsFold(v string) predicate.App {
-	return predicate.App(sql.FieldContainsFold(FieldWebhookSecret, v))
+// TriggerTokenContainsFold applies the ContainsFold predicate on the "trigger_token" field.
+func TriggerTokenContainsFold(v string) predicate.App {
+	return predicate.App(sql.FieldContainsFold(FieldTriggerToken, v))
 }
 
 // HasSites applies the HasEdge predicate on the "sites" edge.

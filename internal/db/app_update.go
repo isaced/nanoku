@@ -99,40 +99,6 @@ func (_u *AppUpdate) ClearPort() *AppUpdate {
 	return _u
 }
 
-// SetRepoURL sets the "repo_url" field.
-func (_u *AppUpdate) SetRepoURL(v string) *AppUpdate {
-	_u.mutation.SetRepoURL(v)
-	return _u
-}
-
-// SetNillableRepoURL sets the "repo_url" field if the given value is not nil.
-func (_u *AppUpdate) SetNillableRepoURL(v *string) *AppUpdate {
-	if v != nil {
-		_u.SetRepoURL(*v)
-	}
-	return _u
-}
-
-// ClearRepoURL clears the value of the "repo_url" field.
-func (_u *AppUpdate) ClearRepoURL() *AppUpdate {
-	_u.mutation.ClearRepoURL()
-	return _u
-}
-
-// SetBranch sets the "branch" field.
-func (_u *AppUpdate) SetBranch(v string) *AppUpdate {
-	_u.mutation.SetBranch(v)
-	return _u
-}
-
-// SetNillableBranch sets the "branch" field if the given value is not nil.
-func (_u *AppUpdate) SetNillableBranch(v *string) *AppUpdate {
-	if v != nil {
-		_u.SetBranch(*v)
-	}
-	return _u
-}
-
 // SetDeployMethod sets the "deploy_method" field.
 func (_u *AppUpdate) SetDeployMethod(v string) *AppUpdate {
 	_u.mutation.SetDeployMethod(v)
@@ -247,43 +213,23 @@ func (_u *AppUpdate) ClearRegistryPassword() *AppUpdate {
 	return _u
 }
 
-// SetImageRepo sets the "image_repo" field.
-func (_u *AppUpdate) SetImageRepo(v string) *AppUpdate {
-	_u.mutation.SetImageRepo(v)
+// SetTriggerToken sets the "trigger_token" field.
+func (_u *AppUpdate) SetTriggerToken(v string) *AppUpdate {
+	_u.mutation.SetTriggerToken(v)
 	return _u
 }
 
-// SetNillableImageRepo sets the "image_repo" field if the given value is not nil.
-func (_u *AppUpdate) SetNillableImageRepo(v *string) *AppUpdate {
+// SetNillableTriggerToken sets the "trigger_token" field if the given value is not nil.
+func (_u *AppUpdate) SetNillableTriggerToken(v *string) *AppUpdate {
 	if v != nil {
-		_u.SetImageRepo(*v)
+		_u.SetTriggerToken(*v)
 	}
 	return _u
 }
 
-// ClearImageRepo clears the value of the "image_repo" field.
-func (_u *AppUpdate) ClearImageRepo() *AppUpdate {
-	_u.mutation.ClearImageRepo()
-	return _u
-}
-
-// SetWebhookSecret sets the "webhook_secret" field.
-func (_u *AppUpdate) SetWebhookSecret(v string) *AppUpdate {
-	_u.mutation.SetWebhookSecret(v)
-	return _u
-}
-
-// SetNillableWebhookSecret sets the "webhook_secret" field if the given value is not nil.
-func (_u *AppUpdate) SetNillableWebhookSecret(v *string) *AppUpdate {
-	if v != nil {
-		_u.SetWebhookSecret(*v)
-	}
-	return _u
-}
-
-// ClearWebhookSecret clears the value of the "webhook_secret" field.
-func (_u *AppUpdate) ClearWebhookSecret() *AppUpdate {
-	_u.mutation.ClearWebhookSecret()
+// ClearTriggerToken clears the value of the "trigger_token" field.
+func (_u *AppUpdate) ClearTriggerToken() *AppUpdate {
+	_u.mutation.ClearTriggerToken()
 	return _u
 }
 
@@ -545,15 +491,6 @@ func (_u *AppUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.PortCleared() {
 		_spec.ClearField(app.FieldPort, field.TypeInt)
 	}
-	if value, ok := _u.mutation.RepoURL(); ok {
-		_spec.SetField(app.FieldRepoURL, field.TypeString, value)
-	}
-	if _u.mutation.RepoURLCleared() {
-		_spec.ClearField(app.FieldRepoURL, field.TypeString)
-	}
-	if value, ok := _u.mutation.Branch(); ok {
-		_spec.SetField(app.FieldBranch, field.TypeString, value)
-	}
 	if value, ok := _u.mutation.DeployMethod(); ok {
 		_spec.SetField(app.FieldDeployMethod, field.TypeString, value)
 	}
@@ -587,17 +524,11 @@ func (_u *AppUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.RegistryPasswordCleared() {
 		_spec.ClearField(app.FieldRegistryPassword, field.TypeString)
 	}
-	if value, ok := _u.mutation.ImageRepo(); ok {
-		_spec.SetField(app.FieldImageRepo, field.TypeString, value)
+	if value, ok := _u.mutation.TriggerToken(); ok {
+		_spec.SetField(app.FieldTriggerToken, field.TypeString, value)
 	}
-	if _u.mutation.ImageRepoCleared() {
-		_spec.ClearField(app.FieldImageRepo, field.TypeString)
-	}
-	if value, ok := _u.mutation.WebhookSecret(); ok {
-		_spec.SetField(app.FieldWebhookSecret, field.TypeString, value)
-	}
-	if _u.mutation.WebhookSecretCleared() {
-		_spec.ClearField(app.FieldWebhookSecret, field.TypeString)
+	if _u.mutation.TriggerTokenCleared() {
+		_spec.ClearField(app.FieldTriggerToken, field.TypeString)
 	}
 	if _u.mutation.SitesCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -895,40 +826,6 @@ func (_u *AppUpdateOne) ClearPort() *AppUpdateOne {
 	return _u
 }
 
-// SetRepoURL sets the "repo_url" field.
-func (_u *AppUpdateOne) SetRepoURL(v string) *AppUpdateOne {
-	_u.mutation.SetRepoURL(v)
-	return _u
-}
-
-// SetNillableRepoURL sets the "repo_url" field if the given value is not nil.
-func (_u *AppUpdateOne) SetNillableRepoURL(v *string) *AppUpdateOne {
-	if v != nil {
-		_u.SetRepoURL(*v)
-	}
-	return _u
-}
-
-// ClearRepoURL clears the value of the "repo_url" field.
-func (_u *AppUpdateOne) ClearRepoURL() *AppUpdateOne {
-	_u.mutation.ClearRepoURL()
-	return _u
-}
-
-// SetBranch sets the "branch" field.
-func (_u *AppUpdateOne) SetBranch(v string) *AppUpdateOne {
-	_u.mutation.SetBranch(v)
-	return _u
-}
-
-// SetNillableBranch sets the "branch" field if the given value is not nil.
-func (_u *AppUpdateOne) SetNillableBranch(v *string) *AppUpdateOne {
-	if v != nil {
-		_u.SetBranch(*v)
-	}
-	return _u
-}
-
 // SetDeployMethod sets the "deploy_method" field.
 func (_u *AppUpdateOne) SetDeployMethod(v string) *AppUpdateOne {
 	_u.mutation.SetDeployMethod(v)
@@ -1043,43 +940,23 @@ func (_u *AppUpdateOne) ClearRegistryPassword() *AppUpdateOne {
 	return _u
 }
 
-// SetImageRepo sets the "image_repo" field.
-func (_u *AppUpdateOne) SetImageRepo(v string) *AppUpdateOne {
-	_u.mutation.SetImageRepo(v)
+// SetTriggerToken sets the "trigger_token" field.
+func (_u *AppUpdateOne) SetTriggerToken(v string) *AppUpdateOne {
+	_u.mutation.SetTriggerToken(v)
 	return _u
 }
 
-// SetNillableImageRepo sets the "image_repo" field if the given value is not nil.
-func (_u *AppUpdateOne) SetNillableImageRepo(v *string) *AppUpdateOne {
+// SetNillableTriggerToken sets the "trigger_token" field if the given value is not nil.
+func (_u *AppUpdateOne) SetNillableTriggerToken(v *string) *AppUpdateOne {
 	if v != nil {
-		_u.SetImageRepo(*v)
+		_u.SetTriggerToken(*v)
 	}
 	return _u
 }
 
-// ClearImageRepo clears the value of the "image_repo" field.
-func (_u *AppUpdateOne) ClearImageRepo() *AppUpdateOne {
-	_u.mutation.ClearImageRepo()
-	return _u
-}
-
-// SetWebhookSecret sets the "webhook_secret" field.
-func (_u *AppUpdateOne) SetWebhookSecret(v string) *AppUpdateOne {
-	_u.mutation.SetWebhookSecret(v)
-	return _u
-}
-
-// SetNillableWebhookSecret sets the "webhook_secret" field if the given value is not nil.
-func (_u *AppUpdateOne) SetNillableWebhookSecret(v *string) *AppUpdateOne {
-	if v != nil {
-		_u.SetWebhookSecret(*v)
-	}
-	return _u
-}
-
-// ClearWebhookSecret clears the value of the "webhook_secret" field.
-func (_u *AppUpdateOne) ClearWebhookSecret() *AppUpdateOne {
-	_u.mutation.ClearWebhookSecret()
+// ClearTriggerToken clears the value of the "trigger_token" field.
+func (_u *AppUpdateOne) ClearTriggerToken() *AppUpdateOne {
+	_u.mutation.ClearTriggerToken()
 	return _u
 }
 
@@ -1371,15 +1248,6 @@ func (_u *AppUpdateOne) sqlSave(ctx context.Context) (_node *App, err error) {
 	if _u.mutation.PortCleared() {
 		_spec.ClearField(app.FieldPort, field.TypeInt)
 	}
-	if value, ok := _u.mutation.RepoURL(); ok {
-		_spec.SetField(app.FieldRepoURL, field.TypeString, value)
-	}
-	if _u.mutation.RepoURLCleared() {
-		_spec.ClearField(app.FieldRepoURL, field.TypeString)
-	}
-	if value, ok := _u.mutation.Branch(); ok {
-		_spec.SetField(app.FieldBranch, field.TypeString, value)
-	}
 	if value, ok := _u.mutation.DeployMethod(); ok {
 		_spec.SetField(app.FieldDeployMethod, field.TypeString, value)
 	}
@@ -1413,17 +1281,11 @@ func (_u *AppUpdateOne) sqlSave(ctx context.Context) (_node *App, err error) {
 	if _u.mutation.RegistryPasswordCleared() {
 		_spec.ClearField(app.FieldRegistryPassword, field.TypeString)
 	}
-	if value, ok := _u.mutation.ImageRepo(); ok {
-		_spec.SetField(app.FieldImageRepo, field.TypeString, value)
+	if value, ok := _u.mutation.TriggerToken(); ok {
+		_spec.SetField(app.FieldTriggerToken, field.TypeString, value)
 	}
-	if _u.mutation.ImageRepoCleared() {
-		_spec.ClearField(app.FieldImageRepo, field.TypeString)
-	}
-	if value, ok := _u.mutation.WebhookSecret(); ok {
-		_spec.SetField(app.FieldWebhookSecret, field.TypeString, value)
-	}
-	if _u.mutation.WebhookSecretCleared() {
-		_spec.ClearField(app.FieldWebhookSecret, field.TypeString)
+	if _u.mutation.TriggerTokenCleared() {
+		_spec.ClearField(app.FieldTriggerToken, field.TypeString)
 	}
 	if _u.mutation.SitesCleared() {
 		edge := &sqlgraph.EdgeSpec{
