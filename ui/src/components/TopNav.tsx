@@ -39,7 +39,8 @@ export function TopNav({
     : 'en'
 
   return (
-    <Layout.Header className="!h-16 !bg-white border-b border-[var(--border)] flex items-center !px-8 !gap-8">
+    <div className="w-full bg-white border-b border-[var(--border)]">
+      <Layout.Header className="!h-16 !bg-transparent flex items-center !px-8 !gap-8 max-w-6xl w-full mx-auto">
       <button
         type="button"
         onClick={() => navigate({ to: '/dashboard' })}
@@ -113,7 +114,8 @@ export function TopNav({
           />
         </Tooltip>
       </div>
-    </Layout.Header>
+      </Layout.Header>
+    </div>
   )
 }
 
