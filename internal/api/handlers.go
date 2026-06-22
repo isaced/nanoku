@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -23,6 +24,7 @@ type Handlers struct {
 	SkipCaddyReload bool
 	SelfContainer   string
 	ComposeBaseDir  string
+	DeployLock      *DeployLock
 }
 
 type SiteDTO struct {
@@ -280,7 +282,11 @@ func (h *Handlers) CaddyfilePreview(w http.ResponseWriter, r *http.Request) {
 // if a site has an app linked with a current container, upstream becomes
 // "container-name:port". Otherwise the stored upstream is used.
 func (h *Handlers) resolveSiteUpstreams(r *http.Request) ([]*db.Site, error) {
-	sites, err := h.DB.Site.Query().WithApp(func(q *db.AppQuery) { q.WithCurrentContainer() }).All(r.Context())
+	return h.resolveSiteUpstreamsCtx(r.Context())
+}
+
+func (h *Handlers) resolveSiteUpstreamsCtx(ctx context.Context) ([]*db.Site, error) {
+	sites, err := h.DB.Site.Query().WithApp(func(q *db.AppQuery) { q.WithCurrentContainer() }).All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +294,7 @@ func (h *Handlers) resolveSiteUpstreams(r *http.Request) ([]*db.Site, error) {
 		if s.Edges.App == nil {
 			continue
 		}
-		cur, err := s.Edges.App.QueryCurrentContainer().Only(r.Context())
+		cur, err := s.Edges.App.QueryCurrentContainer().Only(ctx)
 		if err != nil || cur == nil {
 			continue
 		}
@@ -298,7 +304,13 @@ func (h *Handlers) resolveSiteUpstreams(r *http.Request) ([]*db.Site, error) {
 }
 
 func (h *Handlers) regenerateAndReload(r *http.Request) error {
-	resolved, err := h.resolveSiteUpstreams(r)
+	return h.regenerateAndReloadCtx(r.Context())
+}
+
+// regenerateAndReloadCtx is the ctx-only form, safe to call from goroutines
+// that don't have a *http.Request (e.g. webhook deploy worker).
+func (h *Handlers) regenerateAndReloadCtx(ctx context.Context) error {
+	resolved, err := h.resolveSiteUpstreamsCtx(ctx)
 	if err != nil {
 		return err
 	}
@@ -309,7 +321,7 @@ func (h *Handlers) regenerateAndReload(r *http.Request) error {
 	if h.SkipCaddyReload || h.Docker == nil {
 		return nil
 	}
-	return h.Docker.ReloadCaddy(r.Context())
+	return h.Docker.ReloadCaddy(ctx)
 }
 
 func pathID(path, prefix string) (int, bool) {

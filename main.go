@@ -65,6 +65,7 @@ func main() {
 		SkipCaddyReload: cfg.SkipCaddyReload,
 		SelfContainer:   cfg.SelfContainer,
 		ComposeBaseDir:  cfg.ComposeBaseDir,
+		DeployLock:      api.NewDeployLock(),
 	}
 
 	mux := http.NewServeMux()
@@ -89,14 +90,21 @@ func main() {
 	mux.HandleFunc("GET /api/apps/{id}/env", handlers.ListAppEnvVars)
 	mux.HandleFunc("PUT /api/apps/{id}/env", handlers.ReplaceAppEnvVars)
 	mux.HandleFunc("GET /api/apps/{id}/deploys", handlers.ListAppDeploys)
+	mux.HandleFunc("POST /api/apps/{id}/rotate-webhook-secret", handlers.RotateWebhookSecret)
 
 	mux.HandleFunc("GET /api/system/status", handlers.SystemStatus)
 	mux.HandleFunc("GET /api/system/logs", handlers.SystemLogs)
 
 	mux.HandleFunc("GET /api/dashboard", handlers.Dashboard)
 
+	// Webhook is mounted outside the BasicAuth chain — it authenticates by
+	// HMAC-SHA256 over the request body using the app's webhook_secret.
+	webhookMux := http.NewServeMux()
+	webhookMux.HandleFunc("POST /api/webhook/{name}", handlers.Webhook)
+
 	apiMux := http.NewServeMux()
 	apiMux.Handle("/api/", mux)
+	apiMux.Handle("/api/webhook/", webhookMux)
 	apiMux.Handle("/", api.UIHandler())
 
 	root := api.BasicAuth(cfg.AdminUser, cfg.AdminPassword)(

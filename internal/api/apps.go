@@ -52,6 +52,12 @@ type AppDTO struct {
 	RegistryURL        string `json:"registryUrl,omitempty"`
 	RegistryUsername   string `json:"registryUsername,omitempty"`
 
+	// External-build webhook config. WebhookSecret is only populated on the
+	// CreateApp / RotateWebhookSecret responses, never on List/Get.
+	WebhookConfigured bool   `json:"webhookConfigured"`
+	ImageRepo         string `json:"imageRepo,omitempty"`
+	WebhookSecret     string `json:"webhookSecret,omitempty"`
+
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
 }
@@ -76,17 +82,18 @@ type EnvVarInput struct {
 }
 
 type AppInput struct {
-	Name            *string `json:"name"`
-	Image           *string `json:"image"`
-	Port            *int    `json:"port"`
-	RepoURL         *string `json:"repoUrl"`
-	Branch          *string `json:"branch"`
-	DeployMethod    *string `json:"deployMethod"`
-	ComposePath     *string `json:"composePath"`
-	ComposeContent  *string `json:"composeContent"`
-	RegistryURL     *string `json:"registryUrl"`
+	Name             *string `json:"name"`
+	Image            *string `json:"image"`
+	Port             *int    `json:"port"`
+	RepoURL          *string `json:"repoUrl"`
+	Branch           *string `json:"branch"`
+	DeployMethod     *string `json:"deployMethod"`
+	ComposePath      *string `json:"composePath"`
+	ComposeContent   *string `json:"composeContent"`
+	RegistryURL      *string `json:"registryUrl"`
 	RegistryUsername *string `json:"registryUsername"`
 	RegistryPassword *string `json:"registryPassword"`
+	ImageRepo        *string `json:"imageRepo"`
 	// ClearRegistry wipes stored registry credentials.
 	ClearRegistry *bool `json:"clearRegistry"`
 }
@@ -180,6 +187,12 @@ func (h *Handlers) toAppDTO(ctx context.Context, a *db.App) AppDTO {
 		if a.RegistryURL != nil {
 			out.RegistryURL = *a.RegistryURL
 		}
+	}
+	if a.ImageRepo != nil {
+		out.ImageRepo = *a.ImageRepo
+	}
+	if a.WebhookSecret != nil && *a.WebhookSecret != "" && a.ImageRepo != nil && *a.ImageRepo != "" {
+		out.WebhookConfigured = true
 	}
 	if h.Docker != nil {
 		cur, err := a.QueryCurrentContainer().Only(ctx)
@@ -343,6 +356,23 @@ func (h *Handlers) CreateApp(w http.ResponseWriter, r *http.Request) {
 	if in.RegistryPassword != nil && *in.RegistryPassword != "" {
 		create.SetRegistryPassword(*in.RegistryPassword)
 	}
+
+	// Webhook deploy: image_repo triggers secret auto-generation. The secret
+	// is returned in the create response exactly once; subsequent Get/List
+	// only report WebhookConfigured.
+	var generatedSecret string
+	if in.ImageRepo != nil && strings.TrimSpace(*in.ImageRepo) != "" {
+		repo := strings.TrimSpace(*in.ImageRepo)
+		create.SetImageRepo(repo)
+		secret, err := randomSecret()
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, fmt.Errorf("generate webhook secret: %w", err))
+			return
+		}
+		create.SetWebhookSecret(secret)
+		generatedSecret = secret
+	}
+
 	a, err := create.Save(r.Context())
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
@@ -356,7 +386,9 @@ func (h *Handlers) CreateApp(w http.ResponseWriter, r *http.Request) {
 			_ = werr
 		}
 	}
-	writeJSON(w, http.StatusCreated, h.toAppDTO(r.Context(), a))
+	dto := h.toAppDTO(r.Context(), a)
+	dto.WebhookSecret = generatedSecret // single-shot: only on this create response
+	writeJSON(w, http.StatusCreated, dto)
 }
 
 func (h *Handlers) GetApp(w http.ResponseWriter, r *http.Request) {
@@ -385,6 +417,11 @@ func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r.URL.Path, "/api/apps/")
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
+		return
+	}
+	a, err := h.DB.App.Get(r.Context(), id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err)
 		return
 	}
 	var in AppInput
@@ -469,7 +506,25 @@ func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
 	} else if in.RegistryPassword != nil && *in.RegistryPassword != "" {
 		upd.SetRegistryPassword(*in.RegistryPassword)
 	}
-	a, err := upd.Save(r.Context())
+	if in.ImageRepo != nil {
+		repo := strings.TrimSpace(*in.ImageRepo)
+		if repo == "" {
+			upd.ClearImageRepo()
+			upd.ClearWebhookSecret()
+		} else {
+			upd.SetImageRepo(repo)
+			// Only auto-provision secret when transitioning from "no webhook".
+			if a.WebhookSecret == nil || *a.WebhookSecret == "" {
+				secret, err := randomSecret()
+				if err != nil {
+					writeErr(w, http.StatusInternalServerError, fmt.Errorf("generate webhook secret: %w", err))
+					return
+				}
+				upd.SetWebhookSecret(secret)
+			}
+		}
+	}
+	a, err = upd.Save(r.Context())
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
