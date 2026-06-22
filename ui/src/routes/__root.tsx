@@ -37,16 +37,18 @@ function RootComponent() {
           },
           components: {
             Menu: {
-              horizontalItemSelectedColor: '#1f2937',
-              horizontalItemHoverColor: '#f0b429',
-              itemSelectedColor: '#1f2937',
-              itemHoverColor: '#f0b429',
+              itemColor: '#6b7280',
+              itemHoverColor: '#1f2937',
+              itemHoverBg: '#fafafa',
+              itemSelectedColor: '#f0b429',
+              horizontalItemSelectedColor: '#f0b429',
+              horizontalItemHoverColor: '#1f2937',
+              horizontalItemHoverBg: '#fafafa',
               itemActiveBg: 'transparent',
             },
             Layout: {
               headerBg: '#ffffff',
-              headerHeight: 56,
-              headerPadding: '0 32px',
+              headerHeight: 64,
             },
           },
         }}

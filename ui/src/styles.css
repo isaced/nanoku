@@ -63,3 +63,12 @@ nav a:hover {
   color: inherit;
 }
 
+/* TopNav: force selected-item underline to the accent color. The token
+   `horizontalItemSelectedColor` is set in __root.tsx, but antd renders the
+   ::after border-bottom via the text-shadow trick in some versions, so we
+   belt-and-suspenders it with an explicit color. */
+header .ant-menu-horizontal > .ant-menu-item-selected::after,
+header .ant-menu-horizontal > .ant-menu-item-selected:hover::after {
+  border-bottom-color: var(--accent) !important;
+}
+

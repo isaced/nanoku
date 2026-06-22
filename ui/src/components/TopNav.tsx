@@ -39,21 +39,35 @@ export function TopNav({
     : 'en'
 
   return (
-    <Layout.Header className="!bg-white border-b border-[var(--border)] flex items-center gap-6">
-      <div className="flex items-center gap-2">
-        <div className="size-2 rounded-full bg-[var(--accent)]" />
-        <span className="mono text-sm tracking-wider text-[var(--fg)]">nanoku</span>
-      </div>
+    <Layout.Header className="!h-16 !bg-white border-b border-[var(--border)] flex items-center !px-8 !gap-8">
+      <button
+        type="button"
+        onClick={() => navigate({ to: '/dashboard' })}
+        className="flex items-center gap-2.5 cursor-pointer bg-transparent border-0 p-0"
+      >
+        <div className="size-7 rounded-md bg-[var(--accent)] flex items-center justify-center text-white font-bold text-[15px] leading-none shadow-[0_1px_2px_rgba(240,180,41,0.35)]">
+          N
+        </div>
+        <span className="text-[15px] font-semibold tracking-tight text-[var(--fg)]">
+          nanoku
+        </span>
+      </button>
       <Menu
         mode="horizontal"
         selectedKeys={[location.pathname as NavKey]}
         onClick={({ key }) => navigate({ to: key as NavKey })}
-        items={navItems.map((i) => ({ ...i }))}
+        items={navItems}
         className="flex-1 !min-w-0 !border-0 !bg-transparent"
       />
-      <div className="flex items-center gap-3 text-xs">
-        <DockerBadge status={status} />
-        <CaddyBadge status={status} />
+      <div className="flex items-center gap-2">
+        {status && (
+          <div className="flex items-center gap-3 px-3 py-1.5 rounded-md bg-[var(--bg-elevated)] border border-[var(--border)]">
+            <DockerBadge status={status} />
+            <div className="w-px h-3.5 bg-[var(--border)]" />
+            <CaddyBadge status={status} />
+          </div>
+        )}
+        <div className="w-px h-5 bg-[var(--border)] mx-1" />
         <Tooltip title={t('language')}>
           <Dropdown
             placement="bottomRight"
@@ -77,8 +91,8 @@ export function TopNav({
             <Button
               type="text"
               size="small"
-              icon={<Globe size={13} />}
-              className="!font-mono"
+              icon={<Globe size={15} />}
+              className="!font-mono !text-[var(--fg-muted)] hover:!text-[var(--fg)] hover:!bg-[var(--bg-elevated)]"
             >
               {currentLang === 'zh' ? '中' : 'EN'}
             </Button>
@@ -90,11 +104,12 @@ export function TopNav({
             size="small"
             icon={
               <RefreshCw
-                size={13}
+                size={15}
                 className={loading ? 'animate-spin' : ''}
               />
             }
             onClick={onRefresh}
+            className="!text-[var(--fg-muted)] hover:!text-[var(--fg)] hover:!bg-[var(--bg-elevated)]"
           />
         </Tooltip>
       </div>
@@ -108,16 +123,16 @@ export function DockerBadge({ status }: { status: Status | null }) {
   if (status.dockerConnected) {
     return (
       <span className="inline-flex items-center gap-1.5 text-[var(--success)]">
-        <CircleCheck size={12} />
-        <span className="mono">docker</span>
+        <CircleCheck size={13} />
+        <span className="mono text-[11px]">docker</span>
       </span>
     )
   }
   return (
     <Tooltip title={t('dockerUnreachable')}>
       <span className="inline-flex items-center gap-1.5 text-[var(--danger)]">
-        <CircleX size={12} />
-        <span className="mono">docker</span>
+        <CircleX size={13} />
+        <span className="mono text-[11px]">docker</span>
       </span>
     </Tooltip>
   )
@@ -129,23 +144,23 @@ export function CaddyBadge({ status }: { status: Status | null }) {
   if (s === 'running') {
     return (
       <span className="inline-flex items-center gap-1.5 text-[var(--success)]">
-        <CircleCheck size={12} />
-        <span className="mono">caddy</span>
+        <CircleCheck size={13} />
+        <span className="mono text-[11px]">caddy</span>
       </span>
     )
   }
   if (s === 'not_found' || s === 'skipped') {
     return (
       <span className="inline-flex items-center gap-1.5 text-[var(--fg-muted)]">
-        <CircleDashed size={12} />
-        <span className="mono">caddy · {s}</span>
+        <CircleDashed size={13} />
+        <span className="mono text-[11px]">caddy · {s}</span>
       </span>
     )
   }
   return (
     <span className="inline-flex items-center gap-1.5 text-[var(--danger)]">
-      <CircleX size={12} />
-      <span className="mono">caddy · {s}</span>
+      <CircleX size={13} />
+      <span className="mono text-[11px]">caddy · {s}</span>
     </span>
   )
 }
