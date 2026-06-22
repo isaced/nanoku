@@ -1,0 +1,30 @@
+.git
+.github
+.gitignore
+.dockerignore
+Dockerfile
+Makefile
+README.md
+docs
+.run
+*.log
+.DS_Store
+
+# UI
+ui/node_modules
+ui/dist
+ui/.tanstack
+ui/.vscode
+
+# Go
+bin/
+*.test
+*.out
+coverage.*
+
+# Runtime data
+nanoku.db
+nanoku.db-shm
+nanoku.db-wal
+composes/
+Caddyfile
