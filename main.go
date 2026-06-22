@@ -84,6 +84,8 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/me", handlers.Me)
+	mux.HandleFunc("POST /api/me/password", handlers.ChangePassword)
 	mux.HandleFunc("GET /api/sites", handlers.ListSites)
 	mux.HandleFunc("POST /api/sites", handlers.CreateSite)
 	mux.HandleFunc("PUT /api/sites/{id}", handlers.UpdateSite)
