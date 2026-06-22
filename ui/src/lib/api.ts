@@ -2,6 +2,7 @@ import { getCredentials, clearCredentials } from './auth';
 import type {
   App,
   AppInput,
+  Dashboard,
   Deploy,
   EnvVar,
   Site,
@@ -94,6 +95,8 @@ export const api = {
   systemStatus: () => request<SystemStatus>('/api/system/status'),
   systemLogs: (source: 'caddy' | 'nanoku', tail = 200) =>
     request<string>(`/api/system/logs?source=${source}&tail=${tail}`),
+
+  dashboard: () => request<Dashboard>('/api/dashboard'),
 };
 
 export async function testCredentials(user: string, pass: string): Promise<boolean> {

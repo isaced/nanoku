@@ -92,6 +92,8 @@ func main() {
 	mux.HandleFunc("GET /api/system/status", handlers.SystemStatus)
 	mux.HandleFunc("GET /api/system/logs", handlers.SystemLogs)
 
+	mux.HandleFunc("GET /api/dashboard", handlers.Dashboard)
+
 	apiMux := http.NewServeMux()
 	apiMux.Handle("/api/", mux)
 	apiMux.Handle("/", api.UIHandler())

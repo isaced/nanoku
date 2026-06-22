@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SystemRouteImport } from './routes/system'
 import { Route as SitesRouteImport } from './routes/sites'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AppsRouteImport } from './routes/apps'
 import { Route as IndexRouteImport } from './routes/index'
 
@@ -30,6 +31,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppsRoute = AppsRouteImport.update({
   id: '/apps',
   path: '/apps',
@@ -44,6 +50,7 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/apps': typeof AppsRoute
+  '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/sites': typeof SitesRoute
   '/system': typeof SystemRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/apps': typeof AppsRoute
+  '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/sites': typeof SitesRoute
   '/system': typeof SystemRoute
@@ -59,21 +67,30 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/apps': typeof AppsRoute
+  '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/sites': typeof SitesRoute
   '/system': typeof SystemRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/apps' | '/login' | '/sites' | '/system'
+  fullPaths: '/' | '/apps' | '/dashboard' | '/login' | '/sites' | '/system'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/apps' | '/login' | '/sites' | '/system'
-  id: '__root__' | '/' | '/apps' | '/login' | '/sites' | '/system'
+  to: '/' | '/apps' | '/dashboard' | '/login' | '/sites' | '/system'
+  id:
+    | '__root__'
+    | '/'
+    | '/apps'
+    | '/dashboard'
+    | '/login'
+    | '/sites'
+    | '/system'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppsRoute: typeof AppsRoute
+  DashboardRoute: typeof DashboardRoute
   LoginRoute: typeof LoginRoute
   SitesRoute: typeof SitesRoute
   SystemRoute: typeof SystemRoute
@@ -102,6 +119,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/apps': {
       id: '/apps'
       path: '/apps'
@@ -122,6 +146,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppsRoute: AppsRoute,
+  DashboardRoute: DashboardRoute,
   LoginRoute: LoginRoute,
   SitesRoute: SitesRoute,
   SystemRoute: SystemRoute,

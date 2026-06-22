@@ -80,3 +80,54 @@ export type SystemStatus = {
   caddyContainer: string;
   dockerAvailable: boolean;
 };
+
+export type ContainerStats = {
+  name: string;
+  cpuPerc: number;
+  memUsedBytes: number;
+  memLimitBytes: number;
+  memPerc: number;
+  netRxBytes: number;
+  netTxBytes: number;
+  blockReadBytes: number;
+  blockWriteBytes: number;
+  pids: number;
+};
+
+export type DashboardSite = {
+  id: number;
+  domain: string;
+  upstream: string;
+  enabled: boolean;
+  appId?: number;
+  appName?: string;
+};
+
+export type DashboardApp = {
+  id: number;
+  name: string;
+  image: string;
+  port: number;
+  container?: Container;
+  siteDomains: string[];
+  stats?: ContainerStats;
+};
+
+export type DashboardSummary = {
+  totalSites: number;
+  enabledSites: number;
+  totalApps: number;
+  runningApps: number;
+  totalCpuPerc: number;
+  totalMemBytes: number;
+  totalMemLimitBytes: number;
+  totalMemPerc: number;
+  containerCount: number;
+};
+
+export type Dashboard = {
+  summary: DashboardSummary;
+  sites: DashboardSite[];
+  apps: DashboardApp[];
+  stats: ContainerStats[];
+};

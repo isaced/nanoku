@@ -4,6 +4,7 @@ import { CircleCheck, CircleDashed, CircleX, RefreshCw } from 'lucide-react'
 import type { Status } from '../lib/types'
 
 const navItems = [
+  { key: '/dashboard', label: 'Dashboard' },
   { key: '/sites', label: 'Sites' },
   { key: '/apps', label: 'Apps' },
   { key: '/system', label: 'System' },
