@@ -8,6 +8,8 @@ import type {
   SiteInput,
   Status,
   SystemStatus,
+  Volume,
+  VolumeInput,
 } from './types';
 import { markLoggedOut } from './auth';
 
@@ -98,6 +100,12 @@ export const api = {
     request<{ count: number; hint: string; appId: number }>(
       `/api/apps/${id}/env`,
       { method: 'PUT', body: JSON.stringify(vars) },
+    ),
+  listAppVolumes: (id: number) => request<Volume[]>(`/api/apps/${id}/volumes`),
+  replaceAppVolumes: (id: number, vols: VolumeInput[]) =>
+    request<{ count: number; hint: string; appId: number }>(
+      `/api/apps/${id}/volumes`,
+      { method: 'PUT', body: JSON.stringify(vols) },
     ),
   listAppDeploys: (id: number) =>
     request<Deploy[]>(`/api/apps/${id}/deployments`),

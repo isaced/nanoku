@@ -27,6 +27,20 @@ export type Container = {
   stoppedAt?: string;
 };
 
+export type Volume = {
+  type: 'volume' | 'bind';
+  source: string;
+  target: string;
+  readOnly: boolean;
+};
+
+export type VolumeInput = {
+  type?: 'volume' | 'bind';
+  source?: string;
+  target?: string;
+  readOnly?: boolean;
+};
+
 export type App = {
   id: number;
   name: string;
@@ -34,6 +48,7 @@ export type App = {
   port: number;
   container?: Container;
   envVars?: EnvVar[];
+  volumes?: Volume[];
 
   deployMethod: 'docker' | 'compose';
   composePath?: string;
@@ -46,6 +61,8 @@ export type App = {
 
   triggerConfigured: boolean;
   triggerToken?: string;
+
+  deleteVolumesOnRemove: boolean;
 
   createdAt: string;
   updatedAt: string;
@@ -63,6 +80,7 @@ export type AppInput = {
   registryPassword?: string;
   clearRegistry?: boolean;
   enableTrigger?: boolean;
+  deleteVolumesOnRemove?: boolean;
 };
 
 export type EnvVar = {

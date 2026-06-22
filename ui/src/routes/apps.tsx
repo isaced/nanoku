@@ -11,6 +11,7 @@ import {
   Modal,
   Popconfirm,
   Radio,
+  Select,
   Space,
   Switch,
   Table,
@@ -25,6 +26,7 @@ import {
   CircleX,
   Container as ContainerIcon,
   Copy,
+  Database,
   Key,
   Pencil,
   Play,
@@ -38,7 +40,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { api, ApiError } from '../lib/api'
 import { ensureAuth, isAuthenticated } from '../lib/auth'
-import type { App as AppType, AppInput, Deploy, EnvVar, Status } from '../lib/types'
+import type { App as AppType, AppInput, Deploy, EnvVar, Status, Volume, VolumeInput } from '../lib/types'
 import { TopNav } from '../components/TopNav'
 
 export const Route = createFileRoute('/apps')({
@@ -63,6 +65,8 @@ function AppsPage() {
   const [detailAppId, setDetailAppId] = useState<number | null>(null)
   const [revealedToken, setRevealedToken] = useState<{ url: string; token: string; appName: string } | null>(null)
   const [form] = Form.useForm<AppInput>()
+  const [envDraft, setEnvDraft] = useState<EnvVar[]>([])
+  const [volumeDraft, setVolumeDraft] = useState<VolumeInput[]>([])
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -85,12 +89,14 @@ function AppsPage() {
 
   function openCreate() {
     setEditing(null)
+    setEnvDraft([])
+    setVolumeDraft([])
     form.resetFields()
-    form.setFieldsValue({ port: 80, deployMethod: 'docker' })
+    form.setFieldsValue({ port: 80, deployMethod: 'docker', deleteVolumesOnRemove: false })
     setEditorOpen(true)
   }
 
-  function openEdit(a: AppType) {
+  async function openEdit(a: AppType) {
     setEditing(a)
     form.setFieldsValue({
       name: a.name,
@@ -102,19 +108,71 @@ function AppsPage() {
       registryUrl: a.registryUrl ?? '',
       registryUsername: a.registryUsername ?? '',
       enableTrigger: a.triggerConfigured,
+      deleteVolumesOnRemove: a.deleteVolumesOnRemove,
     })
     setEditorOpen(true)
+    try {
+      const [env, vols] = await Promise.all([
+        api.listAppEnv(a.id),
+        api.listAppVolumes(a.id),
+      ])
+      setEnvDraft(env)
+      setVolumeDraft(
+        vols.map((row) => ({
+          type: row.type,
+          source: row.source.startsWith(`nanoku-${a.name}-vol-`) ? '' : row.source,
+          target: row.target,
+          readOnly: row.readOnly,
+        })),
+      )
+    } catch (err) {
+      message.error((err as Error).message)
+    }
+  }
+
+  function cleanedEnv(): EnvVar[] {
+    return envDraft
+      .map((r) => ({ key: r.key.trim(), value: r.value }))
+      .filter((r) => r.key !== '')
+  }
+  function cleanedVolumes(): VolumeInput[] {
+    return volumeDraft
+      .map((r) => ({
+        type: (r.type ?? 'volume') as 'volume' | 'bind',
+        source: (r.source ?? '').trim(),
+        target: (r.target ?? '').trim(),
+        readOnly: !!r.readOnly,
+      }))
+      .filter((r) => r.target !== '')
   }
 
   async function onSubmit() {
     const values = await form.validateFields()
-    let saved: AppType | null = null
+    const isCompose = values.deployMethod === 'compose'
     try {
       if (editing) {
-        saved = await api.updateApp(editing.id, values)
+        const saved = await api.updateApp(editing.id, values)
+        await api.replaceAppEnv(editing.id, cleanedEnv())
+        if (!isCompose) {
+          await api.replaceAppVolumes(editing.id, cleanedVolumes())
+        }
         message.success(t('toast.updated', { name: values.name }))
+        setEditorOpen(false)
+        void reload()
+        const appForRedeploy: AppType = { ...editing, ...saved }
+        modal.confirm({
+          title: t('redeployPrompt.title', { name: appForRedeploy.name }),
+          content: t('redeployPrompt.content'),
+          okText: t('redeployPrompt.ok'),
+          cancelText: t('redeployPrompt.cancel'),
+          onOk: () => runAction(appForRedeploy, 'redeployed', () => api.deployApp(appForRedeploy.id)),
+        })
       } else {
-        saved = await api.createApp(values)
+        const saved = await api.createApp(values)
+        await api.replaceAppEnv(saved.id, cleanedEnv())
+        if (!isCompose) {
+          await api.replaceAppVolumes(saved.id, cleanedVolumes())
+        }
         message.success(t('toast.added', { name: values.name }))
         if (saved.triggerToken) {
           setRevealedToken({
@@ -123,24 +181,11 @@ function AppsPage() {
             appName: saved.name,
           })
         }
+        setEditorOpen(false)
+        void reload()
       }
-      setEditorOpen(false)
-      void reload()
     } catch (err) {
       message.error((err as Error).message)
-      return
-    }
-    // On edit, ask whether to redeploy — the saved config (image/port/env/...)
-    // only takes effect in the running container after a fresh deploy.
-    if (editing && saved) {
-      const appForRedeploy: AppType = { ...editing, ...saved }
-      modal.confirm({
-        title: t('redeployPrompt.title', { name: appForRedeploy.name }),
-        content: t('redeployPrompt.content'),
-        okText: t('redeployPrompt.ok'),
-        cancelText: t('redeployPrompt.cancel'),
-        onOk: () => runAction(appForRedeploy, 'redeployed', () => api.deployApp(appForRedeploy.id)),
-      })
     }
   }
 
@@ -473,6 +518,25 @@ function AppsPage() {
             editing={editing}
             onRotate={() => editing && rotateToken(editing)}
           />
+
+          <EnvVarsSection
+            rows={envDraft}
+            onChange={setEnvDraft}
+          />
+
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, curr) => prev.deployMethod !== curr.deployMethod}
+          >
+            {({ getFieldValue }) =>
+              getFieldValue('deployMethod') === 'docker' ? (
+                <VolumesSection
+                  rows={volumeDraft}
+                  onChange={setVolumeDraft}
+                />
+              ) : null
+            }
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -490,6 +554,10 @@ function AppsPage() {
           appId={detailAppId}
           onClose={() => setDetailAppId(null)}
           onChanged={reload}
+          onEditRequested={(a) => {
+            setDetailAppId(null)
+            void openEdit(a)
+          }}
         />
       )}
     </div>
@@ -508,6 +576,226 @@ function DeployMethodSwitch({ value, onChange }: { value?: string; onChange?: (v
       <Radio.Button value="docker">{t('deployMethod.docker')}</Radio.Button>
       <Radio.Button value="compose">{t('deployMethod.compose')}</Radio.Button>
     </Radio.Group>
+  )
+}
+
+function EnvVarsSection({
+  rows,
+  onChange,
+}: {
+  rows: EnvVar[]
+  onChange: (next: EnvVar[]) => void
+}) {
+  const { t } = useTranslation('apps')
+  const [open, setOpen] = useState(rows.length > 0)
+  const [touched, setTouched] = useState(false)
+  useEffect(() => {
+    if (!touched && rows.length > 0) setOpen(true)
+  }, [rows.length, touched])
+  const count = rows.length
+  function setRow(i: number, patch: Partial<EnvVar>) {
+    onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
+  }
+  function addRow() {
+    onChange([...rows, { key: '', value: '' }])
+    setOpen(true)
+    setTouched(true)
+  }
+  function delRow(i: number) {
+    onChange(rows.filter((_, idx) => idx !== i))
+  }
+  return (
+    <div className="border border-[var(--border)] rounded-lg p-3 mb-2 bg-[var(--bg-input)]/30">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
+          {t('editor.envVarsTitle')}
+        </span>
+        {count > 0 && open && (
+          <Tag className="!m-0">{count}</Tag>
+        )}
+        <Switch
+          className="ml-auto"
+          checked={open}
+          onChange={(v) => {
+            setTouched(true)
+            setOpen(v)
+          }}
+          checkedChildren={t('registry.switchOn')}
+          unCheckedChildren={t('registry.switchOff')}
+        />
+      </div>
+      {!open ? (
+        <div className="text-xs text-[var(--fg-muted)] py-1">
+          {count > 0 ? t('editor.envVarsTitle') : t('editor.envVarsHint')}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((row, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-2 border border-[var(--border)] rounded-md p-2 bg-[var(--bg-input)]"
+            >
+              <Input
+                className="!w-40 mono text-xs"
+                placeholder={t('detail.keyPlaceholder')}
+                value={row.key}
+                onChange={(e) => setRow(i, { key: e.target.value })}
+              />
+              <Input
+                className="flex-1 mono text-xs"
+                placeholder={t('detail.valuePlaceholder')}
+                value={row.value}
+                onChange={(e) => setRow(i, { value: e.target.value })}
+              />
+              <Button
+                type="text"
+                size="small"
+                icon={<Trash2 size={13} />}
+                onClick={() => delRow(i)}
+              />
+            </div>
+          ))}
+          <Button
+            type="dashed"
+            size="small"
+            icon={<Plus size={13} />}
+            onClick={addRow}
+          >
+            {t('detail.addVar')}
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function VolumesSection({
+  rows,
+  onChange,
+}: {
+  rows: VolumeInput[]
+  onChange: (next: VolumeInput[]) => void
+}) {
+  const { t } = useTranslation('apps')
+  const [open, setOpen] = useState(rows.length > 0)
+  const [touched, setTouched] = useState(false)
+  useEffect(() => {
+    if (!touched && rows.length > 0) setOpen(true)
+  }, [rows.length, touched])
+  const count = rows.length
+  function setRow(i: number, patch: Partial<VolumeInput>) {
+    onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
+  }
+  function addRow() {
+    onChange([...rows, { type: 'volume', target: '' }])
+    setOpen(true)
+    setTouched(true)
+  }
+  function delRow(i: number) {
+    onChange(rows.filter((_, idx) => idx !== i))
+  }
+  return (
+    <div className="border border-[var(--border)] rounded-lg p-3 mb-2 bg-[var(--bg-input)]/30">
+      <div className="flex items-center gap-2 mb-2">
+        <Database size={13} className="text-[var(--fg-muted)]" />
+        <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
+          {t('editor.volumesTitle')}
+        </span>
+        {count > 0 && open && (
+          <Tag className="!m-0">{count}</Tag>
+        )}
+        <Switch
+          className="ml-auto"
+          checked={open}
+          onChange={(v) => {
+            setTouched(true)
+            setOpen(v)
+          }}
+          checkedChildren={t('registry.switchOn')}
+          unCheckedChildren={t('registry.switchOff')}
+        />
+      </div>
+      {!open ? (
+        <div className="text-xs text-[var(--fg-muted)] py-1">
+          {t('editor.volumesHint')}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="space-y-2">
+            {rows.map((row, i) => {
+              const isAuto = !row.source && row.type === 'volume'
+              return (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 border border-[var(--border)] rounded-md p-2 bg-[var(--bg-input)]"
+                >
+                  <Select
+                    className="!w-32"
+                    value={row.type ?? 'volume'}
+                    onChange={(v) => setRow(i, { type: v })}
+                    options={[
+                      { value: 'volume', label: t('volumeEditor.typeVolume') },
+                      { value: 'bind', label: t('volumeEditor.typeBind') },
+                    ]}
+                  />
+                  <Input
+                    className="!w-56 mono text-xs"
+                    placeholder={
+                      row.type === 'bind'
+                        ? t('volumeEditor.sourceBindPlaceholder')
+                        : t('volumeEditor.sourceVolumePlaceholder')
+                    }
+                    value={row.source ?? ''}
+                    onChange={(e) => setRow(i, { source: e.target.value })}
+                  />
+                  <Input
+                    className="flex-1 mono text-xs"
+                    placeholder={t('volumeEditor.targetPlaceholder')}
+                    value={row.target ?? ''}
+                    onChange={(e) => setRow(i, { target: e.target.value })}
+                  />
+                  <Tooltip title={t('volumeEditor.readOnly')}>
+                    <Switch
+                      checked={!!row.readOnly}
+                      onChange={(v) => setRow(i, { readOnly: v })}
+                    />
+                  </Tooltip>
+                  {isAuto && (
+                    <Tooltip title={t('volumeEditor.autoHint')}>
+                      <Tag className="!m-0 mono text-[10px]">
+                        {t('volumeEditor.autoBadge')}
+                      </Tag>
+                    </Tooltip>
+                  )}
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<Trash2 size={13} />}
+                    onClick={() => delRow(i)}
+                  />
+                </div>
+              )
+            })}
+            <Button
+              type="dashed"
+              size="small"
+              icon={<Plus size={13} />}
+              onClick={addRow}
+            >
+              {t('volumeEditor.addRow')}
+            </Button>
+          </div>
+          <Form.Item
+            name="deleteVolumesOnRemove"
+            valuePropName="checked"
+            extra={t('editor.deleteVolumesOnRemoveExtra')}
+            className="!mb-0"
+          >
+            <Checkbox>{t('editor.deleteVolumesOnRemove')}</Checkbox>
+          </Form.Item>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -956,10 +1244,12 @@ function AppDetail({
   appId,
   onClose,
   onChanged,
+  onEditRequested,
 }: {
   appId: number
   onClose: () => void
   onChanged: () => void
+  onEditRequested: (app: AppType) => void
 }) {
   const { message } = App.useApp()
   const { t } = useTranslation('apps')
@@ -968,20 +1258,20 @@ function AppDetail({
   const [deploys, setDeploys] = useState<Deploy[]>([])
   const [logs, setLogs] = useState<string>('')
   const [logsLoading, setLogsLoading] = useState(false)
-  const [envDraft, setEnvDraft] = useState<EnvVar[]>([])
-  const [savingEnv, setSavingEnv] = useState(false)
+  const [volumes, setVolumes] = useState<Volume[]>([])
 
   const refresh = useCallback(async () => {
     try {
-      const [a, e, d] = await Promise.all([
+      const [a, e, d, v] = await Promise.all([
         api.getApp(appId),
         api.listAppEnv(appId),
         api.listAppDeploys(appId),
+        api.listAppVolumes(appId),
       ])
       setApp(a)
       setEnv(e)
-      setEnvDraft(e)
       setDeploys(d)
+      setVolumes(v)
     } catch (err) {
       message.error((err as Error).message)
     }
@@ -1007,42 +1297,6 @@ function AppDetail({
     }
   }
 
-  function setRow(i: number, patch: Partial<EnvVar>) {
-    setEnvDraft((rows) =>
-      rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)),
-    )
-  }
-  function addRow() {
-    setEnvDraft((rows) => [...rows, { key: '', value: '' }])
-  }
-  function delRow(i: number) {
-    setEnvDraft((rows) => rows.filter((_, idx) => idx !== i))
-  }
-
-  async function saveEnv() {
-    const cleaned = envDraft
-      .map((r) => ({ key: r.key.trim(), value: r.value }))
-      .filter((r) => r.key !== '')
-    const keys = cleaned.map((r) => r.key)
-    if (new Set(keys).size !== keys.length) {
-      message.error(t('detail.duplicateKeys'))
-      return
-    }
-    setSavingEnv(true)
-    try {
-      await api.replaceAppEnv(appId, cleaned)
-      message.success(
-        t('detail.saveEnvSuccess', { count: cleaned.length }),
-      )
-      void refresh()
-      void onChanged()
-    } catch (err) {
-      message.error((err as Error).message)
-    } finally {
-      setSavingEnv(false)
-    }
-  }
-
   return (
     <Drawer
       open
@@ -1052,6 +1306,15 @@ function AppDetail({
         <div className="flex items-center gap-3">
           <span className="mono text-base">{app.name}</span>
           {app.container && <Tag className="!m-0">{app.container.status}</Tag>}
+          <Button
+            size="small"
+            type="text"
+            icon={<Pencil size={13} />}
+            className="!ml-auto"
+            onClick={() => app && onEditRequested(app)}
+          >
+            {t('detail.editInEditor')}
+          </Button>
         </div>
       ) : t('common:status.loading', { ns: 'common' })}
       destroyOnClose
@@ -1068,22 +1331,25 @@ function AppDetail({
               key: 'overview',
               label: t('detail.tabOverview'),
               children: (
-                <div className="space-y-3 text-sm">
-                  <Field label={t('detail.image')} value={app.image} mono />
-                  <Field label={t('detail.internalPort')} value={String(app.port)} mono />
-                  <Field label={t('detail.created')} value={app.createdAt} mono />
-                  {app.container && (
-                    <>
-                      <Field label={t('detail.container')} value={app.container.name} mono />
-                      <Field
-                        label={t('detail.started')}
-                        value={app.container.startedAt ?? '—'}
-                        mono
-                      />
-                    </>
-                  )}
+                <div className="space-y-4 text-sm">
+                  <div className="space-y-3">
+                    <Field label={t('detail.image')} value={app.image} mono />
+                    <Field label={t('detail.internalPort')} value={String(app.port)} mono />
+                    <Field label={t('detail.created')} value={app.createdAt} mono />
+                    {app.container && (
+                      <>
+                        <Field label={t('detail.container')} value={app.container.name} mono />
+                        <Field
+                          label={t('detail.started')}
+                          value={app.container.startedAt ?? '—'}
+                          mono
+                        />
+                      </>
+                    )}
+                  </div>
+
                   {app.triggerConfigured && (
-                    <div className="border border-[var(--border)] rounded-md p-3 mt-3 bg-[var(--bg-input)]/40">
+                    <div className="border border-[var(--border)] rounded-md p-3 bg-[var(--bg-input)]/40">
                       <div className="flex items-center gap-2 mb-2">
                         <Bell size={13} className="text-[var(--fg-muted)]" />
                         <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
@@ -1123,67 +1389,78 @@ function AppDetail({
                       </div>
                     </div>
                   )}
-                </div>
-              ),
-            },
-            {
-              key: 'env',
-              label: t('detail.tabEnv', { count: env.length }),
-              children: (
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    {envDraft.map((row, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-2 border border-[var(--border)] rounded-md p-2 bg-[var(--bg-input)]"
-                      >
-                        <Input
-                          className="!w-40 mono text-xs"
-                          placeholder={t('detail.keyPlaceholder')}
-                          value={row.key}
-                          onChange={(e) => setRow(i, { key: e.target.value })}
-                        />
-                        <Input
-                          className="flex-1 mono text-xs"
-                          placeholder={t('detail.valuePlaceholder')}
-                          value={row.value}
-                          onChange={(e) => setRow(i, { value: e.target.value })}
-                        />
-                        <Button
-                          type="text"
-                          size="small"
-                          icon={<Trash2 size={13} />}
-                          onClick={() => delRow(i)}
-                        />
+
+                  <ReadOnlyBlock title={t('detail.envVars')} count={env.length}>
+                    {env.length === 0 ? (
+                      <div className="text-xs text-[var(--fg-muted)] py-2">
+                        {t('detail.noEnvVars')}
                       </div>
-                    ))}
-                    <Button
-                      type="dashed"
-                      size="small"
-                      icon={<Plus size={13} />}
-                      onClick={addRow}
-                    >
-                      {t('detail.addVar')}
-                    </Button>
-                  </div>
-                  <Popconfirm
-                    title={t('detail.saveAndRedeployTitle')}
-                    description={t('detail.saveAndRedeployDescription')}
-                    okText={t('detail.saveEnv')}
-                    cancelText={t('actions.cancel', { ns: 'common' })}
-                    onConfirm={saveEnv}
-                  >
-                    <Button
-                      type="primary"
-                      loading={savingEnv}
-                      disabled={envDraft.length === 0}
-                    >
-                      {t('detail.saveEnv')}
-                    </Button>
-                  </Popconfirm>
-                  <p className="text-xs text-[var(--fg-muted)]">
-                    {t('detail.saveEnvHint')}
-                  </p>
+                    ) : (
+                      <div className="space-y-1">
+                        {env.map((row, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center gap-2 text-xs mono py-0.5"
+                          >
+                            <span className="text-[var(--fg-muted)] w-44 shrink-0 truncate">
+                              {row.key}
+                            </span>
+                            <span className="text-[var(--fg)] break-all">
+                              {row.value}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </ReadOnlyBlock>
+
+                  {app.deployMethod === 'docker' && (
+                    <ReadOnlyBlock title={t('detail.volumes')} count={volumes.length}>
+                      {volumes.length === 0 ? (
+                        <div className="text-xs text-[var(--fg-muted)] py-2">
+                          {t('detail.noVolumes')}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {volumes.map((v, i) => (
+                            <div
+                              key={i}
+                              className="flex items-center gap-2 text-xs mono border border-[var(--border)] rounded-md px-2 py-1 bg-[var(--bg-input)]"
+                            >
+                              <Tag className="!m-0" color={v.type === 'bind' ? 'purple' : 'default'}>
+                                {v.type === 'bind' ? t('detail.typeBind') : t('detail.typeVolume')}
+                              </Tag>
+                              <span className="text-[var(--fg)] break-all flex-1">
+                                {v.source || (
+                                  <span className="text-[var(--fg-muted)]">
+                                    {t('volumeEditor.autoBadge')}
+                                  </span>
+                                )}
+                                <span className="text-[var(--fg-muted)] mx-1">→</span>
+                                <span>{v.target}</span>
+                              </span>
+                              {v.readOnly && (
+                                <Tag className="!m-0">{t('detail.readOnly')}</Tag>
+                              )}
+                            </div>
+                          ))}
+                          {app.deleteVolumesOnRemove && (
+                            <div className="text-xs text-[var(--fg-muted)]">
+                              {t('detail.deleteVolumesOnRemove')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </ReadOnlyBlock>
+                  )}
+
+                  {app.deployMethod === 'compose' && (
+                    <ReadOnlyBlock title={t('detail.volumes')} count={0}>
+                      <div className="text-xs text-[var(--fg-muted)] py-2">
+                        {t('detail.composeModeHint')}
+                      </div>
+                    </ReadOnlyBlock>
+                  )}
                 </div>
               ),
             },
@@ -1267,6 +1544,32 @@ function AppDetail({
         />
       )}
     </Drawer>
+  )
+}
+
+function ReadOnlyBlock({
+  title,
+  count,
+  children,
+}: {
+  title: string
+  count: number
+  children: React.ReactNode
+}) {
+  const { t } = useTranslation('apps')
+  return (
+    <div className="border border-[var(--border)] rounded-md p-3 bg-[var(--bg-input)]/40">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
+          {title}
+        </span>
+        <Tag className="!m-0">{count}</Tag>
+        <span className="text-xs text-[var(--fg-muted)] ml-auto">
+          {t('detail.editInEditor')}
+        </span>
+      </div>
+      {children}
+    </div>
   )
 }
 
