@@ -18,5 +18,11 @@ type Deploy func(*sql.Selector)
 // EnvVar is the predicate function for envvar builders.
 type EnvVar func(*sql.Selector)
 
+// Session is the predicate function for session builders.
+type Session func(*sql.Selector)
+
 // Site is the predicate function for site builders.
 type Site func(*sql.Selector)
+
+// User is the predicate function for user builders.
+type User func(*sql.Selector)

@@ -3,8 +3,8 @@ import { App, Button, Input } from 'antd'
 import { ArrowRight, Lock } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { testCredentials } from '../lib/api'
-import { setCredentials } from '../lib/auth'
+import { api, ApiError } from '../lib/api'
+import { markLoggedIn } from '../lib/auth'
 
 export const Route = createFileRoute('/login')({
   component: Login,
@@ -23,13 +23,15 @@ function Login() {
     if (!pass) return
     setBusy(true)
     try {
-      const ok = await testCredentials(user, pass)
-      if (!ok) {
-        message.error(t('invalidCredentials'))
-        return
-      }
-      setCredentials({ user, pass })
+      await api.login(user, pass)
+      markLoggedIn()
       navigate({ to: '/sites' })
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 429) {
+        message.error(t('tooManyAttempts'))
+      } else {
+        message.error(t('invalidCredentials'))
+      }
     } finally {
       setBusy(false)
     }

@@ -1,23 +1,35 @@
-const STORAGE_KEY = 'nanoku:creds';
+// Auth state is tracked in-memory only. The cookie is the source of truth —
+// `ensureAuth()` reconciles the flag against `/api/me` whenever it might be
+// stale (route entry, app boot, explicit check). No credentials are stored
+// client-side.
 
-export type Credentials = { user: string; pass: string };
+let authed = false;
 
-export function getCredentials(): Credentials | null {
+export function isAuthenticated(): boolean {
+  return authed;
+}
+
+export function markLoggedIn(): void {
+  authed = true;
+}
+
+export function markLoggedOut(): void {
+  authed = false;
+}
+
+// ensureAuth verifies the session cookie against the backend. Resolves true
+// if the cookie is valid, false otherwise (network error, 401, etc). The
+// result updates the in-memory flag.
+export async function ensureAuth(): Promise<boolean> {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Credentials;
-    if (!parsed.user || !parsed.pass) return null;
-    return parsed;
+    const res = await fetch('/api/me', { credentials: 'include' });
+    if (res.ok) {
+      authed = true;
+      return true;
+    }
   } catch {
-    return null;
+    // network error: keep previous flag, treat as not authed for routing
   }
-}
-
-export function setCredentials(creds: Credentials) {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(creds));
-}
-
-export function clearCredentials() {
-  sessionStorage.removeItem(STORAGE_KEY);
+  authed = false;
+  return false;
 }

@@ -1,4 +1,3 @@
-import { getCredentials, clearCredentials } from './auth';
 import type {
   App,
   AppInput,
@@ -10,6 +9,7 @@ import type {
   Status,
   SystemStatus,
 } from './types';
+import { markLoggedOut } from './auth';
 
 export class ApiError extends Error {
   status: number;
@@ -19,22 +19,22 @@ export class ApiError extends Error {
   }
 }
 
+type UnauthorizedHandler = () => void;
+let onUnauthorized: UnauthorizedHandler | null = null;
+
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  onUnauthorized = handler;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const creds = getCredentials();
-  if (!creds) {
-    throw new ApiError(401, 'Not authenticated');
-  }
   const headers = new Headers(init.headers);
-  headers.set('Authorization', 'Basic ' + btoa(`${creds.user}:${creds.pass}`));
   if (init.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  const res = await fetch(path, { ...init, headers });
+  const res = await fetch(path, { ...init, headers, credentials: 'include' });
   if (res.status === 401) {
-    clearCredentials();
-    if (typeof window !== 'undefined') {
-      window.location.reload();
-    }
+    markLoggedOut();
+    onUnauthorized?.();
     throw new ApiError(401, 'Unauthorized');
   }
   if (!res.ok) {
@@ -53,6 +53,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  // auth
+  login: (username: string, password: string) =>
+    request<{ username: string; role: string }>('/api/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+  logout: () => request<void>('/api/logout', { method: 'POST' }),
+  me: () => request<{ username: string; role: string }>('/api/me'),
+
+  // admin
   listSites: () => request<Site[]>('/api/sites'),
   createSite: (input: SiteInput) =>
     request<Site>('/api/sites', { method: 'POST', body: JSON.stringify(input) }),
@@ -100,10 +110,3 @@ export const api = {
 
   dashboard: () => request<Dashboard>('/api/dashboard'),
 };
-
-export async function testCredentials(user: string, pass: string): Promise<boolean> {
-  const res = await fetch('/api/status', {
-    headers: { Authorization: 'Basic ' + btoa(`${user}:${pass}`) },
-  });
-  return res.ok;
-}

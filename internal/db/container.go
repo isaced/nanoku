@@ -25,7 +25,7 @@ type Container struct {
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// Docker container ID.
 	DockerID string `json:"docker_id,omitempty"`
-	// Container name, e.g. nanoku-myapp-a1b2c3.
+	// Container name, e.g. nanoku-myapp.
 	Name string `json:"name,omitempty"`
 	// Resolved image reference.
 	Image string `json:"image,omitempty"`

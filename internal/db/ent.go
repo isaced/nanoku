@@ -16,7 +16,9 @@ import (
 	"github.com/isaced/nanoku/internal/db/container"
 	"github.com/isaced/nanoku/internal/db/deploy"
 	"github.com/isaced/nanoku/internal/db/envvar"
+	"github.com/isaced/nanoku/internal/db/session"
 	"github.com/isaced/nanoku/internal/db/site"
+	"github.com/isaced/nanoku/internal/db/user"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -81,7 +83,9 @@ func checkColumn(t, c string) error {
 			container.Table: container.ValidColumn,
 			deploy.Table:    deploy.ValidColumn,
 			envvar.Table:    envvar.ValidColumn,
+			session.Table:   session.ValidColumn,
 			site.Table:      site.ValidColumn,
+			user.Table:      user.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

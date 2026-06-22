@@ -20,8 +20,12 @@ type Tx struct {
 	Deploy *DeployClient
 	// EnvVar is the client for interacting with the EnvVar builders.
 	EnvVar *EnvVarClient
+	// Session is the client for interacting with the Session builders.
+	Session *SessionClient
 	// Site is the client for interacting with the Site builders.
 	Site *SiteClient
+	// User is the client for interacting with the User builders.
+	User *UserClient
 
 	// lazily loaded.
 	client     *Client
@@ -157,7 +161,9 @@ func (tx *Tx) init() {
 	tx.Container = NewContainerClient(tx.config)
 	tx.Deploy = NewDeployClient(tx.config)
 	tx.EnvVar = NewEnvVarClient(tx.config)
+	tx.Session = NewSessionClient(tx.config)
 	tx.Site = NewSiteClient(tx.config)
+	tx.User = NewUserClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

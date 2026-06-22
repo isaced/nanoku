@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -50,9 +49,6 @@ func Load() (*Config, error) {
 	flag.BoolVar(&c.SkipCaddyReload, "skip-caddy-reload", false, "skip Docker Caddy container management (write Caddyfile only)")
 	flag.Parse()
 
-	if c.AdminPassword == "" {
-		return nil, errors.New("NANOKU_ADMIN_PASSWORD env var is required")
-	}
 	if c.CaddyMode != "managed" {
 		return nil, fmt.Errorf("unsupported CADDY_MODE %q (v1 only supports 'managed')", c.CaddyMode)
 	}

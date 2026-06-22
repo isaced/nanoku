@@ -25,6 +25,7 @@ type Handlers struct {
 	SelfContainer   string
 	ComposeBaseDir  string
 	DeployLock      *DeployLock
+	Sessions        *SessionStore
 }
 
 type SiteDTO struct {

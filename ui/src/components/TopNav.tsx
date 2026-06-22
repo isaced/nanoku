@@ -1,15 +1,18 @@
 import { useLocation, useNavigate } from '@tanstack/react-router'
-import { Button, Dropdown, Layout, Menu, Tooltip } from 'antd'
+import { App, Button, Dropdown, Layout, Menu, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
   CircleCheck,
   CircleDashed,
   CircleX,
   Globe,
+  LogOut,
   RefreshCw,
 } from 'lucide-react'
 import type { Status } from '../lib/types'
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from '../i18n'
+import { api } from '../lib/api'
+import { markLoggedOut } from '../lib/auth'
 
 const navKeys = ['/dashboard', '/sites', '/apps', '/system'] as const
 type NavKey = (typeof navKeys)[number]
@@ -26,6 +29,19 @@ export function TopNav({
   const navigate = useNavigate()
   const location = useLocation()
   const { t, i18n } = useTranslation('nav')
+  const { message } = App.useApp()
+
+  async function onLogout() {
+    try {
+      await api.logout()
+    } catch {
+      // logout failures are non-fatal; the cookie is cleared server-side
+      // regardless of network outcome because we drop the flag locally.
+    }
+    markLoggedOut()
+    message.success(t('loggedOut'))
+    void navigate({ to: '/login' })
+  }
 
   const navItems = [
     { key: '/dashboard', label: t('dashboard') },
@@ -110,6 +126,15 @@ export function TopNav({
               />
             }
             onClick={onRefresh}
+            className="!text-[var(--fg-muted)] hover:!text-[var(--fg)] hover:!bg-[var(--bg-elevated)]"
+          />
+        </Tooltip>
+        <Tooltip title={t('logout')}>
+          <Button
+            type="text"
+            size="small"
+            icon={<LogOut size={15} />}
+            onClick={onLogout}
             className="!text-[var(--fg-muted)] hover:!text-[var(--fg)] hover:!bg-[var(--bg-elevated)]"
           />
         </Tooltip>

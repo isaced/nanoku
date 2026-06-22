@@ -4,5 +4,6 @@
   "user": "User",
   "password": "Password",
   "submit": "Continue",
-  "invalidCredentials": "Invalid credentials"
+  "invalidCredentials": "Invalid credentials",
+  "tooManyAttempts": "Too many attempts, try again in a minute"
 }

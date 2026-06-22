@@ -57,6 +57,18 @@ func (f EnvVarFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error)
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.EnvVarMutation", m)
 }
 
+// The SessionFunc type is an adapter to allow the use of ordinary
+// function as Session mutator.
+type SessionFunc func(context.Context, *db.SessionMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SessionFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.SessionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.SessionMutation", m)
+}
+
 // The SiteFunc type is an adapter to allow the use of ordinary
 // function as Site mutator.
 type SiteFunc func(context.Context, *db.SiteMutation) (db.Value, error)
@@ -67,6 +79,18 @@ func (f SiteFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.SiteMutation", m)
+}
+
+// The UserFunc type is an adapter to allow the use of ordinary
+// function as User mutator.
+type UserFunc func(context.Context, *db.UserMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UserFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.UserMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.UserMutation", m)
 }
 
 // Condition is a hook condition function.

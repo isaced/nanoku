@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import {
   App,
   Button,
@@ -19,13 +19,14 @@ import {
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api, ApiError } from '../lib/api'
-import { clearCredentials, getCredentials } from '../lib/auth'
+import { ensureAuth, isAuthenticated } from '../lib/auth'
 import type { App as AppType, Site, Status } from '../lib/types'
 import { TopNav } from '../components/TopNav'
 
 export const Route = createFileRoute('/sites')({
-  beforeLoad: () => {
-    if (!getCredentials()) {
+  beforeLoad: async () => {
+    if (isAuthenticated()) return
+    if (!(await ensureAuth())) {
       throw redirect({ to: '/login' })
     }
   },
@@ -33,7 +34,6 @@ export const Route = createFileRoute('/sites')({
 })
 
 function SitesPage() {
-  const navigate = useNavigate()
   const { message, modal } = App.useApp()
   const { t } = useTranslation('sites')
   const [sites, setSites] = useState<Site[]>([])
@@ -50,10 +50,6 @@ function SitesPage() {
   }>()
 
   const reload = useCallback(async () => {
-    if (!getCredentials()) {
-      navigate({ to: '/login' })
-      return
-    }
     setLoading(true)
     try {
       const [s, st, a] = await Promise.all([
@@ -65,16 +61,13 @@ function SitesPage() {
       setStatus(st)
       setApps(a)
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        clearCredentials()
-        navigate({ to: '/login' })
-      } else {
+      if (!(err instanceof ApiError && err.status === 401)) {
         message.error((err as Error).message)
       }
     } finally {
       setLoading(false)
     }
-  }, [message, navigate])
+  }, [message])
 
   useEffect(() => {
     void reload()

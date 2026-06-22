@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import {
   App,
   Button,
@@ -27,13 +27,14 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api, ApiError } from '../lib/api'
-import { clearCredentials, getCredentials } from '../lib/auth'
+import { ensureAuth, isAuthenticated } from '../lib/auth'
 import type { ContainerStats, Dashboard, Status } from '../lib/types'
 import { TopNav } from '../components/TopNav'
 
 export const Route = createFileRoute('/dashboard')({
-  beforeLoad: () => {
-    if (!getCredentials()) {
+  beforeLoad: async () => {
+    if (isAuthenticated()) return
+    if (!(await ensureAuth())) {
       throw redirect({ to: '/login' })
     }
   },
@@ -53,7 +54,6 @@ function formatBytes(bytes: number): string {
 }
 
 function DashboardPage() {
-  const navigate = useNavigate()
   const { message } = App.useApp()
   const { t } = useTranslation('dashboard')
   const [data, setData] = useState<Dashboard | null>(null)
@@ -64,26 +64,19 @@ function DashboardPage() {
   const timer = useRef<number | null>(null)
 
   const reload = useCallback(async () => {
-    if (!getCredentials()) {
-      navigate({ to: '/login' })
-      return
-    }
     try {
       const [d, st] = await Promise.all([api.dashboard(), api.status()])
       setData(d)
       setStatus(st)
       setLastUpdated(new Date())
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        clearCredentials()
-        navigate({ to: '/login' })
-      } else {
+      if (!(err instanceof ApiError && err.status === 401)) {
         message.error((err as Error).message)
       }
     } finally {
       setLoading(false)
     }
-  }, [message, navigate])
+  }, [message])
 
   useEffect(() => {
     void reload()

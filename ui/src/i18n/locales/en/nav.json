@@ -7,5 +7,7 @@
   "languageEnglish": "English",
   "languageChinese": "中文",
   "dockerUnreachable": "Docker daemon unreachable",
-  "refresh": "Refresh"
+  "refresh": "Refresh",
+  "logout": "Sign out",
+  "loggedOut": "Signed out"
 }

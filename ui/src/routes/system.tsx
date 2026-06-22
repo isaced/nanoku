@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import {
   App,
   Button,
@@ -19,13 +19,14 @@ import {
 import { useCallback, useEffect, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { api, ApiError } from '../lib/api'
-import { clearCredentials, getCredentials } from '../lib/auth'
+import { ensureAuth, isAuthenticated } from '../lib/auth'
 import type { Status, SystemStatus } from '../lib/types'
 import { TopNav } from '../components/TopNav'
 
 export const Route = createFileRoute('/system')({
-  beforeLoad: () => {
-    if (!getCredentials()) {
+  beforeLoad: async () => {
+    if (isAuthenticated()) return
+    if (!(await ensureAuth())) {
       throw redirect({ to: '/login' })
     }
   },
@@ -35,7 +36,6 @@ export const Route = createFileRoute('/system')({
 const SELF_CONTAINER_ENV = 'NANOKU_SELF_CONTAINER'
 
 function SystemPage() {
-  const navigate = useNavigate()
   const { message } = App.useApp()
   const { t } = useTranslation('system')
   const [status, setStatus] = useState<Status | null>(null)
@@ -48,26 +48,19 @@ function SystemPage() {
   const [tail, setTail] = useState<number>(200)
 
   const reload = useCallback(async () => {
-    if (!getCredentials()) {
-      navigate({ to: '/login' })
-      return
-    }
     setLoading(true)
     try {
       const [st, sys] = await Promise.all([api.status(), api.systemStatus()])
       setStatus(st)
       setSystemStatus(sys)
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        clearCredentials()
-        navigate({ to: '/login' })
-      } else {
+      if (!(err instanceof ApiError && err.status === 401)) {
         message.error((err as Error).message)
       }
     } finally {
       setLoading(false)
     }
-  }, [message, navigate])
+  }, [message])
 
   useEffect(() => {
     void reload()

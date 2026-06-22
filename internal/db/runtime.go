@@ -10,7 +10,9 @@ import (
 	"github.com/isaced/nanoku/internal/db/deploy"
 	"github.com/isaced/nanoku/internal/db/envvar"
 	"github.com/isaced/nanoku/internal/db/schema"
+	"github.com/isaced/nanoku/internal/db/session"
 	"github.com/isaced/nanoku/internal/db/site"
+	"github.com/isaced/nanoku/internal/db/user"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -107,6 +109,12 @@ func init() {
 	envvarDescKey := envvarFields[0].Descriptor()
 	// envvar.KeyValidator is a validator for the "key" field. It is called by the builders before save.
 	envvar.KeyValidator = envvarDescKey.Validators[0].(func(string) error)
+	sessionFields := schema.Session{}.Fields()
+	_ = sessionFields
+	// sessionDescTokenHash is the schema descriptor for token_hash field.
+	sessionDescTokenHash := sessionFields[0].Descriptor()
+	// session.TokenHashValidator is a validator for the "token_hash" field. It is called by the builders before save.
+	session.TokenHashValidator = sessionDescTokenHash.Validators[0].(func(string) error)
 	siteMixin := schema.Site{}.Mixin()
 	siteMixinFields0 := siteMixin[0].Fields()
 	_ = siteMixinFields0
@@ -126,4 +134,23 @@ func init() {
 	siteDescEnabled := siteFields[2].Descriptor()
 	// site.DefaultEnabled holds the default value on creation for the enabled field.
 	site.DefaultEnabled = siteDescEnabled.Default.(bool)
+	userMixin := schema.User{}.Mixin()
+	userMixinFields0 := userMixin[0].Fields()
+	_ = userMixinFields0
+	userFields := schema.User{}.Fields()
+	_ = userFields
+	// userDescCreatedAt is the schema descriptor for created_at field.
+	userDescCreatedAt := userMixinFields0[0].Descriptor()
+	// user.DefaultCreatedAt holds the default value on creation for the created_at field.
+	user.DefaultCreatedAt = userDescCreatedAt.Default.(func() time.Time)
+	// userDescUpdatedAt is the schema descriptor for updated_at field.
+	userDescUpdatedAt := userMixinFields0[1].Descriptor()
+	// user.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	user.DefaultUpdatedAt = userDescUpdatedAt.Default.(func() time.Time)
+	// user.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	user.UpdateDefaultUpdatedAt = userDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// userDescRole is the schema descriptor for role field.
+	userDescRole := userFields[2].Descriptor()
+	// user.DefaultRole holds the default value on creation for the role field.
+	user.DefaultRole = userDescRole.Default.(string)
 }

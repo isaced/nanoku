@@ -57,6 +57,20 @@ func main() {
 		cancel()
 	}
 
+	// Seed the first admin from env vars on a fresh DB.
+	// Once any user row exists, the env vars are ignored on subsequent boots.
+	seedCtx, cancelSeed := context.WithTimeout(context.Background(), 10*time.Second)
+	if err := api.SeedFirstAdmin(seedCtx, database, cfg.AdminUser, cfg.AdminPassword); err != nil {
+		log.Fatalf("seed admin: %v", err)
+	}
+	cancelSeed()
+
+	sessions := api.NewSessionStore(database)
+	// Best-effort expired-session cleanup on boot; ignore errors.
+	if _, err := sessions.PurgeExpired(context.Background()); err != nil {
+		log.Printf("purge expired sessions: %v", err)
+	}
+
 	handlers := &api.Handlers{
 		DB:              database,
 		Docker:          dm,
@@ -66,6 +80,7 @@ func main() {
 		SelfContainer:   cfg.SelfContainer,
 		ComposeBaseDir:  cfg.ComposeBaseDir,
 		DeployLock:      api.NewDeployLock(),
+		Sessions:        sessions,
 	}
 
 	mux := http.NewServeMux()
@@ -99,21 +114,22 @@ func main() {
 
 	// Routing layers, outer to inner:
 	//   CORS
-	//   apiMux          — dispatches by URL pattern
+	//   apiMux              — dispatches by URL pattern
+	//     ├ POST /api/login                 (no auth — issues session cookie)
+	//     ├ POST /api/logout                (no auth — clears cookie; safe to be open)
+	//     ├ GET  /api/me                    (auth — heartbeat check from UI)
+	//     ├ POST /api/me/password           (auth — change own password)
 	//     ├ POST /api/apps/{name}/trigger   (no auth, Bearer verified in handler)
-	//     ├ /api/                          (admin: wrapped in BasicAuth)
-	//     └ /                              (UI: served as-is)
+	//     ├ /api/                           (everything else: wrapped in SessionAuth)
+	//     └ /                               (UI: served as-is)
 	//
-	// The trigger endpoint is registered before the `/api/` catch-all so
-	// it wins for matching URLs. Auth is per-branch: BasicAuth is applied
-	// to the internal mux only, not to the trigger route, because the
-	// trigger credential is a per-app bearer token, not the admin password.
-	//
-	// Provider-agnostic on purpose: any HTTP caller that can produce
-	// `Authorization: Bearer <token>` + a JSON body can fire a deploy.
-	authedInternal := api.BasicAuth(cfg.AdminUser, cfg.AdminPassword)(mux)
+	// SessionAuth replaces the old BasicAuth. Login is exposed at the top
+	// level so the auth check does not block the login attempt.
+	authedInternal := api.SessionAuth(sessions)(mux)
 
 	apiMux := http.NewServeMux()
+	apiMux.HandleFunc("POST /api/login", handlers.Login)
+	apiMux.HandleFunc("POST /api/logout", handlers.Logout)
 	apiMux.HandleFunc("POST /api/apps/{name}/trigger", handlers.Trigger)
 	apiMux.Handle("/api/", authedInternal)
 	apiMux.Handle("/", api.UIHandler())

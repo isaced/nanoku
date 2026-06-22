@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import {
   App,
   Alert,
@@ -37,13 +37,14 @@ import {
 import { useCallback, useEffect, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { api, ApiError } from '../lib/api'
-import { clearCredentials, getCredentials } from '../lib/auth'
+import { ensureAuth, isAuthenticated } from '../lib/auth'
 import type { App as AppType, AppInput, Deploy, EnvVar, Status } from '../lib/types'
 import { TopNav } from '../components/TopNav'
 
 export const Route = createFileRoute('/apps')({
-  beforeLoad: () => {
-    if (!getCredentials()) {
+  beforeLoad: async () => {
+    if (isAuthenticated()) return
+    if (!(await ensureAuth())) {
       throw redirect({ to: '/login' })
     }
   },
@@ -51,7 +52,6 @@ export const Route = createFileRoute('/apps')({
 })
 
 function AppsPage() {
-  const navigate = useNavigate()
   const { message, modal } = App.useApp()
   const { t } = useTranslation('apps')
   const [apps, setApps] = useState<AppType[]>([])
@@ -65,26 +65,19 @@ function AppsPage() {
   const [form] = Form.useForm<AppInput>()
 
   const reload = useCallback(async () => {
-    if (!getCredentials()) {
-      navigate({ to: '/login' })
-      return
-    }
     setLoading(true)
     try {
       const [a, st] = await Promise.all([api.listApps(), api.status()])
       setApps(a)
       setStatus(st)
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        clearCredentials()
-        navigate({ to: '/login' })
-      } else {
+      if (!(err instanceof ApiError && err.status === 401)) {
         message.error((err as Error).message)
       }
     } finally {
       setLoading(false)
     }
-  }, [message, navigate])
+  }, [message])
 
   useEffect(() => {
     void reload()
