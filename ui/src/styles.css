@@ -3,18 +3,18 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: dark;
-  --bg: #0a0a0b;
-  --bg-elevated: #141416;
-  --bg-input: #1c1c1f;
-  --border: #2a2a2e;
-  --border-strong: #3a3a40;
-  --fg: #e8e8ea;
-  --fg-muted: #8a8a92;
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-elevated: #fafafa;
+  --bg-input: #f5f5f5;
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+  --fg: #1f2937;
+  --fg-muted: #6b7280;
   --accent: #f0b429;
-  --accent-soft: #f0b4291a;
+  --accent-soft: #fdf6e3;
   --danger: #ef4444;
-  --success: #22c55e;
+  --success: #16a34a;
 }
 
 * {
@@ -49,5 +49,17 @@ code,
   font-feature-settings:
     'liga' 0,
     'calt' 0;
+}
+
+/* antd override: <a> defaults to primary blue. We only want this inside the
+   main content (e.g. detail links), so reset it everywhere in the chrome. */
+header a,
+nav a {
+  color: inherit;
+}
+
+header a:hover,
+nav a:hover {
+  color: inherit;
 }
 

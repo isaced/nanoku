@@ -1,5 +1,5 @@
 import { Outlet, createRootRoute, HeadContent } from '@tanstack/react-router'
-import { App as AntdApp } from 'antd'
+import { App as AntdApp, ConfigProvider, theme } from 'antd'
 
 import '../styles.css'
 
@@ -19,11 +19,38 @@ function RootComponent() {
   return (
     <>
       <HeadContent />
-      <AntdApp>
-        <div className="min-h-screen flex flex-col">
-          <Outlet />
-        </div>
-      </AntdApp>
+      <ConfigProvider
+        theme={{
+          algorithm: theme.defaultAlgorithm,
+          token: {
+            colorPrimary: '#f0b429',
+            colorInfo: '#f0b429',
+            colorLink: '#1f2937',
+            colorLinkHover: '#f0b429',
+            borderRadius: 6,
+          },
+          components: {
+            Menu: {
+              horizontalItemSelectedColor: '#1f2937',
+              horizontalItemHoverColor: '#f0b429',
+              itemSelectedColor: '#1f2937',
+              itemHoverColor: '#f0b429',
+              itemActiveBg: 'transparent',
+            },
+            Layout: {
+              headerBg: '#ffffff',
+              headerHeight: 56,
+              headerPadding: '0 32px',
+            },
+          },
+        }}
+      >
+        <AntdApp>
+          <div className="min-h-screen flex flex-col bg-[var(--bg)]">
+            <Outlet />
+          </div>
+        </AntdApp>
+      </ConfigProvider>
     </>
   )
 }

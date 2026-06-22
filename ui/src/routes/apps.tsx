@@ -33,6 +33,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import { clearCredentials, getCredentials } from '../lib/auth'
 import type { App as AppType, Container, Deploy, EnvVar, Status } from '../lib/types'
+import { TopNav } from '../components/TopNav'
 
 export const Route = createFileRoute('/apps')({
   beforeLoad: () => {
@@ -142,7 +143,7 @@ function AppsPage() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <Header status={status} onRefresh={reload} loading={loading} activeTab="apps" />
+      <TopNav status={status} onRefresh={reload} loading={loading} />
 
       <main className="flex-1 px-8 py-8 max-w-6xl w-full mx-auto">
         <div className="flex items-center justify-between mb-6">
@@ -394,127 +395,6 @@ function StatusCell({ app }: { app: AppType }) {
     <span className="inline-flex items-center gap-1.5 text-[var(--danger)]">
       <CircleX size={12} />
       <span className="mono text-xs">{s} · {app.container.name}</span>
-    </span>
-  )
-}
-
-function Header({
-  status,
-  onRefresh,
-  loading,
-  activeTab,
-}: {
-  status: Status | null
-  onRefresh: () => void
-  loading: boolean
-  activeTab: 'sites' | 'apps' | 'system'
-}) {
-  return (
-    <header className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-      <div className="px-8 h-14 flex items-center justify-between max-w-6xl mx-auto w-full">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <div className="size-2 rounded-full bg-[var(--accent)]" />
-            <span className="mono text-sm tracking-wider">nanoku</span>
-          </div>
-          <nav className="flex items-center gap-4 text-xs">
-            <a
-              href="/sites"
-              className={
-                activeTab === 'sites'
-                  ? 'text-[var(--fg)]'
-                  : 'text-[var(--fg-muted)] hover:text-[var(--fg)]'
-              }
-            >
-              Sites
-            </a>
-            <a
-              href="/apps"
-              className={
-                activeTab === 'apps'
-                  ? 'text-[var(--fg)]'
-                  : 'text-[var(--fg-muted)] hover:text-[var(--fg)]'
-              }
-            >
-              Apps
-            </a>
-            <a
-              href="/system"
-              className={
-                activeTab === 'system'
-                  ? 'text-[var(--fg)]'
-                  : 'text-[var(--fg-muted)] hover:text-[var(--fg)]'
-              }
-            >
-              System
-            </a>
-          </nav>
-        </div>
-        <div className="flex items-center gap-3 text-xs">
-          <DockerBadge status={status} />
-          <CaddyBadge status={status} />
-          <Tooltip title="Refresh">
-            <Button
-              type="text"
-              size="small"
-              icon={
-                <RefreshCw
-                  size={13}
-                  className={loading ? 'animate-spin' : ''}
-                />
-              }
-              onClick={onRefresh}
-            />
-          </Tooltip>
-        </div>
-      </div>
-    </header>
-  )
-}
-
-function DockerBadge({ status }: { status: Status | null }) {
-  if (!status) return null
-  if (status.dockerConnected) {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-[var(--success)]">
-        <CircleCheck size={12} />
-        <span className="mono">docker</span>
-      </span>
-    )
-  }
-  return (
-    <Tooltip title="Docker daemon unreachable">
-      <span className="inline-flex items-center gap-1.5 text-[var(--danger)]">
-        <CircleX size={12} />
-        <span className="mono">docker</span>
-      </span>
-    </Tooltip>
-  )
-}
-
-function CaddyBadge({ status }: { status: Status | null }) {
-  if (!status) return null
-  const s = status.caddyStatus
-  if (s === 'running') {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-[var(--success)]">
-        <CircleCheck size={12} />
-        <span className="mono">caddy</span>
-      </span>
-    )
-  }
-  if (s === 'not_found' || s === 'skipped') {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-[var(--fg-muted)]">
-        <CircleDashed size={12} />
-        <span className="mono">caddy · {s}</span>
-      </span>
-    )
-  }
-  return (
-    <span className="inline-flex items-center gap-1.5 text-[var(--danger)]">
-      <CircleX size={12} />
-      <span className="mono">caddy · {s}</span>
     </span>
   )
 }
