@@ -44,6 +44,10 @@ export type App = {
   registryUrl?: string;
   registryUsername?: string;
 
+  webhookConfigured: boolean;
+  imageRepo?: string;
+  webhookSecret?: string;
+
   createdAt: string;
   updatedAt: string;
 };
@@ -60,6 +64,7 @@ export type AppInput = {
   registryUrl?: string;
   registryUsername?: string;
   registryPassword?: string;
+  imageRepo?: string;
   clearRegistry?: boolean;
 };
 

@@ -91,6 +91,8 @@ export const api = {
     ),
   listAppDeploys: (id: number) =>
     request<Deploy[]>(`/api/apps/${id}/deploys`),
+  rotateWebhookSecret: (id: number) =>
+    request<App>(`/api/apps/${id}/rotate-webhook-secret`, { method: 'POST' }),
 
   systemStatus: () => request<SystemStatus>('/api/system/status'),
   systemLogs: (source: 'caddy' | 'nanoku', tail = 200) =>

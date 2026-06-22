@@ -1,6 +1,7 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import {
   App,
+  Alert,
   Button,
   Checkbox,
   Collapse,
@@ -21,10 +22,12 @@ import {
   Tooltip,
 } from 'antd'
 import {
+  Bell,
   CircleCheck,
   CircleDashed,
   CircleX,
   Container as ContainerIcon,
+  Copy,
   Key,
   Pencil,
   Play,
@@ -60,6 +63,7 @@ function AppsPage() {
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<AppType | null>(null)
   const [detailAppId, setDetailAppId] = useState<number | null>(null)
+  const [revealedSecret, setRevealedSecret] = useState<{ url: string; secret: string; appName: string } | null>(null)
   const [form] = Form.useForm<AppInput>()
 
   const reload = useCallback(async () => {
@@ -108,6 +112,7 @@ function AppsPage() {
       composeContent: a.composeContent ?? '',
       registryUrl: a.registryUrl ?? '',
       registryUsername: a.registryUsername ?? '',
+      imageRepo: a.imageRepo ?? '',
     })
     setEditorOpen(true)
   }
@@ -119,11 +124,33 @@ function AppsPage() {
         await api.updateApp(editing.id, values)
         message.success(`Updated ${values.name}`)
       } else {
-        await api.createApp(values)
+        const created = await api.createApp(values)
         message.success(`Added ${values.name}`)
+        if (created.webhookSecret && created.imageRepo) {
+          setRevealedSecret({
+            url: `${window.location.origin}/api/webhook/${created.name}`,
+            secret: created.webhookSecret,
+            appName: created.name,
+          })
+        }
       }
       setEditorOpen(false)
       void reload()
+    } catch (err) {
+      message.error((err as Error).message)
+    }
+  }
+
+  async function rotateSecret(a: AppType) {
+    try {
+      const updated = await api.rotateWebhookSecret(a.id)
+      if (updated.webhookSecret) {
+        setRevealedSecret({
+          url: `${window.location.origin}/api/webhook/${a.name}`,
+          secret: updated.webhookSecret,
+          appName: a.name,
+        })
+      }
     } catch (err) {
       message.error((err as Error).message)
     }
@@ -442,8 +469,22 @@ function AppsPage() {
           <Form.Item name="repoUrl" label="Repo URL (optional)">
             <Input placeholder="https://github.com/you/repo" />
           </Form.Item>
+
+          <WebhookSection
+            editing={editing}
+            onRotate={() => editing && rotateSecret(editing)}
+          />
         </Form>
       </Modal>
+
+      {revealedSecret && (
+        <WebhookSecretModal
+          appName={revealedSecret.appName}
+          url={revealedSecret.url}
+          secret={revealedSecret.secret}
+          onClose={() => setRevealedSecret(null)}
+        />
+      )}
 
       {detailAppId !== null && (
         <AppDetail
@@ -522,6 +563,143 @@ function RegistrySection({ editing }: { editing: AppType | null }) {
         </Form.Item>
       )}
     </div>
+  )
+}
+
+function WebhookSection({
+  editing,
+  onRotate,
+}: {
+  editing: AppType | null
+  onRotate: () => void
+}) {
+  return (
+    <div className="border border-[var(--border)] rounded-lg p-3 mb-2 bg-[var(--bg-input)]/30">
+      <div className="flex items-center gap-2 mb-2">
+        <Bell size={13} className="text-[var(--fg-muted)]" />
+        <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
+          GitHub webhook deploy (optional)
+        </span>
+        {editing?.webhookConfigured && (
+          <Tag color="green" className="!m-0 ml-auto">
+            active
+          </Tag>
+        )}
+      </div>
+      <Form.Item
+        name="imageRepo"
+        label="Image repository"
+        extra={
+          <span>
+            OCI image repository without tag, e.g. <code>ghcr.io/you/myapp</code>.
+            On webhook fire, nanoku pulls <code>{'<repo>:<payload-tag>'}</code>.
+            Build runs in your GitHub Actions — nanoku only pulls the image.
+          </span>
+        }
+        className="!mb-2"
+      >
+        <Input placeholder="ghcr.io/you/myapp" />
+      </Form.Item>
+      {editing?.webhookConfigured && (
+        <div className="flex items-center justify-between mt-2">
+          <span className="text-xs text-[var(--fg-muted)] mono">
+            POST {window.location.origin}/api/webhook/{editing.name}
+          </span>
+          <Popconfirm
+            title="Rotate webhook secret?"
+            description="A new random secret will be generated. You'll see it once. Old secret stops working immediately."
+            okText="Rotate"
+            onConfirm={onRotate}
+          >
+            <Button size="small" icon={<RefreshCw size={12} />}>
+              Rotate secret
+            </Button>
+          </Popconfirm>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CopyableValue({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <Input
+        readOnly
+        value={value}
+        aria-label={label}
+        className="mono text-xs"
+      />
+      <Button
+        icon={<Copy size={13} />}
+        onClick={() => {
+          void navigator.clipboard.writeText(value)
+        }}
+      >
+        Copy
+      </Button>
+    </div>
+  )
+}
+
+function WebhookSecretModal({
+  appName,
+  url,
+  secret,
+  onClose,
+}: {
+  appName: string
+  url: string
+  secret: string
+  onClose: () => void
+}) {
+  return (
+    <Modal
+      title={
+        <span className="inline-flex items-center gap-2">
+          <Bell size={16} />
+          Webhook configured for {appName}
+        </span>
+      }
+      open
+      onOk={onClose}
+      onCancel={onClose}
+      okText="Done"
+      cancelButtonProps={{ style: { display: 'none' } }}
+      width={620}
+    >
+      <Alert
+        type="warning"
+        showIcon
+        message="Copy the secret now. You won't be able to see it again."
+        className="!mb-3"
+      />
+      <div className="space-y-3">
+        <div>
+          <div className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-1">
+            Webhook URL
+          </div>
+          <CopyableValue value={url} label="Webhook URL" />
+        </div>
+        <div>
+          <div className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-1">
+            Secret (HMAC-SHA256 key)
+          </div>
+          <CopyableValue value={secret} label="Webhook secret" />
+        </div>
+        <div className="text-xs text-[var(--fg-muted)] mt-3 leading-relaxed">
+          Configure in GitHub under <strong>Repo → Settings → Webhooks → Add</strong>:
+          <ul className="list-disc ml-5 mt-1 space-y-0.5">
+            <li>Payload URL: the URL above</li>
+            <li>Content type: <code>application/json</code></li>
+            <li>Secret: the secret above</li>
+            <li>Events: "Just the push event"</li>
+          </ul>
+          On push, your GitHub Actions workflow builds and pushes the image,
+          then POSTs <code>{'{ "tag": "<sha>", "commit_message": "<msg>" }'}</code> to the URL.
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -700,6 +878,50 @@ function AppDetail({
                       />
                     </>
                   )}
+                  {app.webhookConfigured && (
+                    <div className="border border-[var(--border)] rounded-md p-3 mt-3 bg-[var(--bg-input)]/40">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Bell size={13} className="text-[var(--fg-muted)]" />
+                        <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
+                          Webhook
+                        </span>
+                        <Tag color="green" className="!m-0 ml-auto">
+                          active
+                        </Tag>
+                      </div>
+                      <div className="mono text-xs text-[var(--fg-muted)] break-all">
+                        POST {window.location.origin}/api/webhook/{app.name}
+                      </div>
+                      <div className="mono text-xs text-[var(--fg-muted)] mt-1">
+                        image: {app.imageRepo}
+                      </div>
+                      <div className="mt-2">
+                        <Popconfirm
+                          title="Rotate webhook secret?"
+                          description="A new random secret will be generated. You'll see it once."
+                          okText="Rotate"
+                          onConfirm={async () => {
+                            try {
+                              const updated = await api.rotateWebhookSecret(app.id)
+                              if (updated.webhookSecret) {
+                                message.success(
+                                  `Rotated. New URL: ${window.location.origin}/api/webhook/${app.name}`,
+                                )
+                              }
+                              void refresh()
+                              void onChanged()
+                            } catch (err) {
+                              message.error((err as Error).message)
+                            }
+                          }}
+                        >
+                          <Button size="small" icon={<RefreshCw size={12} />}>
+                            Rotate secret
+                          </Button>
+                        </Popconfirm>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ),
             },
@@ -779,7 +1001,12 @@ function AppDetail({
                       className="border border-[var(--border)] rounded-md p-3 bg-[var(--bg-input)] text-sm"
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="mono text-xs">#{d.id} · {d.trigger}</span>
+                        <span className="mono text-xs">
+                          #{d.id} · {d.trigger}
+                          {d.commitSha && (
+                            <span className="ml-2 text-[var(--fg-muted)]">{d.commitSha.slice(0, 7)}</span>
+                          )}
+                        </span>
                         <Tag
                           color={
                             d.status === 'success'
@@ -792,8 +1019,13 @@ function AppDetail({
                           {d.status}
                         </Tag>
                       </div>
+                      {d.commitMessage && (
+                        <div className="text-xs mt-1 line-clamp-2">
+                          {d.commitMessage.split('\n')[0]}
+                        </div>
+                      )}
                       {d.containerName && (
-                        <div className="mono text-xs text-[var(--fg-muted)]">
+                        <div className="mono text-xs text-[var(--fg-muted)] mt-1">
                           container: {d.containerName}
                         </div>
                       )}
