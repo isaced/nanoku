@@ -4,7 +4,6 @@ import {
   Alert,
   Button,
   Checkbox,
-  Collapse,
   Drawer,
   Form,
   Input,
@@ -13,6 +12,7 @@ import {
   Popconfirm,
   Radio,
   Space,
+  Switch,
   Table,
   Tabs,
   Tag,
@@ -115,18 +115,19 @@ function AppsPage() {
 
   async function onSubmit() {
     const values = await form.validateFields()
+    let saved: AppType | null = null
     try {
       if (editing) {
-        await api.updateApp(editing.id, values)
+        saved = await api.updateApp(editing.id, values)
         message.success(t('toast.updated', { name: values.name }))
       } else {
-        const created = await api.createApp(values)
+        saved = await api.createApp(values)
         message.success(t('toast.added', { name: values.name }))
-        if (created.triggerToken) {
+        if (saved.triggerToken) {
           setRevealedToken({
-            url: `${window.location.origin}/api/apps/${created.name}/trigger`,
-            token: created.triggerToken,
-            appName: created.name,
+            url: `${window.location.origin}/api/apps/${saved.name}/trigger`,
+            token: saved.triggerToken,
+            appName: saved.name,
           })
         }
       }
@@ -134,6 +135,19 @@ function AppsPage() {
       void reload()
     } catch (err) {
       message.error((err as Error).message)
+      return
+    }
+    // On edit, ask whether to redeploy — the saved config (image/port/env/...)
+    // only takes effect in the running container after a fresh deploy.
+    if (editing && saved) {
+      const appForRedeploy: AppType = { ...editing, ...saved }
+      modal.confirm({
+        title: t('redeployPrompt.title', { name: appForRedeploy.name }),
+        content: t('redeployPrompt.content'),
+        okText: t('redeployPrompt.ok'),
+        cancelText: t('redeployPrompt.cancel'),
+        onOk: () => runAction(appForRedeploy, 'redeployed', () => api.deployApp(appForRedeploy.id)),
+      })
     }
   }
 
@@ -506,6 +520,10 @@ function DeployMethodSwitch({ value, onChange }: { value?: string; onChange?: (v
 
 function RegistrySection({ editing }: { editing: AppType | null }) {
   const { t } = useTranslation('apps')
+  // Edit-configured opens by default; new apps and unconfigured edits stay
+  // collapsed so the password/username inputs are not in the DOM — that keeps
+  // browser autofill and password managers from grabbing them by accident.
+  const [open, setOpen] = useState(Boolean(editing?.registryConfigured))
   return (
     <div className="border border-[var(--border)] rounded-lg p-3 mb-2 bg-[var(--bg-input)]/30">
       <div className="flex items-center gap-2 mb-2">
@@ -513,44 +531,65 @@ function RegistrySection({ editing }: { editing: AppType | null }) {
         <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
           {t('registry.title')}
         </span>
-        {editing?.registryConfigured && (
+        {editing?.registryConfigured && open && (
           <Tag color="blue" className="!m-0 ml-auto">
             {t('registry.configured')}
           </Tag>
         )}
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Form.Item
-          name="registryUrl"
-          label={t('registry.url')}
-          extra={t('registry.urlExtra')}
-          className="!mb-2"
-        >
-          <Input placeholder={t('registry.urlPlaceholder')} />
-        </Form.Item>
-        <Form.Item
-          name="registryUsername"
-          label={t('registry.username')}
-          className="!mb-2"
-        >
-          <Input placeholder={t('registry.usernamePlaceholder')} />
-        </Form.Item>
-      </div>
-      <Form.Item
-        name="registryPassword"
-        label={editing?.registryConfigured ? t('registry.passwordNew') : t('registry.password')}
-        extra={editing?.registryConfigured ? t('registry.passwordExtra') : undefined}
-        className="!mb-0"
-      >
-        <Input.Password
-          placeholder={editing?.registryConfigured ? t('registry.passwordPlaceholderKeep') : t('registry.passwordPlaceholder')}
-          autoComplete="off"
+        <Switch
+          className="ml-auto"
+          checked={open}
+          onChange={setOpen}
+          checkedChildren={t('registry.switchOn')}
+          unCheckedChildren={t('registry.switchOff')}
         />
-      </Form.Item>
-      {editing?.registryConfigured && (
-        <Form.Item name="clearRegistry" valuePropName="checked" className="!mb-0 mt-2">
-          <Checkbox>{t('registry.clear')}</Checkbox>
-        </Form.Item>
+      </div>
+      {open ? (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <Form.Item
+              name="registryUrl"
+              label={t('registry.url')}
+              extra={t('registry.urlExtra')}
+              className="!mb-2"
+            >
+              <Input
+                placeholder={t('registry.urlPlaceholder')}
+                autoComplete="off"
+              />
+            </Form.Item>
+            <Form.Item
+              name="registryUsername"
+              label={t('registry.username')}
+              className="!mb-2"
+            >
+              <Input
+                placeholder={t('registry.usernamePlaceholder')}
+                autoComplete="off"
+              />
+            </Form.Item>
+          </div>
+          <Form.Item
+            name="registryPassword"
+            label={editing?.registryConfigured ? t('registry.passwordNew') : t('registry.password')}
+            extra={editing?.registryConfigured ? t('registry.passwordExtra') : undefined}
+            className="!mb-0"
+          >
+            <Input.Password
+              placeholder={editing?.registryConfigured ? t('registry.passwordPlaceholderKeep') : t('registry.passwordPlaceholder')}
+              autoComplete="new-password"
+            />
+          </Form.Item>
+          {editing?.registryConfigured && (
+            <Form.Item name="clearRegistry" valuePropName="checked" className="!mb-0 mt-2">
+              <Checkbox>{t('registry.clear')}</Checkbox>
+            </Form.Item>
+          )}
+        </>
+      ) : (
+        <div className="text-xs text-[var(--fg-muted)] py-1">
+          {t('registry.collapsedHint')}
+        </div>
       )}
     </div>
   )
@@ -564,13 +603,13 @@ function TriggerSection({
   onRotate: () => void
 }) {
   const { t } = useTranslation('apps')
-  // The trigger URL is derivable from the app name and current origin;
-  // we surface it directly in the form so the user can copy it without
-  // opening the rotate modal. The token never re-appears here — that
-  // is one-shot at create / rotate only.
   const url = editing
     ? `${window.location.origin}/api/apps/${editing.name}/trigger`
     : ''
+  // The switch is the single source of truth for the form field
+  // `enableTrigger`. Mirroring it into local state just drives the
+  // collapse / content swap.
+  const [open, setOpen] = useState(Boolean(editing?.triggerConfigured))
   return (
     <div className="border border-[var(--border)] rounded-lg p-3 mb-2 bg-[var(--bg-input)]/30">
       <div className="flex items-center gap-2 mb-2">
@@ -578,56 +617,64 @@ function TriggerSection({
         <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
           {t('trigger.sectionTitle')}
         </span>
-        {editing?.triggerConfigured && (
-          <Tag color="green" className="!m-0 ml-auto">
-            {t('common:status.active', { ns: 'common' })}
-          </Tag>
-        )}
-      </div>
-      {editing ? (
-        editing.triggerConfigured ? (
-          <div className="space-y-3">
-            <div>
-              <div className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-1">
-                {t('trigger.url')}
-              </div>
-              <CopyableValue value={url} label={t('trigger.urlLabel')} />
-            </div>
-            <details className="text-xs">
-              <summary className="cursor-pointer text-[var(--fg-muted)] hover:text-[var(--fg)] select-none">
-                {t('trigger.usageTitle')}
-              </summary>
-              <div className="mt-2">
-                <TriggerUsage url={url} appName={editing.name} />
-              </div>
-            </details>
-            <div>
-              <Popconfirm
-                title={t('trigger.rotateTitle')}
-                description={t('trigger.rotateDescription')}
-                okText={t('trigger.rotateButton')}
-                onConfirm={onRotate}
-              >
-                <Button size="small" icon={<RefreshCw size={12} />}>
-                  {t('trigger.rotateButton')}
-                </Button>
-              </Popconfirm>
-            </div>
-          </div>
-        ) : (
-          <div className="text-xs text-[var(--fg-muted)]">
-            {t('trigger.disabledHint')}
-          </div>
-        )
-      ) : (
         <Form.Item
           name="enableTrigger"
           valuePropName="checked"
-          className="!mb-0"
-          extra={t('trigger.enableExtra')}
+          className="!mb-0 ml-auto"
         >
-          <Checkbox>{t('trigger.enableLabel')}</Checkbox>
+          <Switch
+            checkedChildren={t('registry.switchOn')}
+            unCheckedChildren={t('registry.switchOff')}
+            onChange={(v) => setOpen(v)}
+          />
         </Form.Item>
+      </div>
+      {!open ? (
+        <div className="text-xs text-[var(--fg-muted)] py-1">
+          {editing && editing.triggerConfigured
+            ? t('trigger.offWhileEnabledHint')
+            : t('trigger.collapsedHint')}
+        </div>
+      ) : editing && editing.triggerConfigured ? (
+        <div className="space-y-3">
+          <div>
+            <div className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-1">
+              {t('trigger.url')}
+            </div>
+            <CopyableValue value={url} label={t('trigger.urlLabel')} />
+          </div>
+          <details className="text-xs">
+            <summary className="cursor-pointer text-[var(--fg-muted)] hover:text-[var(--fg)] select-none">
+              {t('trigger.usageTitle')}
+            </summary>
+            <div className="mt-2">
+              <TriggerUsage url={url} appName={editing.name} />
+            </div>
+          </details>
+          <div>
+            <Popconfirm
+              title={t('trigger.rotateTitle')}
+              description={t('trigger.rotateDescription')}
+              okText={t('trigger.rotateButton')}
+              onConfirm={onRotate}
+            >
+              <Button size="small" icon={<RefreshCw size={12} />}>
+                {t('trigger.rotateButton')}
+              </Button>
+            </Popconfirm>
+          </div>
+          <div className="text-[11px] text-[var(--fg-muted)]">
+            {t('trigger.disableHint')}
+          </div>
+        </div>
+      ) : editing ? (
+        <div className="text-xs text-[var(--fg-muted)] py-1">
+          {t('trigger.editNotEnabledHint')}
+        </div>
+      ) : (
+        <div className="text-xs text-[var(--fg-muted)] py-1">
+          {t('trigger.enableExtra')}
+        </div>
       )}
     </div>
   )

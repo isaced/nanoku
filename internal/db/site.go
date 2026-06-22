@@ -28,6 +28,8 @@ type Site struct {
 	Upstream string `json:"upstream,omitempty"`
 	// When false, site is omitted from generated Caddyfile.
 	Enabled bool `json:"enabled,omitempty"`
+	// Listener scheme. http forces Caddy to bind :80 and skip auto-HTTPS for this site.
+	Scheme site.Scheme `json:"scheme,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the SiteQuery when eager-loading is set.
 	Edges        SiteEdges `json:"edges"`
@@ -64,7 +66,7 @@ func (*Site) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case site.FieldID:
 			values[i] = new(sql.NullInt64)
-		case site.FieldDomain, site.FieldUpstream:
+		case site.FieldDomain, site.FieldUpstream, site.FieldScheme:
 			values[i] = new(sql.NullString)
 		case site.FieldCreatedAt, site.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -120,6 +122,12 @@ func (_m *Site) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field enabled", values[i])
 			} else if value.Valid {
 				_m.Enabled = value.Bool
+			}
+		case site.FieldScheme:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field scheme", values[i])
+			} else if value.Valid {
+				_m.Scheme = site.Scheme(value.String)
 			}
 		case site.ForeignKeys[0]:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -183,6 +191,9 @@ func (_m *Site) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Enabled))
+	builder.WriteString(", ")
+	builder.WriteString("scheme=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Scheme))
 	builder.WriteByte(')')
 	return builder.String()
 }

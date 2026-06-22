@@ -93,9 +93,10 @@ type AppInput struct {
 	RegistryPassword *string `json:"registryPassword"`
 	// ClearRegistry wipes stored registry credentials.
 	ClearRegistry *bool `json:"clearRegistry"`
-	// EnableTrigger generates a per-app bearer token on the server. The
-	// token is returned exactly once in the create response. Idempotent
-	// on update: an already-set token is left alone.
+	// EnableTrigger controls the HTTP trigger for the app.
+	//   Create: only a value of true mints a bearer token (returned once).
+	//   Update: nil leaves state alone; true mints a token if none exists;
+	//           false clears the token (trigger endpoint returns 404).
 	EnableTrigger *bool `json:"enableTrigger"`
 }
 
@@ -479,6 +480,24 @@ func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
 	} else if in.RegistryPassword != nil && *in.RegistryPassword != "" {
 		upd.SetRegistryPassword(*in.RegistryPassword)
 	}
+	// HTTP trigger:
+	//   EnableTrigger=nil  → leave current state alone
+	//   EnableTrigger=true  → if not yet enabled, mint a new bearer token
+	//   EnableTrigger=false → clear the token; trigger endpoint returns 404
+	if in.EnableTrigger != nil {
+		if *in.EnableTrigger {
+			if a.TriggerToken == nil || *a.TriggerToken == "" {
+				tok, err := randomToken()
+				if err != nil {
+					writeErr(w, http.StatusInternalServerError, fmt.Errorf("generate trigger token: %w", err))
+					return
+				}
+				upd.SetTriggerToken(tok)
+			}
+		} else {
+			upd.ClearTriggerToken()
+		}
+	}
 	a, err = upd.Save(r.Context())
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
@@ -648,14 +667,20 @@ func (h *Handlers) DeployApp(w http.ResponseWriter, r *http.Request) {
 		}
 		primaryImg = appImage(a)
 	} else {
-		// docker mode: container name has the standard pattern
-		primaryName = fmt.Sprintf("nanoku-%s-", a.Name) // partial; we'll resolve below
-		_ = primaryName
-		// Re-list to find the actual name (since we don't track the suffix ourselves)
-		names := h.findNanokuAppContainers(r.Context(), a.Name)
-		if len(names) > 0 {
-			primaryName = names[0]
-		} else {
+		// docker mode: container name is deterministic — just nanoku-<appName>.
+		primaryName = "nanoku-" + a.Name
+		// Make sure the container actually exists before we record it; a
+		// deploy that returned no container (e.g. docker run failed after
+		// the call returned) would otherwise leave a dangling Container row.
+		names, _ := h.Docker.ListContainersByNamePrefix(r.Context(), primaryName)
+		found := false
+		for _, n := range names {
+			if n == primaryName {
+				found = true
+				break
+			}
+		}
+		if !found {
 			h.markDeployFailed(r.Context(), dep.ID, errors.New("container not found after deploy"))
 			writeErr(w, http.StatusInternalServerError, errors.New("container not found after deploy"))
 			return
@@ -693,17 +718,6 @@ func (h *Handlers) DeployApp(w http.ResponseWriter, r *http.Request) {
 
 	fresh, _ := h.DB.App.Get(r.Context(), a.ID)
 	writeJSON(w, http.StatusCreated, h.toAppDTO(r.Context(), fresh))
-}
-
-// findNanokuAppContainers returns the names of running containers whose
-// name starts with "nanoku-<appName>-". Used to discover the post-deploy
-// container name when we generated a random suffix.
-func (h *Handlers) findNanokuAppContainers(ctx context.Context, appName string) []string {
-	if h.Docker == nil {
-		return nil
-	}
-	names, _ := h.Docker.ListContainersByNamePrefix(ctx, "nanoku-"+appName+"-")
-	return names
 }
 
 func (h *Handlers) markDeployFailed(ctx context.Context, depID int, cause error) {

@@ -8,6 +8,7 @@
   "table": {
     "domain": "域名",
     "upstream": "上游",
+    "scheme": "协议",
     "actions": {
       "disable": "停用",
       "enable": "启用",
@@ -42,7 +43,11 @@
     "upstreamExtraApp": "上游将自动从应用容器解析。",
     "upstreamExtraFree": "host:port、URL 或 Docker 容器名",
     "upstreamPlaceholderApp": "（自动解析）",
-    "upstreamPlaceholderFree": "localhost:3000"
+    "upstreamPlaceholderFree": "localhost:3000",
+    "scheme": "协议",
+    "schemeExtra": "https 走 Caddy 自动 HTTPS（默认）；http 强制监听 80，跳过证书签发。",
+    "schemeHttps": "HTTPS（自动证书）",
+    "schemeHttp": "HTTP（仅 :80）"
   },
   "emptyState": {
     "title": "暂无站点",

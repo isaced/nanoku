@@ -23,6 +23,10 @@ func (Site) Fields() []ent.Field {
 		field.Bool("enabled").
 			Default(true).
 			Comment("When false, site is omitted from generated Caddyfile."),
+		field.Enum("scheme").
+			Values("http", "https").
+			Default("https").
+			Comment("Listener scheme. http forces Caddy to bind :80 and skip auto-HTTPS for this site."),
 	}
 }
 

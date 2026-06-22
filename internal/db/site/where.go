@@ -300,6 +300,26 @@ func EnabledNEQ(v bool) predicate.Site {
 	return predicate.Site(sql.FieldNEQ(FieldEnabled, v))
 }
 
+// SchemeEQ applies the EQ predicate on the "scheme" field.
+func SchemeEQ(v Scheme) predicate.Site {
+	return predicate.Site(sql.FieldEQ(FieldScheme, v))
+}
+
+// SchemeNEQ applies the NEQ predicate on the "scheme" field.
+func SchemeNEQ(v Scheme) predicate.Site {
+	return predicate.Site(sql.FieldNEQ(FieldScheme, v))
+}
+
+// SchemeIn applies the In predicate on the "scheme" field.
+func SchemeIn(vs ...Scheme) predicate.Site {
+	return predicate.Site(sql.FieldIn(FieldScheme, vs...))
+}
+
+// SchemeNotIn applies the NotIn predicate on the "scheme" field.
+func SchemeNotIn(vs ...Scheme) predicate.Site {
+	return predicate.Site(sql.FieldNotIn(FieldScheme, vs...))
+}
+
 // HasApp applies the HasEdge predicate on the "app" edge.
 func HasApp() predicate.Site {
 	return predicate.Site(func(s *sql.Selector) {

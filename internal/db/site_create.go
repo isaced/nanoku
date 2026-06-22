@@ -75,6 +75,20 @@ func (_c *SiteCreate) SetNillableEnabled(v *bool) *SiteCreate {
 	return _c
 }
 
+// SetScheme sets the "scheme" field.
+func (_c *SiteCreate) SetScheme(v site.Scheme) *SiteCreate {
+	_c.mutation.SetScheme(v)
+	return _c
+}
+
+// SetNillableScheme sets the "scheme" field if the given value is not nil.
+func (_c *SiteCreate) SetNillableScheme(v *site.Scheme) *SiteCreate {
+	if v != nil {
+		_c.SetScheme(*v)
+	}
+	return _c
+}
+
 // SetAppID sets the "app" edge to the App entity by ID.
 func (_c *SiteCreate) SetAppID(id int) *SiteCreate {
 	_c.mutation.SetAppID(id)
@@ -141,6 +155,10 @@ func (_c *SiteCreate) defaults() {
 		v := site.DefaultEnabled
 		_c.mutation.SetEnabled(v)
 	}
+	if _, ok := _c.mutation.Scheme(); !ok {
+		v := site.DefaultScheme
+		_c.mutation.SetScheme(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -159,6 +177,14 @@ func (_c *SiteCreate) check() error {
 	}
 	if _, ok := _c.mutation.Enabled(); !ok {
 		return &ValidationError{Name: "enabled", err: errors.New(`db: missing required field "Site.enabled"`)}
+	}
+	if _, ok := _c.mutation.Scheme(); !ok {
+		return &ValidationError{Name: "scheme", err: errors.New(`db: missing required field "Site.scheme"`)}
+	}
+	if v, ok := _c.mutation.Scheme(); ok {
+		if err := site.SchemeValidator(v); err != nil {
+			return &ValidationError{Name: "scheme", err: fmt.Errorf(`db: validator failed for field "Site.scheme": %w`, err)}
+		}
 	}
 	return nil
 }
@@ -205,6 +231,10 @@ func (_c *SiteCreate) createSpec() (*Site, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Enabled(); ok {
 		_spec.SetField(site.FieldEnabled, field.TypeBool, value)
 		_node.Enabled = value
+	}
+	if value, ok := _c.mutation.Scheme(); ok {
+		_spec.SetField(site.FieldScheme, field.TypeEnum, value)
+		_node.Scheme = value
 	}
 	if nodes := _c.mutation.AppIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

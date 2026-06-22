@@ -8,6 +8,7 @@
   "table": {
     "domain": "Domain",
     "upstream": "Upstream",
+    "scheme": "Scheme",
     "actions": {
       "disable": "Disable",
       "enable": "Enable",
@@ -42,7 +43,11 @@
     "upstreamExtraApp": "Upstream auto-resolved from the app container.",
     "upstreamExtraFree": "host:port, URL, or docker container name",
     "upstreamPlaceholderApp": "(auto-resolved)",
-    "upstreamPlaceholderFree": "localhost:3000"
+    "upstreamPlaceholderFree": "localhost:3000",
+    "scheme": "Scheme",
+    "schemeExtra": "https uses Caddy's automatic HTTPS (default); http forces :80 and skips cert issuance.",
+    "schemeHttps": "HTTPS (auto cert)",
+    "schemeHttp": "HTTP (:80 only)"
   },
   "emptyState": {
     "title": "No sites yet",

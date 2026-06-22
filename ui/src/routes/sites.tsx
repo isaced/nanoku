@@ -42,7 +42,12 @@ function SitesPage() {
   const [loading, setLoading] = useState(true)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<Site | null>(null)
-  const [form] = Form.useForm<{ domain: string; upstream: string; appId?: number }>()
+  const [form] = Form.useForm<{
+    domain: string;
+    upstream: string;
+    appId?: number;
+    scheme: 'http' | 'https';
+  }>()
 
   const reload = useCallback(async () => {
     if (!getCredentials()) {
@@ -78,6 +83,7 @@ function SitesPage() {
   function openCreate() {
     setEditing(null)
     form.resetFields()
+    form.setFieldsValue({ scheme: 'https' })
     setEditorOpen(true)
   }
 
@@ -87,6 +93,7 @@ function SitesPage() {
       domain: s.domain,
       upstream: s.upstream,
       appId: s.appId,
+      scheme: s.scheme,
     })
     setEditorOpen(true)
   }
@@ -95,6 +102,7 @@ function SitesPage() {
     const values = await form.validateFields()
     const payload: Parameters<typeof api.createSite>[0] = {
       domain: values.domain,
+      scheme: values.scheme,
     }
     if (values.appId) {
       payload.appId = values.appId
@@ -206,6 +214,20 @@ function SitesPage() {
                       <Tag className="!m-0 text-[10px]">app · {row.appName}</Tag>
                     )}
                   </div>
+                ),
+              },
+              {
+                title: t('table.scheme'),
+                dataIndex: 'scheme',
+                width: 90,
+                render: (s: Site['scheme']) => (
+                  <Tag
+                    className={`!m-0 ${
+                      s === 'http' ? '!bg-amber-500/10 !text-amber-600' : ''
+                    }`}
+                  >
+                    {s}
+                  </Tag>
                 ),
               },
               {
@@ -335,6 +357,18 @@ function SitesPage() {
                 />
               </Form.Item>
             )}
+          </Form.Item>
+          <Form.Item
+            name="scheme"
+            label={t('editor.scheme')}
+            extra={t('editor.schemeExtra')}
+          >
+            <Select
+              options={[
+                { value: 'https', label: t('editor.schemeHttps') },
+                { value: 'http', label: t('editor.schemeHttp') },
+              ]}
+            />
           </Form.Item>
         </Form>
       </Modal>

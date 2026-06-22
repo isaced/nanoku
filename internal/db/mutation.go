@@ -4026,6 +4026,7 @@ type SiteMutation struct {
 	domain        *string
 	upstream      *string
 	enabled       *bool
+	scheme        *site.Scheme
 	clearedFields map[string]struct{}
 	app           *int
 	clearedapp    bool
@@ -4312,6 +4313,42 @@ func (m *SiteMutation) ResetEnabled() {
 	m.enabled = nil
 }
 
+// SetScheme sets the "scheme" field.
+func (m *SiteMutation) SetScheme(s site.Scheme) {
+	m.scheme = &s
+}
+
+// Scheme returns the value of the "scheme" field in the mutation.
+func (m *SiteMutation) Scheme() (r site.Scheme, exists bool) {
+	v := m.scheme
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldScheme returns the old "scheme" field's value of the Site entity.
+// If the Site object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SiteMutation) OldScheme(ctx context.Context) (v site.Scheme, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldScheme is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldScheme requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldScheme: %w", err)
+	}
+	return oldValue.Scheme, nil
+}
+
+// ResetScheme resets all changes to the "scheme" field.
+func (m *SiteMutation) ResetScheme() {
+	m.scheme = nil
+}
+
 // SetAppID sets the "app" edge to the App entity by id.
 func (m *SiteMutation) SetAppID(id int) {
 	m.app = &id
@@ -4385,7 +4422,7 @@ func (m *SiteMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SiteMutation) Fields() []string {
-	fields := make([]string, 0, 5)
+	fields := make([]string, 0, 6)
 	if m.created_at != nil {
 		fields = append(fields, site.FieldCreatedAt)
 	}
@@ -4400,6 +4437,9 @@ func (m *SiteMutation) Fields() []string {
 	}
 	if m.enabled != nil {
 		fields = append(fields, site.FieldEnabled)
+	}
+	if m.scheme != nil {
+		fields = append(fields, site.FieldScheme)
 	}
 	return fields
 }
@@ -4419,6 +4459,8 @@ func (m *SiteMutation) Field(name string) (ent.Value, bool) {
 		return m.Upstream()
 	case site.FieldEnabled:
 		return m.Enabled()
+	case site.FieldScheme:
+		return m.Scheme()
 	}
 	return nil, false
 }
@@ -4438,6 +4480,8 @@ func (m *SiteMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldUpstream(ctx)
 	case site.FieldEnabled:
 		return m.OldEnabled(ctx)
+	case site.FieldScheme:
+		return m.OldScheme(ctx)
 	}
 	return nil, fmt.Errorf("unknown Site field %s", name)
 }
@@ -4481,6 +4525,13 @@ func (m *SiteMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetEnabled(v)
+		return nil
+	case site.FieldScheme:
+		v, ok := value.(site.Scheme)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetScheme(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Site field %s", name)
@@ -4545,6 +4596,9 @@ func (m *SiteMutation) ResetField(name string) error {
 		return nil
 	case site.FieldEnabled:
 		m.ResetEnabled()
+		return nil
+	case site.FieldScheme:
+		m.ResetScheme()
 		return nil
 	}
 	return fmt.Errorf("unknown Site field %s", name)

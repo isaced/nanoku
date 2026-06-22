@@ -3,6 +3,7 @@ export type Site = {
   domain: string;
   upstream: string;
   enabled: boolean;
+  scheme: 'http' | 'https';
   appId?: number;
   appName?: string;
   createdAt: string;
@@ -14,6 +15,7 @@ export type SiteInput = {
   upstream?: string;
   enabled?: boolean;
   appId?: number;
+  scheme?: 'http' | 'https';
 };
 
 export type Container = {

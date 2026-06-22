@@ -3,6 +3,7 @@
 package site
 
 import (
+	"fmt"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -24,6 +25,8 @@ const (
 	FieldUpstream = "upstream"
 	// FieldEnabled holds the string denoting the enabled field in the database.
 	FieldEnabled = "enabled"
+	// FieldScheme holds the string denoting the scheme field in the database.
+	FieldScheme = "scheme"
 	// EdgeApp holds the string denoting the app edge name in mutations.
 	EdgeApp = "app"
 	// Table holds the table name of the site in the database.
@@ -45,6 +48,7 @@ var Columns = []string{
 	FieldDomain,
 	FieldUpstream,
 	FieldEnabled,
+	FieldScheme,
 }
 
 // ForeignKeys holds the SQL foreign-keys that are owned by the "sites"
@@ -79,6 +83,32 @@ var (
 	DefaultEnabled bool
 )
 
+// Scheme defines the type for the "scheme" enum field.
+type Scheme string
+
+// SchemeHTTPS is the default value of the Scheme enum.
+const DefaultScheme = SchemeHTTPS
+
+// Scheme values.
+const (
+	SchemeHTTP  Scheme = "http"
+	SchemeHTTPS Scheme = "https"
+)
+
+func (s Scheme) String() string {
+	return string(s)
+}
+
+// SchemeValidator is a validator for the "scheme" field enum values. It is called by the builders before save.
+func SchemeValidator(s Scheme) error {
+	switch s {
+	case SchemeHTTP, SchemeHTTPS:
+		return nil
+	default:
+		return fmt.Errorf("site: invalid enum value for scheme field: %q", s)
+	}
+}
+
 // OrderOption defines the ordering options for the Site queries.
 type OrderOption func(*sql.Selector)
 
@@ -110,6 +140,11 @@ func ByUpstream(opts ...sql.OrderTermOption) OrderOption {
 // ByEnabled orders the results by the enabled field.
 func ByEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEnabled, opts...).ToFunc()
+}
+
+// ByScheme orders the results by the scheme field.
+func ByScheme(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldScheme, opts...).ToFunc()
 }
 
 // ByAppField orders the results by app field.

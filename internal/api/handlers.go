@@ -32,6 +32,7 @@ type SiteDTO struct {
 	Domain    string `json:"domain"`
 	Upstream  string `json:"upstream"`
 	Enabled   bool   `json:"enabled"`
+	Scheme    string `json:"scheme"`
 	AppID     *int   `json:"appId,omitempty"`
 	AppName   string `json:"appName,omitempty"`
 	CreatedAt string `json:"createdAt"`
@@ -43,6 +44,7 @@ type SiteInput struct {
 	Upstream *string `json:"upstream"`
 	Enabled  *bool   `json:"enabled"`
 	AppID    *int    `json:"appId"`
+	Scheme   *string `json:"scheme"`
 }
 
 func toDTO(s *db.Site) SiteDTO {
@@ -51,6 +53,7 @@ func toDTO(s *db.Site) SiteDTO {
 		Domain:    s.Domain,
 		Upstream:  s.Upstream,
 		Enabled:   s.Enabled,
+		Scheme:    string(s.Scheme),
 		CreatedAt: s.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt: s.UpdatedAt.UTC().Format(time.RFC3339),
 	}
@@ -105,6 +108,15 @@ func (h *Handlers) UpdateSite(w http.ResponseWriter, r *http.Request) {
 	if in.Enabled != nil {
 		upd.SetEnabled(*in.Enabled)
 	}
+	if in.Scheme != nil {
+		switch sitepkg.Scheme(*in.Scheme) {
+		case sitepkg.SchemeHTTP, sitepkg.SchemeHTTPS:
+			upd.SetScheme(sitepkg.Scheme(*in.Scheme))
+		default:
+			writeErr(w, http.StatusBadRequest, errors.New("scheme must be http or https"))
+			return
+		}
+	}
 	if in.AppID != nil {
 		if *in.AppID == 0 {
 			upd.ClearApp()
@@ -149,10 +161,21 @@ func (h *Handlers) CreateSite(w http.ResponseWriter, r *http.Request) {
 	if in.Enabled != nil {
 		enabled = *in.Enabled
 	}
+	scheme := sitepkg.SchemeHTTPS
+	if in.Scheme != nil {
+		switch sitepkg.Scheme(*in.Scheme) {
+		case sitepkg.SchemeHTTP, sitepkg.SchemeHTTPS:
+			scheme = sitepkg.Scheme(*in.Scheme)
+		default:
+			writeErr(w, http.StatusBadRequest, errors.New("scheme must be http or https"))
+			return
+		}
+	}
 
 	create := h.DB.Site.Create().
 		SetDomain(strings.TrimSpace(*in.Domain)).
-		SetEnabled(enabled)
+		SetEnabled(enabled).
+		SetScheme(scheme)
 	if in.Upstream != nil && strings.TrimSpace(*in.Upstream) != "" {
 		create.SetUpstream(strings.TrimSpace(*in.Upstream))
 	} else {

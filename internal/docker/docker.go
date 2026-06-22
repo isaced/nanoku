@@ -3,8 +3,6 @@ package docker
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -295,7 +293,7 @@ func (m *Manager) ListContainersByNamePrefix(ctx context.Context, prefix string)
 	return names, nil
 }
 
-// CreateAppContainer runs a new container for an app and returns its docker ID and generated name.
+// CreateAppContainer runs a new container for an app and returns its docker ID and name.
 // namePrefix: short app slug (e.g. "myapp"); port: container-internal port; env: key=value pairs.
 // hostPort: 0 = no host port mapping (default — proxy via caddy network).
 // env values are written to a temp file and passed via --env-file, so values
@@ -304,11 +302,7 @@ func (m *Manager) CreateAppContainer(ctx context.Context, namePrefix, image stri
 	if err := m.EnsureNetwork(ctx); err != nil {
 		return "", "", err
 	}
-	suffix, err := randHex(4)
-	if err != nil {
-		return "", "", err
-	}
-	containerName = fmt.Sprintf("nanoku-%s-%s", namePrefix, suffix)
+	containerName = "nanoku-" + namePrefix
 
 	var envFilePath string
 	var envCleanup func()
@@ -437,7 +431,7 @@ type ContainerStats struct {
 
 // AllStats returns a snapshot of stats for every nanoku-managed container
 // (apps + caddy). Identified by name prefix "nanoku-" to catch both
-// single-container deploys (name=nanoku-<app>-<rand>) and compose stacks
+// single-container deploys (name=nanoku-<app>) and compose stacks
 // (name=nanoku-<app>-<service>-<n>). Skips the nanoku self container
 // (which uses a different name).
 func (m *Manager) AllStats(ctx context.Context) ([]ContainerStats, error) {
@@ -609,12 +603,4 @@ func (m *Manager) run(ctx context.Context, args ...string) (string, error) {
 		return out, fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return out, nil
-}
-
-func randHex(n int) (string, error) {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
 }

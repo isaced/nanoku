@@ -77,6 +77,20 @@ func (_u *SiteUpdate) SetNillableEnabled(v *bool) *SiteUpdate {
 	return _u
 }
 
+// SetScheme sets the "scheme" field.
+func (_u *SiteUpdate) SetScheme(v site.Scheme) *SiteUpdate {
+	_u.mutation.SetScheme(v)
+	return _u
+}
+
+// SetNillableScheme sets the "scheme" field if the given value is not nil.
+func (_u *SiteUpdate) SetNillableScheme(v *site.Scheme) *SiteUpdate {
+	if v != nil {
+		_u.SetScheme(*v)
+	}
+	return _u
+}
+
 // SetAppID sets the "app" edge to the App entity by ID.
 func (_u *SiteUpdate) SetAppID(id int) *SiteUpdate {
 	_u.mutation.SetAppID(id)
@@ -143,7 +157,20 @@ func (_u *SiteUpdate) defaults() {
 	}
 }
 
+// check runs all checks and user-defined validators on the builder.
+func (_u *SiteUpdate) check() error {
+	if v, ok := _u.mutation.Scheme(); ok {
+		if err := site.SchemeValidator(v); err != nil {
+			return &ValidationError{Name: "scheme", err: fmt.Errorf(`db: validator failed for field "Site.scheme": %w`, err)}
+		}
+	}
+	return nil
+}
+
 func (_u *SiteUpdate) sqlSave(ctx context.Context) (_node int, err error) {
+	if err := _u.check(); err != nil {
+		return _node, err
+	}
 	_spec := sqlgraph.NewUpdateSpec(site.Table, site.Columns, sqlgraph.NewFieldSpec(site.FieldID, field.TypeInt))
 	if ps := _u.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
@@ -163,6 +190,9 @@ func (_u *SiteUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(site.FieldEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Scheme(); ok {
+		_spec.SetField(site.FieldScheme, field.TypeEnum, value)
 	}
 	if _u.mutation.AppCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -261,6 +291,20 @@ func (_u *SiteUpdateOne) SetNillableEnabled(v *bool) *SiteUpdateOne {
 	return _u
 }
 
+// SetScheme sets the "scheme" field.
+func (_u *SiteUpdateOne) SetScheme(v site.Scheme) *SiteUpdateOne {
+	_u.mutation.SetScheme(v)
+	return _u
+}
+
+// SetNillableScheme sets the "scheme" field if the given value is not nil.
+func (_u *SiteUpdateOne) SetNillableScheme(v *site.Scheme) *SiteUpdateOne {
+	if v != nil {
+		_u.SetScheme(*v)
+	}
+	return _u
+}
+
 // SetAppID sets the "app" edge to the App entity by ID.
 func (_u *SiteUpdateOne) SetAppID(id int) *SiteUpdateOne {
 	_u.mutation.SetAppID(id)
@@ -340,7 +384,20 @@ func (_u *SiteUpdateOne) defaults() {
 	}
 }
 
+// check runs all checks and user-defined validators on the builder.
+func (_u *SiteUpdateOne) check() error {
+	if v, ok := _u.mutation.Scheme(); ok {
+		if err := site.SchemeValidator(v); err != nil {
+			return &ValidationError{Name: "scheme", err: fmt.Errorf(`db: validator failed for field "Site.scheme": %w`, err)}
+		}
+	}
+	return nil
+}
+
 func (_u *SiteUpdateOne) sqlSave(ctx context.Context) (_node *Site, err error) {
+	if err := _u.check(); err != nil {
+		return _node, err
+	}
 	_spec := sqlgraph.NewUpdateSpec(site.Table, site.Columns, sqlgraph.NewFieldSpec(site.FieldID, field.TypeInt))
 	id, ok := _u.mutation.ID()
 	if !ok {
@@ -377,6 +434,9 @@ func (_u *SiteUpdateOne) sqlSave(ctx context.Context) (_node *Site, err error) {
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(site.FieldEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Scheme(); ok {
+		_spec.SetField(site.FieldScheme, field.TypeEnum, value)
 	}
 	if _u.mutation.AppCleared() {
 		edge := &sqlgraph.EdgeSpec{

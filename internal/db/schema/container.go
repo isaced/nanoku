@@ -19,7 +19,7 @@ func (Container) Fields() []ent.Field {
 			Comment("Docker container ID."),
 		field.String("name").
 			Unique().
-			Comment("Container name, e.g. nanoku-myapp-a1b2c3."),
+			Comment("Container name, e.g. nanoku-myapp."),
 		field.String("image").
 			Comment("Resolved image reference."),
 		field.Enum("status").

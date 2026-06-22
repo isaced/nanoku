@@ -35,6 +35,12 @@
     "title": "Delete {{name}}?",
     "content": "The app and its current Docker container will be removed."
   },
+  "redeployPrompt": {
+    "title": "Redeploy {{name}} now?",
+    "content": "Config is saved, but the running container still has the old config. Redeploying will pull the new image, restart the container, and refresh the Caddy reverse proxy.",
+    "ok": "Redeploy now",
+    "cancel": "Later"
+  },
   "editor": {
     "editTitle": "Edit app",
     "newTitle": "New app",
@@ -68,6 +74,9 @@
   "registry": {
     "title": "Private registry (optional)",
     "configured": "configured",
+    "switchOn": "on",
+    "switchOff": "off",
+    "collapsedHint": "Disabled. Turn on to enter the registry URL and credentials.",
     "url": "Registry URL",
     "urlExtra": "Empty = public registry",
     "urlPlaceholder": "ghcr.io",
@@ -85,6 +94,10 @@
     "enableLabel": "Enable HTTP trigger on create",
     "enableExtra": "Generates a per-app bearer token. Any system that can produce a JSON POST and compute a Bearer header (GitHub Actions, GitLab CI, Drone, local scripts) can fire a deploy.",
     "disabledHint": "Trigger is not enabled. Re-create the app to enable it.",
+    "collapsedHint": "Disabled. Turn on to enable on create, or to view the trigger URL (when already enabled).",
+    "offWhileEnabledHint": "Turning off clears the trigger token. Turning it back on generates a new one.",
+    "editNotEnabledHint": "Trigger is not enabled. Flip the switch on and save to enable — a new token will be generated.",
+    "disableHint": "Turning it off clears the token; turning it back on issues a new one (old token stops working immediately).",
     "rotateTitle": "Rotate trigger token?",
     "rotateDescription": "A new random token will be generated. The old token stops working immediately.",
     "rotateDescriptionShort": "A new random token will be generated. You'll see it once.",

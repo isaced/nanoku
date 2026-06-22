@@ -156,6 +156,7 @@ var (
 		{Name: "domain", Type: field.TypeString, Unique: true},
 		{Name: "upstream", Type: field.TypeString},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "scheme", Type: field.TypeEnum, Enums: []string{"http", "https"}, Default: "https"},
 		{Name: "app_sites", Type: field.TypeInt, Nullable: true},
 	}
 	// SitesTable holds the schema information for the "sites" table.
@@ -166,7 +167,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "sites_apps_sites",
-				Columns:    []*schema.Column{SitesColumns[6]},
+				Columns:    []*schema.Column{SitesColumns[7]},
 				RefColumns: []*schema.Column{AppsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
