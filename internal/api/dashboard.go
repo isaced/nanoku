@@ -40,6 +40,7 @@ type DashboardAppDTO struct {
 	Container   *ContainerDTO      `json:"container,omitempty"`
 	SiteDomains []string           `json:"siteDomains"`
 	Stats       *ContainerStatsDTO `json:"stats,omitempty"`
+	DeployMethod string            `json:"deployMethod"`
 }
 
 type DashboardSummary struct {
@@ -104,10 +105,12 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 	running := 0
 	for _, a := range apps {
 		dto := DashboardAppDTO{
-			ID:    a.ID,
-			Name:  a.Name,
-			Image: a.Image,
-			Port:  a.Port,
+			ID:           a.ID,
+			Name:         a.Name,
+			Image:        appImagePtr(a),
+			Port:         appPortPtr(a),
+			DeployMethod: a.DeployMethod,
+			SiteDomains:  []string{},
 		}
 		for _, s := range siteDTOs {
 			if s.AppID != nil && *s.AppID == a.ID {
@@ -202,4 +205,16 @@ func toContainerStatsDTO(s docker.ContainerStats) ContainerStatsDTO {
 		BlockWriteBytes: s.BlockWrite,
 		PIDs:            s.PIDs,
 	}
+}
+
+// appImagePtr / appPortPtr return the dereferenced value or zero if nil.
+// Duplicated from apps.go to keep this file self-contained.
+func appImagePtr(a *db.App) string {
+	if a.Image == nil {
+		return ""
+	}
+	return *a.Image
+}
+func appPortPtr(a *db.App) int {
+	return a.Port
 }

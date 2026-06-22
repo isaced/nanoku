@@ -14,10 +14,16 @@ var (
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "name", Type: field.TypeString, Unique: true},
-		{Name: "image", Type: field.TypeString},
-		{Name: "port", Type: field.TypeInt},
+		{Name: "image", Type: field.TypeString, Nullable: true},
+		{Name: "port", Type: field.TypeInt, Nullable: true},
 		{Name: "repo_url", Type: field.TypeString, Nullable: true},
 		{Name: "branch", Type: field.TypeString, Default: "main"},
+		{Name: "deploy_method", Type: field.TypeString, Default: "docker"},
+		{Name: "compose_content", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "compose_path", Type: field.TypeString, Nullable: true},
+		{Name: "registry_url", Type: field.TypeString, Nullable: true},
+		{Name: "registry_username", Type: field.TypeString, Nullable: true},
+		{Name: "registry_password", Type: field.TypeString, Nullable: true},
 	}
 	// AppsTable holds the schema information for the "apps" table.
 	AppsTable = &schema.Table{

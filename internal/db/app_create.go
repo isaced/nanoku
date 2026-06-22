@@ -64,9 +64,25 @@ func (_c *AppCreate) SetImage(v string) *AppCreate {
 	return _c
 }
 
+// SetNillableImage sets the "image" field if the given value is not nil.
+func (_c *AppCreate) SetNillableImage(v *string) *AppCreate {
+	if v != nil {
+		_c.SetImage(*v)
+	}
+	return _c
+}
+
 // SetPort sets the "port" field.
 func (_c *AppCreate) SetPort(v int) *AppCreate {
 	_c.mutation.SetPort(v)
+	return _c
+}
+
+// SetNillablePort sets the "port" field if the given value is not nil.
+func (_c *AppCreate) SetNillablePort(v *int) *AppCreate {
+	if v != nil {
+		_c.SetPort(*v)
+	}
 	return _c
 }
 
@@ -94,6 +110,90 @@ func (_c *AppCreate) SetBranch(v string) *AppCreate {
 func (_c *AppCreate) SetNillableBranch(v *string) *AppCreate {
 	if v != nil {
 		_c.SetBranch(*v)
+	}
+	return _c
+}
+
+// SetDeployMethod sets the "deploy_method" field.
+func (_c *AppCreate) SetDeployMethod(v string) *AppCreate {
+	_c.mutation.SetDeployMethod(v)
+	return _c
+}
+
+// SetNillableDeployMethod sets the "deploy_method" field if the given value is not nil.
+func (_c *AppCreate) SetNillableDeployMethod(v *string) *AppCreate {
+	if v != nil {
+		_c.SetDeployMethod(*v)
+	}
+	return _c
+}
+
+// SetComposeContent sets the "compose_content" field.
+func (_c *AppCreate) SetComposeContent(v string) *AppCreate {
+	_c.mutation.SetComposeContent(v)
+	return _c
+}
+
+// SetNillableComposeContent sets the "compose_content" field if the given value is not nil.
+func (_c *AppCreate) SetNillableComposeContent(v *string) *AppCreate {
+	if v != nil {
+		_c.SetComposeContent(*v)
+	}
+	return _c
+}
+
+// SetComposePath sets the "compose_path" field.
+func (_c *AppCreate) SetComposePath(v string) *AppCreate {
+	_c.mutation.SetComposePath(v)
+	return _c
+}
+
+// SetNillableComposePath sets the "compose_path" field if the given value is not nil.
+func (_c *AppCreate) SetNillableComposePath(v *string) *AppCreate {
+	if v != nil {
+		_c.SetComposePath(*v)
+	}
+	return _c
+}
+
+// SetRegistryURL sets the "registry_url" field.
+func (_c *AppCreate) SetRegistryURL(v string) *AppCreate {
+	_c.mutation.SetRegistryURL(v)
+	return _c
+}
+
+// SetNillableRegistryURL sets the "registry_url" field if the given value is not nil.
+func (_c *AppCreate) SetNillableRegistryURL(v *string) *AppCreate {
+	if v != nil {
+		_c.SetRegistryURL(*v)
+	}
+	return _c
+}
+
+// SetRegistryUsername sets the "registry_username" field.
+func (_c *AppCreate) SetRegistryUsername(v string) *AppCreate {
+	_c.mutation.SetRegistryUsername(v)
+	return _c
+}
+
+// SetNillableRegistryUsername sets the "registry_username" field if the given value is not nil.
+func (_c *AppCreate) SetNillableRegistryUsername(v *string) *AppCreate {
+	if v != nil {
+		_c.SetRegistryUsername(*v)
+	}
+	return _c
+}
+
+// SetRegistryPassword sets the "registry_password" field.
+func (_c *AppCreate) SetRegistryPassword(v string) *AppCreate {
+	_c.mutation.SetRegistryPassword(v)
+	return _c
+}
+
+// SetNillableRegistryPassword sets the "registry_password" field if the given value is not nil.
+func (_c *AppCreate) SetNillableRegistryPassword(v *string) *AppCreate {
+	if v != nil {
+		_c.SetRegistryPassword(*v)
 	}
 	return _c
 }
@@ -224,6 +324,10 @@ func (_c *AppCreate) defaults() {
 		v := app.DefaultBranch
 		_c.mutation.SetBranch(v)
 	}
+	if _, ok := _c.mutation.DeployMethod(); !ok {
+		v := app.DefaultDeployMethod
+		_c.mutation.SetDeployMethod(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -242,12 +346,6 @@ func (_c *AppCreate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`db: validator failed for field "App.name": %w`, err)}
 		}
 	}
-	if _, ok := _c.mutation.Image(); !ok {
-		return &ValidationError{Name: "image", err: errors.New(`db: missing required field "App.image"`)}
-	}
-	if _, ok := _c.mutation.Port(); !ok {
-		return &ValidationError{Name: "port", err: errors.New(`db: missing required field "App.port"`)}
-	}
 	if v, ok := _c.mutation.Port(); ok {
 		if err := app.PortValidator(v); err != nil {
 			return &ValidationError{Name: "port", err: fmt.Errorf(`db: validator failed for field "App.port": %w`, err)}
@@ -255,6 +353,9 @@ func (_c *AppCreate) check() error {
 	}
 	if _, ok := _c.mutation.Branch(); !ok {
 		return &ValidationError{Name: "branch", err: errors.New(`db: missing required field "App.branch"`)}
+	}
+	if _, ok := _c.mutation.DeployMethod(); !ok {
+		return &ValidationError{Name: "deploy_method", err: errors.New(`db: missing required field "App.deploy_method"`)}
 	}
 	return nil
 }
@@ -296,7 +397,7 @@ func (_c *AppCreate) createSpec() (*App, *sqlgraph.CreateSpec) {
 	}
 	if value, ok := _c.mutation.Image(); ok {
 		_spec.SetField(app.FieldImage, field.TypeString, value)
-		_node.Image = value
+		_node.Image = &value
 	}
 	if value, ok := _c.mutation.Port(); ok {
 		_spec.SetField(app.FieldPort, field.TypeInt, value)
@@ -309,6 +410,30 @@ func (_c *AppCreate) createSpec() (*App, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Branch(); ok {
 		_spec.SetField(app.FieldBranch, field.TypeString, value)
 		_node.Branch = value
+	}
+	if value, ok := _c.mutation.DeployMethod(); ok {
+		_spec.SetField(app.FieldDeployMethod, field.TypeString, value)
+		_node.DeployMethod = value
+	}
+	if value, ok := _c.mutation.ComposeContent(); ok {
+		_spec.SetField(app.FieldComposeContent, field.TypeString, value)
+		_node.ComposeContent = &value
+	}
+	if value, ok := _c.mutation.ComposePath(); ok {
+		_spec.SetField(app.FieldComposePath, field.TypeString, value)
+		_node.ComposePath = &value
+	}
+	if value, ok := _c.mutation.RegistryURL(); ok {
+		_spec.SetField(app.FieldRegistryURL, field.TypeString, value)
+		_node.RegistryURL = &value
+	}
+	if value, ok := _c.mutation.RegistryUsername(); ok {
+		_spec.SetField(app.FieldRegistryUsername, field.TypeString, value)
+		_node.RegistryUsername = &value
+	}
+	if value, ok := _c.mutation.RegistryPassword(); ok {
+		_spec.SetField(app.FieldRegistryPassword, field.TypeString, value)
+		_node.RegistryPassword = &value
 	}
 	if nodes := _c.mutation.SitesIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

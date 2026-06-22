@@ -44,3 +44,6 @@ nanoku.db-wal
 
 # Vite SSR build output
 internal/api/dist/
+
+# Generated compose files (created at deploy time)
+composes/

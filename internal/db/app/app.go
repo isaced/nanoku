@@ -28,6 +28,18 @@ const (
 	FieldRepoURL = "repo_url"
 	// FieldBranch holds the string denoting the branch field in the database.
 	FieldBranch = "branch"
+	// FieldDeployMethod holds the string denoting the deploy_method field in the database.
+	FieldDeployMethod = "deploy_method"
+	// FieldComposeContent holds the string denoting the compose_content field in the database.
+	FieldComposeContent = "compose_content"
+	// FieldComposePath holds the string denoting the compose_path field in the database.
+	FieldComposePath = "compose_path"
+	// FieldRegistryURL holds the string denoting the registry_url field in the database.
+	FieldRegistryURL = "registry_url"
+	// FieldRegistryUsername holds the string denoting the registry_username field in the database.
+	FieldRegistryUsername = "registry_username"
+	// FieldRegistryPassword holds the string denoting the registry_password field in the database.
+	FieldRegistryPassword = "registry_password"
 	// EdgeSites holds the string denoting the sites edge name in mutations.
 	EdgeSites = "sites"
 	// EdgeContainers holds the string denoting the containers edge name in mutations.
@@ -87,6 +99,12 @@ var Columns = []string{
 	FieldPort,
 	FieldRepoURL,
 	FieldBranch,
+	FieldDeployMethod,
+	FieldComposeContent,
+	FieldComposePath,
+	FieldRegistryURL,
+	FieldRegistryUsername,
+	FieldRegistryPassword,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -112,6 +130,8 @@ var (
 	PortValidator func(int) error
 	// DefaultBranch holds the default value on creation for the "branch" field.
 	DefaultBranch string
+	// DefaultDeployMethod holds the default value on creation for the "deploy_method" field.
+	DefaultDeployMethod string
 )
 
 // OrderOption defines the ordering options for the App queries.
@@ -155,6 +175,36 @@ func ByRepoURL(opts ...sql.OrderTermOption) OrderOption {
 // ByBranch orders the results by the branch field.
 func ByBranch(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBranch, opts...).ToFunc()
+}
+
+// ByDeployMethod orders the results by the deploy_method field.
+func ByDeployMethod(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDeployMethod, opts...).ToFunc()
+}
+
+// ByComposeContent orders the results by the compose_content field.
+func ByComposeContent(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldComposeContent, opts...).ToFunc()
+}
+
+// ByComposePath orders the results by the compose_path field.
+func ByComposePath(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldComposePath, opts...).ToFunc()
+}
+
+// ByRegistryURL orders the results by the registry_url field.
+func ByRegistryURL(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRegistryURL, opts...).ToFunc()
+}
+
+// ByRegistryUsername orders the results by the registry_username field.
+func ByRegistryUsername(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRegistryUsername, opts...).ToFunc()
+}
+
+// ByRegistryPassword orders the results by the registry_password field.
+func ByRegistryPassword(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRegistryPassword, opts...).ToFunc()
 }
 
 // BySitesCount orders the results by sites count.

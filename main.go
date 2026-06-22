@@ -64,6 +64,7 @@ func main() {
 		ACMEEmail:       cfg.ACMEEmail,
 		SkipCaddyReload: cfg.SkipCaddyReload,
 		SelfContainer:   cfg.SelfContainer,
+		ComposeBaseDir:  cfg.ComposeBaseDir,
 	}
 
 	mux := http.NewServeMux()

@@ -90,6 +90,36 @@ func Branch(v string) predicate.App {
 	return predicate.App(sql.FieldEQ(FieldBranch, v))
 }
 
+// DeployMethod applies equality check predicate on the "deploy_method" field. It's identical to DeployMethodEQ.
+func DeployMethod(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldDeployMethod, v))
+}
+
+// ComposeContent applies equality check predicate on the "compose_content" field. It's identical to ComposeContentEQ.
+func ComposeContent(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldComposeContent, v))
+}
+
+// ComposePath applies equality check predicate on the "compose_path" field. It's identical to ComposePathEQ.
+func ComposePath(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldComposePath, v))
+}
+
+// RegistryURL applies equality check predicate on the "registry_url" field. It's identical to RegistryURLEQ.
+func RegistryURL(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldRegistryURL, v))
+}
+
+// RegistryUsername applies equality check predicate on the "registry_username" field. It's identical to RegistryUsernameEQ.
+func RegistryUsername(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldRegistryUsername, v))
+}
+
+// RegistryPassword applies equality check predicate on the "registry_password" field. It's identical to RegistryPasswordEQ.
+func RegistryPassword(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldRegistryPassword, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.App {
 	return predicate.App(sql.FieldEQ(FieldCreatedAt, v))
@@ -290,6 +320,16 @@ func ImageHasSuffix(v string) predicate.App {
 	return predicate.App(sql.FieldHasSuffix(FieldImage, v))
 }
 
+// ImageIsNil applies the IsNil predicate on the "image" field.
+func ImageIsNil() predicate.App {
+	return predicate.App(sql.FieldIsNull(FieldImage))
+}
+
+// ImageNotNil applies the NotNil predicate on the "image" field.
+func ImageNotNil() predicate.App {
+	return predicate.App(sql.FieldNotNull(FieldImage))
+}
+
 // ImageEqualFold applies the EqualFold predicate on the "image" field.
 func ImageEqualFold(v string) predicate.App {
 	return predicate.App(sql.FieldEqualFold(FieldImage, v))
@@ -338,6 +378,16 @@ func PortLT(v int) predicate.App {
 // PortLTE applies the LTE predicate on the "port" field.
 func PortLTE(v int) predicate.App {
 	return predicate.App(sql.FieldLTE(FieldPort, v))
+}
+
+// PortIsNil applies the IsNil predicate on the "port" field.
+func PortIsNil() predicate.App {
+	return predicate.App(sql.FieldIsNull(FieldPort))
+}
+
+// PortNotNil applies the NotNil predicate on the "port" field.
+func PortNotNil() predicate.App {
+	return predicate.App(sql.FieldNotNull(FieldPort))
 }
 
 // RepoURLEQ applies the EQ predicate on the "repo_url" field.
@@ -478,6 +528,446 @@ func BranchEqualFold(v string) predicate.App {
 // BranchContainsFold applies the ContainsFold predicate on the "branch" field.
 func BranchContainsFold(v string) predicate.App {
 	return predicate.App(sql.FieldContainsFold(FieldBranch, v))
+}
+
+// DeployMethodEQ applies the EQ predicate on the "deploy_method" field.
+func DeployMethodEQ(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldDeployMethod, v))
+}
+
+// DeployMethodNEQ applies the NEQ predicate on the "deploy_method" field.
+func DeployMethodNEQ(v string) predicate.App {
+	return predicate.App(sql.FieldNEQ(FieldDeployMethod, v))
+}
+
+// DeployMethodIn applies the In predicate on the "deploy_method" field.
+func DeployMethodIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldIn(FieldDeployMethod, vs...))
+}
+
+// DeployMethodNotIn applies the NotIn predicate on the "deploy_method" field.
+func DeployMethodNotIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldNotIn(FieldDeployMethod, vs...))
+}
+
+// DeployMethodGT applies the GT predicate on the "deploy_method" field.
+func DeployMethodGT(v string) predicate.App {
+	return predicate.App(sql.FieldGT(FieldDeployMethod, v))
+}
+
+// DeployMethodGTE applies the GTE predicate on the "deploy_method" field.
+func DeployMethodGTE(v string) predicate.App {
+	return predicate.App(sql.FieldGTE(FieldDeployMethod, v))
+}
+
+// DeployMethodLT applies the LT predicate on the "deploy_method" field.
+func DeployMethodLT(v string) predicate.App {
+	return predicate.App(sql.FieldLT(FieldDeployMethod, v))
+}
+
+// DeployMethodLTE applies the LTE predicate on the "deploy_method" field.
+func DeployMethodLTE(v string) predicate.App {
+	return predicate.App(sql.FieldLTE(FieldDeployMethod, v))
+}
+
+// DeployMethodContains applies the Contains predicate on the "deploy_method" field.
+func DeployMethodContains(v string) predicate.App {
+	return predicate.App(sql.FieldContains(FieldDeployMethod, v))
+}
+
+// DeployMethodHasPrefix applies the HasPrefix predicate on the "deploy_method" field.
+func DeployMethodHasPrefix(v string) predicate.App {
+	return predicate.App(sql.FieldHasPrefix(FieldDeployMethod, v))
+}
+
+// DeployMethodHasSuffix applies the HasSuffix predicate on the "deploy_method" field.
+func DeployMethodHasSuffix(v string) predicate.App {
+	return predicate.App(sql.FieldHasSuffix(FieldDeployMethod, v))
+}
+
+// DeployMethodEqualFold applies the EqualFold predicate on the "deploy_method" field.
+func DeployMethodEqualFold(v string) predicate.App {
+	return predicate.App(sql.FieldEqualFold(FieldDeployMethod, v))
+}
+
+// DeployMethodContainsFold applies the ContainsFold predicate on the "deploy_method" field.
+func DeployMethodContainsFold(v string) predicate.App {
+	return predicate.App(sql.FieldContainsFold(FieldDeployMethod, v))
+}
+
+// ComposeContentEQ applies the EQ predicate on the "compose_content" field.
+func ComposeContentEQ(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldComposeContent, v))
+}
+
+// ComposeContentNEQ applies the NEQ predicate on the "compose_content" field.
+func ComposeContentNEQ(v string) predicate.App {
+	return predicate.App(sql.FieldNEQ(FieldComposeContent, v))
+}
+
+// ComposeContentIn applies the In predicate on the "compose_content" field.
+func ComposeContentIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldIn(FieldComposeContent, vs...))
+}
+
+// ComposeContentNotIn applies the NotIn predicate on the "compose_content" field.
+func ComposeContentNotIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldNotIn(FieldComposeContent, vs...))
+}
+
+// ComposeContentGT applies the GT predicate on the "compose_content" field.
+func ComposeContentGT(v string) predicate.App {
+	return predicate.App(sql.FieldGT(FieldComposeContent, v))
+}
+
+// ComposeContentGTE applies the GTE predicate on the "compose_content" field.
+func ComposeContentGTE(v string) predicate.App {
+	return predicate.App(sql.FieldGTE(FieldComposeContent, v))
+}
+
+// ComposeContentLT applies the LT predicate on the "compose_content" field.
+func ComposeContentLT(v string) predicate.App {
+	return predicate.App(sql.FieldLT(FieldComposeContent, v))
+}
+
+// ComposeContentLTE applies the LTE predicate on the "compose_content" field.
+func ComposeContentLTE(v string) predicate.App {
+	return predicate.App(sql.FieldLTE(FieldComposeContent, v))
+}
+
+// ComposeContentContains applies the Contains predicate on the "compose_content" field.
+func ComposeContentContains(v string) predicate.App {
+	return predicate.App(sql.FieldContains(FieldComposeContent, v))
+}
+
+// ComposeContentHasPrefix applies the HasPrefix predicate on the "compose_content" field.
+func ComposeContentHasPrefix(v string) predicate.App {
+	return predicate.App(sql.FieldHasPrefix(FieldComposeContent, v))
+}
+
+// ComposeContentHasSuffix applies the HasSuffix predicate on the "compose_content" field.
+func ComposeContentHasSuffix(v string) predicate.App {
+	return predicate.App(sql.FieldHasSuffix(FieldComposeContent, v))
+}
+
+// ComposeContentIsNil applies the IsNil predicate on the "compose_content" field.
+func ComposeContentIsNil() predicate.App {
+	return predicate.App(sql.FieldIsNull(FieldComposeContent))
+}
+
+// ComposeContentNotNil applies the NotNil predicate on the "compose_content" field.
+func ComposeContentNotNil() predicate.App {
+	return predicate.App(sql.FieldNotNull(FieldComposeContent))
+}
+
+// ComposeContentEqualFold applies the EqualFold predicate on the "compose_content" field.
+func ComposeContentEqualFold(v string) predicate.App {
+	return predicate.App(sql.FieldEqualFold(FieldComposeContent, v))
+}
+
+// ComposeContentContainsFold applies the ContainsFold predicate on the "compose_content" field.
+func ComposeContentContainsFold(v string) predicate.App {
+	return predicate.App(sql.FieldContainsFold(FieldComposeContent, v))
+}
+
+// ComposePathEQ applies the EQ predicate on the "compose_path" field.
+func ComposePathEQ(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldComposePath, v))
+}
+
+// ComposePathNEQ applies the NEQ predicate on the "compose_path" field.
+func ComposePathNEQ(v string) predicate.App {
+	return predicate.App(sql.FieldNEQ(FieldComposePath, v))
+}
+
+// ComposePathIn applies the In predicate on the "compose_path" field.
+func ComposePathIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldIn(FieldComposePath, vs...))
+}
+
+// ComposePathNotIn applies the NotIn predicate on the "compose_path" field.
+func ComposePathNotIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldNotIn(FieldComposePath, vs...))
+}
+
+// ComposePathGT applies the GT predicate on the "compose_path" field.
+func ComposePathGT(v string) predicate.App {
+	return predicate.App(sql.FieldGT(FieldComposePath, v))
+}
+
+// ComposePathGTE applies the GTE predicate on the "compose_path" field.
+func ComposePathGTE(v string) predicate.App {
+	return predicate.App(sql.FieldGTE(FieldComposePath, v))
+}
+
+// ComposePathLT applies the LT predicate on the "compose_path" field.
+func ComposePathLT(v string) predicate.App {
+	return predicate.App(sql.FieldLT(FieldComposePath, v))
+}
+
+// ComposePathLTE applies the LTE predicate on the "compose_path" field.
+func ComposePathLTE(v string) predicate.App {
+	return predicate.App(sql.FieldLTE(FieldComposePath, v))
+}
+
+// ComposePathContains applies the Contains predicate on the "compose_path" field.
+func ComposePathContains(v string) predicate.App {
+	return predicate.App(sql.FieldContains(FieldComposePath, v))
+}
+
+// ComposePathHasPrefix applies the HasPrefix predicate on the "compose_path" field.
+func ComposePathHasPrefix(v string) predicate.App {
+	return predicate.App(sql.FieldHasPrefix(FieldComposePath, v))
+}
+
+// ComposePathHasSuffix applies the HasSuffix predicate on the "compose_path" field.
+func ComposePathHasSuffix(v string) predicate.App {
+	return predicate.App(sql.FieldHasSuffix(FieldComposePath, v))
+}
+
+// ComposePathIsNil applies the IsNil predicate on the "compose_path" field.
+func ComposePathIsNil() predicate.App {
+	return predicate.App(sql.FieldIsNull(FieldComposePath))
+}
+
+// ComposePathNotNil applies the NotNil predicate on the "compose_path" field.
+func ComposePathNotNil() predicate.App {
+	return predicate.App(sql.FieldNotNull(FieldComposePath))
+}
+
+// ComposePathEqualFold applies the EqualFold predicate on the "compose_path" field.
+func ComposePathEqualFold(v string) predicate.App {
+	return predicate.App(sql.FieldEqualFold(FieldComposePath, v))
+}
+
+// ComposePathContainsFold applies the ContainsFold predicate on the "compose_path" field.
+func ComposePathContainsFold(v string) predicate.App {
+	return predicate.App(sql.FieldContainsFold(FieldComposePath, v))
+}
+
+// RegistryURLEQ applies the EQ predicate on the "registry_url" field.
+func RegistryURLEQ(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldRegistryURL, v))
+}
+
+// RegistryURLNEQ applies the NEQ predicate on the "registry_url" field.
+func RegistryURLNEQ(v string) predicate.App {
+	return predicate.App(sql.FieldNEQ(FieldRegistryURL, v))
+}
+
+// RegistryURLIn applies the In predicate on the "registry_url" field.
+func RegistryURLIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldIn(FieldRegistryURL, vs...))
+}
+
+// RegistryURLNotIn applies the NotIn predicate on the "registry_url" field.
+func RegistryURLNotIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldNotIn(FieldRegistryURL, vs...))
+}
+
+// RegistryURLGT applies the GT predicate on the "registry_url" field.
+func RegistryURLGT(v string) predicate.App {
+	return predicate.App(sql.FieldGT(FieldRegistryURL, v))
+}
+
+// RegistryURLGTE applies the GTE predicate on the "registry_url" field.
+func RegistryURLGTE(v string) predicate.App {
+	return predicate.App(sql.FieldGTE(FieldRegistryURL, v))
+}
+
+// RegistryURLLT applies the LT predicate on the "registry_url" field.
+func RegistryURLLT(v string) predicate.App {
+	return predicate.App(sql.FieldLT(FieldRegistryURL, v))
+}
+
+// RegistryURLLTE applies the LTE predicate on the "registry_url" field.
+func RegistryURLLTE(v string) predicate.App {
+	return predicate.App(sql.FieldLTE(FieldRegistryURL, v))
+}
+
+// RegistryURLContains applies the Contains predicate on the "registry_url" field.
+func RegistryURLContains(v string) predicate.App {
+	return predicate.App(sql.FieldContains(FieldRegistryURL, v))
+}
+
+// RegistryURLHasPrefix applies the HasPrefix predicate on the "registry_url" field.
+func RegistryURLHasPrefix(v string) predicate.App {
+	return predicate.App(sql.FieldHasPrefix(FieldRegistryURL, v))
+}
+
+// RegistryURLHasSuffix applies the HasSuffix predicate on the "registry_url" field.
+func RegistryURLHasSuffix(v string) predicate.App {
+	return predicate.App(sql.FieldHasSuffix(FieldRegistryURL, v))
+}
+
+// RegistryURLIsNil applies the IsNil predicate on the "registry_url" field.
+func RegistryURLIsNil() predicate.App {
+	return predicate.App(sql.FieldIsNull(FieldRegistryURL))
+}
+
+// RegistryURLNotNil applies the NotNil predicate on the "registry_url" field.
+func RegistryURLNotNil() predicate.App {
+	return predicate.App(sql.FieldNotNull(FieldRegistryURL))
+}
+
+// RegistryURLEqualFold applies the EqualFold predicate on the "registry_url" field.
+func RegistryURLEqualFold(v string) predicate.App {
+	return predicate.App(sql.FieldEqualFold(FieldRegistryURL, v))
+}
+
+// RegistryURLContainsFold applies the ContainsFold predicate on the "registry_url" field.
+func RegistryURLContainsFold(v string) predicate.App {
+	return predicate.App(sql.FieldContainsFold(FieldRegistryURL, v))
+}
+
+// RegistryUsernameEQ applies the EQ predicate on the "registry_username" field.
+func RegistryUsernameEQ(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldRegistryUsername, v))
+}
+
+// RegistryUsernameNEQ applies the NEQ predicate on the "registry_username" field.
+func RegistryUsernameNEQ(v string) predicate.App {
+	return predicate.App(sql.FieldNEQ(FieldRegistryUsername, v))
+}
+
+// RegistryUsernameIn applies the In predicate on the "registry_username" field.
+func RegistryUsernameIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldIn(FieldRegistryUsername, vs...))
+}
+
+// RegistryUsernameNotIn applies the NotIn predicate on the "registry_username" field.
+func RegistryUsernameNotIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldNotIn(FieldRegistryUsername, vs...))
+}
+
+// RegistryUsernameGT applies the GT predicate on the "registry_username" field.
+func RegistryUsernameGT(v string) predicate.App {
+	return predicate.App(sql.FieldGT(FieldRegistryUsername, v))
+}
+
+// RegistryUsernameGTE applies the GTE predicate on the "registry_username" field.
+func RegistryUsernameGTE(v string) predicate.App {
+	return predicate.App(sql.FieldGTE(FieldRegistryUsername, v))
+}
+
+// RegistryUsernameLT applies the LT predicate on the "registry_username" field.
+func RegistryUsernameLT(v string) predicate.App {
+	return predicate.App(sql.FieldLT(FieldRegistryUsername, v))
+}
+
+// RegistryUsernameLTE applies the LTE predicate on the "registry_username" field.
+func RegistryUsernameLTE(v string) predicate.App {
+	return predicate.App(sql.FieldLTE(FieldRegistryUsername, v))
+}
+
+// RegistryUsernameContains applies the Contains predicate on the "registry_username" field.
+func RegistryUsernameContains(v string) predicate.App {
+	return predicate.App(sql.FieldContains(FieldRegistryUsername, v))
+}
+
+// RegistryUsernameHasPrefix applies the HasPrefix predicate on the "registry_username" field.
+func RegistryUsernameHasPrefix(v string) predicate.App {
+	return predicate.App(sql.FieldHasPrefix(FieldRegistryUsername, v))
+}
+
+// RegistryUsernameHasSuffix applies the HasSuffix predicate on the "registry_username" field.
+func RegistryUsernameHasSuffix(v string) predicate.App {
+	return predicate.App(sql.FieldHasSuffix(FieldRegistryUsername, v))
+}
+
+// RegistryUsernameIsNil applies the IsNil predicate on the "registry_username" field.
+func RegistryUsernameIsNil() predicate.App {
+	return predicate.App(sql.FieldIsNull(FieldRegistryUsername))
+}
+
+// RegistryUsernameNotNil applies the NotNil predicate on the "registry_username" field.
+func RegistryUsernameNotNil() predicate.App {
+	return predicate.App(sql.FieldNotNull(FieldRegistryUsername))
+}
+
+// RegistryUsernameEqualFold applies the EqualFold predicate on the "registry_username" field.
+func RegistryUsernameEqualFold(v string) predicate.App {
+	return predicate.App(sql.FieldEqualFold(FieldRegistryUsername, v))
+}
+
+// RegistryUsernameContainsFold applies the ContainsFold predicate on the "registry_username" field.
+func RegistryUsernameContainsFold(v string) predicate.App {
+	return predicate.App(sql.FieldContainsFold(FieldRegistryUsername, v))
+}
+
+// RegistryPasswordEQ applies the EQ predicate on the "registry_password" field.
+func RegistryPasswordEQ(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldRegistryPassword, v))
+}
+
+// RegistryPasswordNEQ applies the NEQ predicate on the "registry_password" field.
+func RegistryPasswordNEQ(v string) predicate.App {
+	return predicate.App(sql.FieldNEQ(FieldRegistryPassword, v))
+}
+
+// RegistryPasswordIn applies the In predicate on the "registry_password" field.
+func RegistryPasswordIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldIn(FieldRegistryPassword, vs...))
+}
+
+// RegistryPasswordNotIn applies the NotIn predicate on the "registry_password" field.
+func RegistryPasswordNotIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldNotIn(FieldRegistryPassword, vs...))
+}
+
+// RegistryPasswordGT applies the GT predicate on the "registry_password" field.
+func RegistryPasswordGT(v string) predicate.App {
+	return predicate.App(sql.FieldGT(FieldRegistryPassword, v))
+}
+
+// RegistryPasswordGTE applies the GTE predicate on the "registry_password" field.
+func RegistryPasswordGTE(v string) predicate.App {
+	return predicate.App(sql.FieldGTE(FieldRegistryPassword, v))
+}
+
+// RegistryPasswordLT applies the LT predicate on the "registry_password" field.
+func RegistryPasswordLT(v string) predicate.App {
+	return predicate.App(sql.FieldLT(FieldRegistryPassword, v))
+}
+
+// RegistryPasswordLTE applies the LTE predicate on the "registry_password" field.
+func RegistryPasswordLTE(v string) predicate.App {
+	return predicate.App(sql.FieldLTE(FieldRegistryPassword, v))
+}
+
+// RegistryPasswordContains applies the Contains predicate on the "registry_password" field.
+func RegistryPasswordContains(v string) predicate.App {
+	return predicate.App(sql.FieldContains(FieldRegistryPassword, v))
+}
+
+// RegistryPasswordHasPrefix applies the HasPrefix predicate on the "registry_password" field.
+func RegistryPasswordHasPrefix(v string) predicate.App {
+	return predicate.App(sql.FieldHasPrefix(FieldRegistryPassword, v))
+}
+
+// RegistryPasswordHasSuffix applies the HasSuffix predicate on the "registry_password" field.
+func RegistryPasswordHasSuffix(v string) predicate.App {
+	return predicate.App(sql.FieldHasSuffix(FieldRegistryPassword, v))
+}
+
+// RegistryPasswordIsNil applies the IsNil predicate on the "registry_password" field.
+func RegistryPasswordIsNil() predicate.App {
+	return predicate.App(sql.FieldIsNull(FieldRegistryPassword))
+}
+
+// RegistryPasswordNotNil applies the NotNil predicate on the "registry_password" field.
+func RegistryPasswordNotNil() predicate.App {
+	return predicate.App(sql.FieldNotNull(FieldRegistryPassword))
+}
+
+// RegistryPasswordEqualFold applies the EqualFold predicate on the "registry_password" field.
+func RegistryPasswordEqualFold(v string) predicate.App {
+	return predicate.App(sql.FieldEqualFold(FieldRegistryPassword, v))
+}
+
+// RegistryPasswordContainsFold applies the ContainsFold predicate on the "registry_password" field.
+func RegistryPasswordContainsFold(v string) predicate.App {
+	return predicate.App(sql.FieldContainsFold(FieldRegistryPassword, v))
 }
 
 // HasSites applies the HasEdge predicate on the "sites" edge.

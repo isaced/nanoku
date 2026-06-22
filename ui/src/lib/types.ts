@@ -34,6 +34,16 @@ export type App = {
   branch: string;
   container?: Container;
   envVars?: EnvVar[];
+
+  deployMethod: 'docker' | 'compose';
+  composePath?: string;
+  composeContent?: string;
+  composeFile?: string;
+
+  registryConfigured: boolean;
+  registryUrl?: string;
+  registryUsername?: string;
+
   createdAt: string;
   updatedAt: string;
 };
@@ -44,6 +54,13 @@ export type AppInput = {
   port?: number;
   repoUrl?: string;
   branch?: string;
+  deployMethod?: 'docker' | 'compose';
+  composePath?: string;
+  composeContent?: string;
+  registryUrl?: string;
+  registryUsername?: string;
+  registryPassword?: string;
+  clearRegistry?: boolean;
 };
 
 export type EnvVar = {
@@ -111,6 +128,7 @@ export type DashboardApp = {
   container?: Container;
   siteDomains: string[];
   stats?: ContainerStats;
+  deployMethod: 'docker' | 'compose';
 };
 
 export type DashboardSummary = {

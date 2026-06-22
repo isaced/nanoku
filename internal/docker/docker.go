@@ -149,6 +149,152 @@ func (m *Manager) PullImage(ctx context.Context, image string) error {
 	return nil
 }
 
+// Login authenticates to a docker registry. stdout is suppressed; password
+// is passed via stdin to keep it out of the process list / logs.
+func (m *Manager) Login(ctx context.Context, registry, username, password string) error {
+	if username == "" {
+		return fmt.Errorf("registry_username is required for login")
+	}
+	args := []string{"login"}
+	if registry != "" {
+		args = append(args, registry)
+	}
+	args = append(args, "-u", username, "--password-stdin")
+	cmd := exec.CommandContext(ctx, m.binary, args...)
+	cmd.Stdin = strings.NewReader(password)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker login: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return nil
+}
+
+// Logout removes credentials for a registry. Best-effort; ignores errors.
+func (m *Manager) Logout(ctx context.Context, registry string) error {
+	args := []string{"logout"}
+	if registry != "" {
+		args = append(args, registry)
+	}
+	_, err := m.run(ctx, args...)
+	return err
+}
+
+// WithRegistry wraps fn with a docker login/logout if creds are provided.
+// registry="" with creds means "the default registry" (docker hub via
+// index.docker.io).
+func (m *Manager) WithRegistry(ctx context.Context, registry, user, pass string, fn func() error) error {
+	if user != "" {
+		if err := m.Login(ctx, registry, user, pass); err != nil {
+			return err
+		}
+		if registry != "" {
+			defer func() { _ = m.Logout(ctx, registry) }()
+		}
+	}
+	return fn()
+}
+
+// composeArgs returns the standard "compose subcmd" argv starting at "compose".
+// filePath="" means: use the file in the current working dir.
+func composeArgs(project, filePath string, subcmd string, extra ...string) []string {
+	args := []string{"compose"}
+	if project != "" {
+		args = append(args, "-p", project)
+	}
+	if filePath != "" {
+		args = append(args, "-f", filePath)
+	}
+	args = append(args, subcmd)
+	args = append(args, extra...)
+	return args
+}
+
+// ComposeUp brings up the compose stack (creates containers, networks,
+// pulls missing images if --pull is included). `pull` should be true
+// when you want to refresh images from the registry.
+func (m *Manager) ComposeUp(ctx context.Context, project, filePath string, pull bool) error {
+	extra := []string{"-d"}
+	if pull {
+		extra = append([]string{"--pull", "always"}, extra...)
+	}
+	out, err := m.run(ctx, composeArgs(project, filePath, "up", extra...)...)
+	if err != nil {
+		return fmt.Errorf("compose up: %w: %s", err, strings.TrimSpace(out))
+	}
+	return nil
+}
+
+// ComposeStop / Start / Restart / Down wrap their compose subcommands.
+func (m *Manager) ComposeStop(ctx context.Context, project, filePath string) error {
+	out, err := m.run(ctx, composeArgs(project, filePath, "stop")...)
+	if err != nil {
+		return fmt.Errorf("compose stop: %w: %s", err, strings.TrimSpace(out))
+	}
+	return nil
+}
+func (m *Manager) ComposeStart(ctx context.Context, project, filePath string) error {
+	out, err := m.run(ctx, composeArgs(project, filePath, "start")...)
+	if err != nil {
+		return fmt.Errorf("compose start: %w: %s", err, strings.TrimSpace(out))
+	}
+	return nil
+}
+func (m *Manager) ComposeRestart(ctx context.Context, project, filePath string) error {
+	out, err := m.run(ctx, composeArgs(project, filePath, "restart")...)
+	if err != nil {
+		return fmt.Errorf("compose restart: %w: %s", err, strings.TrimSpace(out))
+	}
+	return nil
+}
+func (m *Manager) ComposeDown(ctx context.Context, project, filePath string) error {
+	out, err := m.run(ctx, composeArgs(project, filePath, "down")...)
+	if err != nil {
+		return fmt.Errorf("compose down: %w: %s", err, strings.TrimSpace(out))
+	}
+	return nil
+}
+
+// ComposePSNames returns the names of all containers currently in the project.
+// Returns (nil, nil) if no containers are running (docker compose ps exits 0
+// with empty output).
+func (m *Manager) ComposePSNames(ctx context.Context, project, filePath string) ([]string, error) {
+	out, err := m.run(ctx, composeArgs(project, filePath, "ps", "--format", "{{.Name}}")...)
+	if err != nil {
+		return nil, fmt.Errorf("compose ps: %w: %s", err, strings.TrimSpace(out))
+	}
+	var names []string
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			names = append(names, line)
+		}
+	}
+	return names, nil
+}
+
+// ListContainersByNamePrefix returns the names of containers whose name
+// starts with the given prefix (uses `docker ps --filter name=<prefix>`).
+// Used to discover the random-suffix name nanoku just generated for a
+// freshly-deployed app.
+func (m *Manager) ListContainersByNamePrefix(ctx context.Context, prefix string) ([]string, error) {
+	out, err := m.run(ctx, "ps",
+		"--all",
+		"--filter", "name="+prefix,
+		"--format", "{{.Names}}",
+	)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			names = append(names, line)
+		}
+	}
+	return names, nil
+}
+
 // CreateAppContainer runs a new container for an app and returns its docker ID and generated name.
 // namePrefix: short app slug (e.g. "myapp"); port: container-internal port; env: key=value pairs.
 // hostPort: 0 = no host port mapping (default — proxy via caddy network).
@@ -278,11 +424,14 @@ type ContainerStats struct {
 }
 
 // AllStats returns a snapshot of stats for every nanoku-managed container
-// (apps + caddy). Skips the nanoku self container (no nanoku.managed label).
+// (apps + caddy). Identified by name prefix "nanoku-" to catch both
+// single-container deploys (name=nanoku-<app>-<rand>) and compose stacks
+// (name=nanoku-<app>-<service>-<n>). Skips the nanoku self container
+// (which uses a different name).
 func (m *Manager) AllStats(ctx context.Context) ([]ContainerStats, error) {
 	namesOut, err := m.run(ctx, "ps",
 		"--all",
-		"--filter", "label=nanoku.managed=true",
+		"--filter", "name=nanoku-",
 		"--format", "{{.Names}}",
 	)
 	if err != nil {

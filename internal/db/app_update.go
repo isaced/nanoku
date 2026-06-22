@@ -66,6 +66,12 @@ func (_u *AppUpdate) SetNillableImage(v *string) *AppUpdate {
 	return _u
 }
 
+// ClearImage clears the value of the "image" field.
+func (_u *AppUpdate) ClearImage() *AppUpdate {
+	_u.mutation.ClearImage()
+	return _u
+}
+
 // SetPort sets the "port" field.
 func (_u *AppUpdate) SetPort(v int) *AppUpdate {
 	_u.mutation.ResetPort()
@@ -84,6 +90,12 @@ func (_u *AppUpdate) SetNillablePort(v *int) *AppUpdate {
 // AddPort adds value to the "port" field.
 func (_u *AppUpdate) AddPort(v int) *AppUpdate {
 	_u.mutation.AddPort(v)
+	return _u
+}
+
+// ClearPort clears the value of the "port" field.
+func (_u *AppUpdate) ClearPort() *AppUpdate {
+	_u.mutation.ClearPort()
 	return _u
 }
 
@@ -118,6 +130,120 @@ func (_u *AppUpdate) SetNillableBranch(v *string) *AppUpdate {
 	if v != nil {
 		_u.SetBranch(*v)
 	}
+	return _u
+}
+
+// SetDeployMethod sets the "deploy_method" field.
+func (_u *AppUpdate) SetDeployMethod(v string) *AppUpdate {
+	_u.mutation.SetDeployMethod(v)
+	return _u
+}
+
+// SetNillableDeployMethod sets the "deploy_method" field if the given value is not nil.
+func (_u *AppUpdate) SetNillableDeployMethod(v *string) *AppUpdate {
+	if v != nil {
+		_u.SetDeployMethod(*v)
+	}
+	return _u
+}
+
+// SetComposeContent sets the "compose_content" field.
+func (_u *AppUpdate) SetComposeContent(v string) *AppUpdate {
+	_u.mutation.SetComposeContent(v)
+	return _u
+}
+
+// SetNillableComposeContent sets the "compose_content" field if the given value is not nil.
+func (_u *AppUpdate) SetNillableComposeContent(v *string) *AppUpdate {
+	if v != nil {
+		_u.SetComposeContent(*v)
+	}
+	return _u
+}
+
+// ClearComposeContent clears the value of the "compose_content" field.
+func (_u *AppUpdate) ClearComposeContent() *AppUpdate {
+	_u.mutation.ClearComposeContent()
+	return _u
+}
+
+// SetComposePath sets the "compose_path" field.
+func (_u *AppUpdate) SetComposePath(v string) *AppUpdate {
+	_u.mutation.SetComposePath(v)
+	return _u
+}
+
+// SetNillableComposePath sets the "compose_path" field if the given value is not nil.
+func (_u *AppUpdate) SetNillableComposePath(v *string) *AppUpdate {
+	if v != nil {
+		_u.SetComposePath(*v)
+	}
+	return _u
+}
+
+// ClearComposePath clears the value of the "compose_path" field.
+func (_u *AppUpdate) ClearComposePath() *AppUpdate {
+	_u.mutation.ClearComposePath()
+	return _u
+}
+
+// SetRegistryURL sets the "registry_url" field.
+func (_u *AppUpdate) SetRegistryURL(v string) *AppUpdate {
+	_u.mutation.SetRegistryURL(v)
+	return _u
+}
+
+// SetNillableRegistryURL sets the "registry_url" field if the given value is not nil.
+func (_u *AppUpdate) SetNillableRegistryURL(v *string) *AppUpdate {
+	if v != nil {
+		_u.SetRegistryURL(*v)
+	}
+	return _u
+}
+
+// ClearRegistryURL clears the value of the "registry_url" field.
+func (_u *AppUpdate) ClearRegistryURL() *AppUpdate {
+	_u.mutation.ClearRegistryURL()
+	return _u
+}
+
+// SetRegistryUsername sets the "registry_username" field.
+func (_u *AppUpdate) SetRegistryUsername(v string) *AppUpdate {
+	_u.mutation.SetRegistryUsername(v)
+	return _u
+}
+
+// SetNillableRegistryUsername sets the "registry_username" field if the given value is not nil.
+func (_u *AppUpdate) SetNillableRegistryUsername(v *string) *AppUpdate {
+	if v != nil {
+		_u.SetRegistryUsername(*v)
+	}
+	return _u
+}
+
+// ClearRegistryUsername clears the value of the "registry_username" field.
+func (_u *AppUpdate) ClearRegistryUsername() *AppUpdate {
+	_u.mutation.ClearRegistryUsername()
+	return _u
+}
+
+// SetRegistryPassword sets the "registry_password" field.
+func (_u *AppUpdate) SetRegistryPassword(v string) *AppUpdate {
+	_u.mutation.SetRegistryPassword(v)
+	return _u
+}
+
+// SetNillableRegistryPassword sets the "registry_password" field if the given value is not nil.
+func (_u *AppUpdate) SetNillableRegistryPassword(v *string) *AppUpdate {
+	if v != nil {
+		_u.SetRegistryPassword(*v)
+	}
+	return _u
+}
+
+// ClearRegistryPassword clears the value of the "registry_password" field.
+func (_u *AppUpdate) ClearRegistryPassword() *AppUpdate {
+	_u.mutation.ClearRegistryPassword()
 	return _u
 }
 
@@ -367,11 +493,17 @@ func (_u *AppUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Image(); ok {
 		_spec.SetField(app.FieldImage, field.TypeString, value)
 	}
+	if _u.mutation.ImageCleared() {
+		_spec.ClearField(app.FieldImage, field.TypeString)
+	}
 	if value, ok := _u.mutation.Port(); ok {
 		_spec.SetField(app.FieldPort, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.AddedPort(); ok {
 		_spec.AddField(app.FieldPort, field.TypeInt, value)
+	}
+	if _u.mutation.PortCleared() {
+		_spec.ClearField(app.FieldPort, field.TypeInt)
 	}
 	if value, ok := _u.mutation.RepoURL(); ok {
 		_spec.SetField(app.FieldRepoURL, field.TypeString, value)
@@ -381,6 +513,39 @@ func (_u *AppUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Branch(); ok {
 		_spec.SetField(app.FieldBranch, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DeployMethod(); ok {
+		_spec.SetField(app.FieldDeployMethod, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ComposeContent(); ok {
+		_spec.SetField(app.FieldComposeContent, field.TypeString, value)
+	}
+	if _u.mutation.ComposeContentCleared() {
+		_spec.ClearField(app.FieldComposeContent, field.TypeString)
+	}
+	if value, ok := _u.mutation.ComposePath(); ok {
+		_spec.SetField(app.FieldComposePath, field.TypeString, value)
+	}
+	if _u.mutation.ComposePathCleared() {
+		_spec.ClearField(app.FieldComposePath, field.TypeString)
+	}
+	if value, ok := _u.mutation.RegistryURL(); ok {
+		_spec.SetField(app.FieldRegistryURL, field.TypeString, value)
+	}
+	if _u.mutation.RegistryURLCleared() {
+		_spec.ClearField(app.FieldRegistryURL, field.TypeString)
+	}
+	if value, ok := _u.mutation.RegistryUsername(); ok {
+		_spec.SetField(app.FieldRegistryUsername, field.TypeString, value)
+	}
+	if _u.mutation.RegistryUsernameCleared() {
+		_spec.ClearField(app.FieldRegistryUsername, field.TypeString)
+	}
+	if value, ok := _u.mutation.RegistryPassword(); ok {
+		_spec.SetField(app.FieldRegistryPassword, field.TypeString, value)
+	}
+	if _u.mutation.RegistryPasswordCleared() {
+		_spec.ClearField(app.FieldRegistryPassword, field.TypeString)
 	}
 	if _u.mutation.SitesCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -645,6 +810,12 @@ func (_u *AppUpdateOne) SetNillableImage(v *string) *AppUpdateOne {
 	return _u
 }
 
+// ClearImage clears the value of the "image" field.
+func (_u *AppUpdateOne) ClearImage() *AppUpdateOne {
+	_u.mutation.ClearImage()
+	return _u
+}
+
 // SetPort sets the "port" field.
 func (_u *AppUpdateOne) SetPort(v int) *AppUpdateOne {
 	_u.mutation.ResetPort()
@@ -663,6 +834,12 @@ func (_u *AppUpdateOne) SetNillablePort(v *int) *AppUpdateOne {
 // AddPort adds value to the "port" field.
 func (_u *AppUpdateOne) AddPort(v int) *AppUpdateOne {
 	_u.mutation.AddPort(v)
+	return _u
+}
+
+// ClearPort clears the value of the "port" field.
+func (_u *AppUpdateOne) ClearPort() *AppUpdateOne {
+	_u.mutation.ClearPort()
 	return _u
 }
 
@@ -697,6 +874,120 @@ func (_u *AppUpdateOne) SetNillableBranch(v *string) *AppUpdateOne {
 	if v != nil {
 		_u.SetBranch(*v)
 	}
+	return _u
+}
+
+// SetDeployMethod sets the "deploy_method" field.
+func (_u *AppUpdateOne) SetDeployMethod(v string) *AppUpdateOne {
+	_u.mutation.SetDeployMethod(v)
+	return _u
+}
+
+// SetNillableDeployMethod sets the "deploy_method" field if the given value is not nil.
+func (_u *AppUpdateOne) SetNillableDeployMethod(v *string) *AppUpdateOne {
+	if v != nil {
+		_u.SetDeployMethod(*v)
+	}
+	return _u
+}
+
+// SetComposeContent sets the "compose_content" field.
+func (_u *AppUpdateOne) SetComposeContent(v string) *AppUpdateOne {
+	_u.mutation.SetComposeContent(v)
+	return _u
+}
+
+// SetNillableComposeContent sets the "compose_content" field if the given value is not nil.
+func (_u *AppUpdateOne) SetNillableComposeContent(v *string) *AppUpdateOne {
+	if v != nil {
+		_u.SetComposeContent(*v)
+	}
+	return _u
+}
+
+// ClearComposeContent clears the value of the "compose_content" field.
+func (_u *AppUpdateOne) ClearComposeContent() *AppUpdateOne {
+	_u.mutation.ClearComposeContent()
+	return _u
+}
+
+// SetComposePath sets the "compose_path" field.
+func (_u *AppUpdateOne) SetComposePath(v string) *AppUpdateOne {
+	_u.mutation.SetComposePath(v)
+	return _u
+}
+
+// SetNillableComposePath sets the "compose_path" field if the given value is not nil.
+func (_u *AppUpdateOne) SetNillableComposePath(v *string) *AppUpdateOne {
+	if v != nil {
+		_u.SetComposePath(*v)
+	}
+	return _u
+}
+
+// ClearComposePath clears the value of the "compose_path" field.
+func (_u *AppUpdateOne) ClearComposePath() *AppUpdateOne {
+	_u.mutation.ClearComposePath()
+	return _u
+}
+
+// SetRegistryURL sets the "registry_url" field.
+func (_u *AppUpdateOne) SetRegistryURL(v string) *AppUpdateOne {
+	_u.mutation.SetRegistryURL(v)
+	return _u
+}
+
+// SetNillableRegistryURL sets the "registry_url" field if the given value is not nil.
+func (_u *AppUpdateOne) SetNillableRegistryURL(v *string) *AppUpdateOne {
+	if v != nil {
+		_u.SetRegistryURL(*v)
+	}
+	return _u
+}
+
+// ClearRegistryURL clears the value of the "registry_url" field.
+func (_u *AppUpdateOne) ClearRegistryURL() *AppUpdateOne {
+	_u.mutation.ClearRegistryURL()
+	return _u
+}
+
+// SetRegistryUsername sets the "registry_username" field.
+func (_u *AppUpdateOne) SetRegistryUsername(v string) *AppUpdateOne {
+	_u.mutation.SetRegistryUsername(v)
+	return _u
+}
+
+// SetNillableRegistryUsername sets the "registry_username" field if the given value is not nil.
+func (_u *AppUpdateOne) SetNillableRegistryUsername(v *string) *AppUpdateOne {
+	if v != nil {
+		_u.SetRegistryUsername(*v)
+	}
+	return _u
+}
+
+// ClearRegistryUsername clears the value of the "registry_username" field.
+func (_u *AppUpdateOne) ClearRegistryUsername() *AppUpdateOne {
+	_u.mutation.ClearRegistryUsername()
+	return _u
+}
+
+// SetRegistryPassword sets the "registry_password" field.
+func (_u *AppUpdateOne) SetRegistryPassword(v string) *AppUpdateOne {
+	_u.mutation.SetRegistryPassword(v)
+	return _u
+}
+
+// SetNillableRegistryPassword sets the "registry_password" field if the given value is not nil.
+func (_u *AppUpdateOne) SetNillableRegistryPassword(v *string) *AppUpdateOne {
+	if v != nil {
+		_u.SetRegistryPassword(*v)
+	}
+	return _u
+}
+
+// ClearRegistryPassword clears the value of the "registry_password" field.
+func (_u *AppUpdateOne) ClearRegistryPassword() *AppUpdateOne {
+	_u.mutation.ClearRegistryPassword()
 	return _u
 }
 
@@ -976,11 +1267,17 @@ func (_u *AppUpdateOne) sqlSave(ctx context.Context) (_node *App, err error) {
 	if value, ok := _u.mutation.Image(); ok {
 		_spec.SetField(app.FieldImage, field.TypeString, value)
 	}
+	if _u.mutation.ImageCleared() {
+		_spec.ClearField(app.FieldImage, field.TypeString)
+	}
 	if value, ok := _u.mutation.Port(); ok {
 		_spec.SetField(app.FieldPort, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.AddedPort(); ok {
 		_spec.AddField(app.FieldPort, field.TypeInt, value)
+	}
+	if _u.mutation.PortCleared() {
+		_spec.ClearField(app.FieldPort, field.TypeInt)
 	}
 	if value, ok := _u.mutation.RepoURL(); ok {
 		_spec.SetField(app.FieldRepoURL, field.TypeString, value)
@@ -990,6 +1287,39 @@ func (_u *AppUpdateOne) sqlSave(ctx context.Context) (_node *App, err error) {
 	}
 	if value, ok := _u.mutation.Branch(); ok {
 		_spec.SetField(app.FieldBranch, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DeployMethod(); ok {
+		_spec.SetField(app.FieldDeployMethod, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ComposeContent(); ok {
+		_spec.SetField(app.FieldComposeContent, field.TypeString, value)
+	}
+	if _u.mutation.ComposeContentCleared() {
+		_spec.ClearField(app.FieldComposeContent, field.TypeString)
+	}
+	if value, ok := _u.mutation.ComposePath(); ok {
+		_spec.SetField(app.FieldComposePath, field.TypeString, value)
+	}
+	if _u.mutation.ComposePathCleared() {
+		_spec.ClearField(app.FieldComposePath, field.TypeString)
+	}
+	if value, ok := _u.mutation.RegistryURL(); ok {
+		_spec.SetField(app.FieldRegistryURL, field.TypeString, value)
+	}
+	if _u.mutation.RegistryURLCleared() {
+		_spec.ClearField(app.FieldRegistryURL, field.TypeString)
+	}
+	if value, ok := _u.mutation.RegistryUsername(); ok {
+		_spec.SetField(app.FieldRegistryUsername, field.TypeString, value)
+	}
+	if _u.mutation.RegistryUsernameCleared() {
+		_spec.ClearField(app.FieldRegistryUsername, field.TypeString)
+	}
+	if value, ok := _u.mutation.RegistryPassword(); ok {
+		_spec.SetField(app.FieldRegistryPassword, field.TypeString, value)
+	}
+	if _u.mutation.RegistryPasswordCleared() {
+		_spec.ClearField(app.FieldRegistryPassword, field.TypeString)
 	}
 	if _u.mutation.SitesCleared() {
 		edge := &sqlgraph.EdgeSpec{

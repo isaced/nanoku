@@ -49,6 +49,12 @@ type AppMutation struct {
 	addport                  *int
 	repo_url                 *string
 	branch                   *string
+	deploy_method            *string
+	compose_content          *string
+	compose_path             *string
+	registry_url             *string
+	registry_username        *string
+	registry_password        *string
 	clearedFields            map[string]struct{}
 	sites                    map[int]struct{}
 	removedsites             map[int]struct{}
@@ -292,7 +298,7 @@ func (m *AppMutation) Image() (r string, exists bool) {
 // OldImage returns the old "image" field's value of the App entity.
 // If the App object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AppMutation) OldImage(ctx context.Context) (v string, err error) {
+func (m *AppMutation) OldImage(ctx context.Context) (v *string, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldImage is only allowed on UpdateOne operations")
 	}
@@ -306,9 +312,22 @@ func (m *AppMutation) OldImage(ctx context.Context) (v string, err error) {
 	return oldValue.Image, nil
 }
 
+// ClearImage clears the value of the "image" field.
+func (m *AppMutation) ClearImage() {
+	m.image = nil
+	m.clearedFields[app.FieldImage] = struct{}{}
+}
+
+// ImageCleared returns if the "image" field was cleared in this mutation.
+func (m *AppMutation) ImageCleared() bool {
+	_, ok := m.clearedFields[app.FieldImage]
+	return ok
+}
+
 // ResetImage resets all changes to the "image" field.
 func (m *AppMutation) ResetImage() {
 	m.image = nil
+	delete(m.clearedFields, app.FieldImage)
 }
 
 // SetPort sets the "port" field.
@@ -361,10 +380,24 @@ func (m *AppMutation) AddedPort() (r int, exists bool) {
 	return *v, true
 }
 
+// ClearPort clears the value of the "port" field.
+func (m *AppMutation) ClearPort() {
+	m.port = nil
+	m.addport = nil
+	m.clearedFields[app.FieldPort] = struct{}{}
+}
+
+// PortCleared returns if the "port" field was cleared in this mutation.
+func (m *AppMutation) PortCleared() bool {
+	_, ok := m.clearedFields[app.FieldPort]
+	return ok
+}
+
 // ResetPort resets all changes to the "port" field.
 func (m *AppMutation) ResetPort() {
 	m.port = nil
 	m.addport = nil
+	delete(m.clearedFields, app.FieldPort)
 }
 
 // SetRepoURL sets the "repo_url" field.
@@ -450,6 +483,287 @@ func (m *AppMutation) OldBranch(ctx context.Context) (v string, err error) {
 // ResetBranch resets all changes to the "branch" field.
 func (m *AppMutation) ResetBranch() {
 	m.branch = nil
+}
+
+// SetDeployMethod sets the "deploy_method" field.
+func (m *AppMutation) SetDeployMethod(s string) {
+	m.deploy_method = &s
+}
+
+// DeployMethod returns the value of the "deploy_method" field in the mutation.
+func (m *AppMutation) DeployMethod() (r string, exists bool) {
+	v := m.deploy_method
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeployMethod returns the old "deploy_method" field's value of the App entity.
+// If the App object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AppMutation) OldDeployMethod(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeployMethod is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeployMethod requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeployMethod: %w", err)
+	}
+	return oldValue.DeployMethod, nil
+}
+
+// ResetDeployMethod resets all changes to the "deploy_method" field.
+func (m *AppMutation) ResetDeployMethod() {
+	m.deploy_method = nil
+}
+
+// SetComposeContent sets the "compose_content" field.
+func (m *AppMutation) SetComposeContent(s string) {
+	m.compose_content = &s
+}
+
+// ComposeContent returns the value of the "compose_content" field in the mutation.
+func (m *AppMutation) ComposeContent() (r string, exists bool) {
+	v := m.compose_content
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldComposeContent returns the old "compose_content" field's value of the App entity.
+// If the App object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AppMutation) OldComposeContent(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldComposeContent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldComposeContent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldComposeContent: %w", err)
+	}
+	return oldValue.ComposeContent, nil
+}
+
+// ClearComposeContent clears the value of the "compose_content" field.
+func (m *AppMutation) ClearComposeContent() {
+	m.compose_content = nil
+	m.clearedFields[app.FieldComposeContent] = struct{}{}
+}
+
+// ComposeContentCleared returns if the "compose_content" field was cleared in this mutation.
+func (m *AppMutation) ComposeContentCleared() bool {
+	_, ok := m.clearedFields[app.FieldComposeContent]
+	return ok
+}
+
+// ResetComposeContent resets all changes to the "compose_content" field.
+func (m *AppMutation) ResetComposeContent() {
+	m.compose_content = nil
+	delete(m.clearedFields, app.FieldComposeContent)
+}
+
+// SetComposePath sets the "compose_path" field.
+func (m *AppMutation) SetComposePath(s string) {
+	m.compose_path = &s
+}
+
+// ComposePath returns the value of the "compose_path" field in the mutation.
+func (m *AppMutation) ComposePath() (r string, exists bool) {
+	v := m.compose_path
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldComposePath returns the old "compose_path" field's value of the App entity.
+// If the App object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AppMutation) OldComposePath(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldComposePath is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldComposePath requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldComposePath: %w", err)
+	}
+	return oldValue.ComposePath, nil
+}
+
+// ClearComposePath clears the value of the "compose_path" field.
+func (m *AppMutation) ClearComposePath() {
+	m.compose_path = nil
+	m.clearedFields[app.FieldComposePath] = struct{}{}
+}
+
+// ComposePathCleared returns if the "compose_path" field was cleared in this mutation.
+func (m *AppMutation) ComposePathCleared() bool {
+	_, ok := m.clearedFields[app.FieldComposePath]
+	return ok
+}
+
+// ResetComposePath resets all changes to the "compose_path" field.
+func (m *AppMutation) ResetComposePath() {
+	m.compose_path = nil
+	delete(m.clearedFields, app.FieldComposePath)
+}
+
+// SetRegistryURL sets the "registry_url" field.
+func (m *AppMutation) SetRegistryURL(s string) {
+	m.registry_url = &s
+}
+
+// RegistryURL returns the value of the "registry_url" field in the mutation.
+func (m *AppMutation) RegistryURL() (r string, exists bool) {
+	v := m.registry_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRegistryURL returns the old "registry_url" field's value of the App entity.
+// If the App object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AppMutation) OldRegistryURL(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRegistryURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRegistryURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRegistryURL: %w", err)
+	}
+	return oldValue.RegistryURL, nil
+}
+
+// ClearRegistryURL clears the value of the "registry_url" field.
+func (m *AppMutation) ClearRegistryURL() {
+	m.registry_url = nil
+	m.clearedFields[app.FieldRegistryURL] = struct{}{}
+}
+
+// RegistryURLCleared returns if the "registry_url" field was cleared in this mutation.
+func (m *AppMutation) RegistryURLCleared() bool {
+	_, ok := m.clearedFields[app.FieldRegistryURL]
+	return ok
+}
+
+// ResetRegistryURL resets all changes to the "registry_url" field.
+func (m *AppMutation) ResetRegistryURL() {
+	m.registry_url = nil
+	delete(m.clearedFields, app.FieldRegistryURL)
+}
+
+// SetRegistryUsername sets the "registry_username" field.
+func (m *AppMutation) SetRegistryUsername(s string) {
+	m.registry_username = &s
+}
+
+// RegistryUsername returns the value of the "registry_username" field in the mutation.
+func (m *AppMutation) RegistryUsername() (r string, exists bool) {
+	v := m.registry_username
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRegistryUsername returns the old "registry_username" field's value of the App entity.
+// If the App object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AppMutation) OldRegistryUsername(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRegistryUsername is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRegistryUsername requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRegistryUsername: %w", err)
+	}
+	return oldValue.RegistryUsername, nil
+}
+
+// ClearRegistryUsername clears the value of the "registry_username" field.
+func (m *AppMutation) ClearRegistryUsername() {
+	m.registry_username = nil
+	m.clearedFields[app.FieldRegistryUsername] = struct{}{}
+}
+
+// RegistryUsernameCleared returns if the "registry_username" field was cleared in this mutation.
+func (m *AppMutation) RegistryUsernameCleared() bool {
+	_, ok := m.clearedFields[app.FieldRegistryUsername]
+	return ok
+}
+
+// ResetRegistryUsername resets all changes to the "registry_username" field.
+func (m *AppMutation) ResetRegistryUsername() {
+	m.registry_username = nil
+	delete(m.clearedFields, app.FieldRegistryUsername)
+}
+
+// SetRegistryPassword sets the "registry_password" field.
+func (m *AppMutation) SetRegistryPassword(s string) {
+	m.registry_password = &s
+}
+
+// RegistryPassword returns the value of the "registry_password" field in the mutation.
+func (m *AppMutation) RegistryPassword() (r string, exists bool) {
+	v := m.registry_password
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRegistryPassword returns the old "registry_password" field's value of the App entity.
+// If the App object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AppMutation) OldRegistryPassword(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRegistryPassword is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRegistryPassword requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRegistryPassword: %w", err)
+	}
+	return oldValue.RegistryPassword, nil
+}
+
+// ClearRegistryPassword clears the value of the "registry_password" field.
+func (m *AppMutation) ClearRegistryPassword() {
+	m.registry_password = nil
+	m.clearedFields[app.FieldRegistryPassword] = struct{}{}
+}
+
+// RegistryPasswordCleared returns if the "registry_password" field was cleared in this mutation.
+func (m *AppMutation) RegistryPasswordCleared() bool {
+	_, ok := m.clearedFields[app.FieldRegistryPassword]
+	return ok
+}
+
+// ResetRegistryPassword resets all changes to the "registry_password" field.
+func (m *AppMutation) ResetRegistryPassword() {
+	m.registry_password = nil
+	delete(m.clearedFields, app.FieldRegistryPassword)
 }
 
 // AddSiteIDs adds the "sites" edge to the Site entity by ids.
@@ -741,7 +1055,7 @@ func (m *AppMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AppMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 13)
 	if m.created_at != nil {
 		fields = append(fields, app.FieldCreatedAt)
 	}
@@ -762,6 +1076,24 @@ func (m *AppMutation) Fields() []string {
 	}
 	if m.branch != nil {
 		fields = append(fields, app.FieldBranch)
+	}
+	if m.deploy_method != nil {
+		fields = append(fields, app.FieldDeployMethod)
+	}
+	if m.compose_content != nil {
+		fields = append(fields, app.FieldComposeContent)
+	}
+	if m.compose_path != nil {
+		fields = append(fields, app.FieldComposePath)
+	}
+	if m.registry_url != nil {
+		fields = append(fields, app.FieldRegistryURL)
+	}
+	if m.registry_username != nil {
+		fields = append(fields, app.FieldRegistryUsername)
+	}
+	if m.registry_password != nil {
+		fields = append(fields, app.FieldRegistryPassword)
 	}
 	return fields
 }
@@ -785,6 +1117,18 @@ func (m *AppMutation) Field(name string) (ent.Value, bool) {
 		return m.RepoURL()
 	case app.FieldBranch:
 		return m.Branch()
+	case app.FieldDeployMethod:
+		return m.DeployMethod()
+	case app.FieldComposeContent:
+		return m.ComposeContent()
+	case app.FieldComposePath:
+		return m.ComposePath()
+	case app.FieldRegistryURL:
+		return m.RegistryURL()
+	case app.FieldRegistryUsername:
+		return m.RegistryUsername()
+	case app.FieldRegistryPassword:
+		return m.RegistryPassword()
 	}
 	return nil, false
 }
@@ -808,6 +1152,18 @@ func (m *AppMutation) OldField(ctx context.Context, name string) (ent.Value, err
 		return m.OldRepoURL(ctx)
 	case app.FieldBranch:
 		return m.OldBranch(ctx)
+	case app.FieldDeployMethod:
+		return m.OldDeployMethod(ctx)
+	case app.FieldComposeContent:
+		return m.OldComposeContent(ctx)
+	case app.FieldComposePath:
+		return m.OldComposePath(ctx)
+	case app.FieldRegistryURL:
+		return m.OldRegistryURL(ctx)
+	case app.FieldRegistryUsername:
+		return m.OldRegistryUsername(ctx)
+	case app.FieldRegistryPassword:
+		return m.OldRegistryPassword(ctx)
 	}
 	return nil, fmt.Errorf("unknown App field %s", name)
 }
@@ -866,6 +1222,48 @@ func (m *AppMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetBranch(v)
 		return nil
+	case app.FieldDeployMethod:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeployMethod(v)
+		return nil
+	case app.FieldComposeContent:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetComposeContent(v)
+		return nil
+	case app.FieldComposePath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetComposePath(v)
+		return nil
+	case app.FieldRegistryURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRegistryURL(v)
+		return nil
+	case app.FieldRegistryUsername:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRegistryUsername(v)
+		return nil
+	case app.FieldRegistryPassword:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRegistryPassword(v)
+		return nil
 	}
 	return fmt.Errorf("unknown App field %s", name)
 }
@@ -911,8 +1309,29 @@ func (m *AppMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *AppMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(app.FieldImage) {
+		fields = append(fields, app.FieldImage)
+	}
+	if m.FieldCleared(app.FieldPort) {
+		fields = append(fields, app.FieldPort)
+	}
 	if m.FieldCleared(app.FieldRepoURL) {
 		fields = append(fields, app.FieldRepoURL)
+	}
+	if m.FieldCleared(app.FieldComposeContent) {
+		fields = append(fields, app.FieldComposeContent)
+	}
+	if m.FieldCleared(app.FieldComposePath) {
+		fields = append(fields, app.FieldComposePath)
+	}
+	if m.FieldCleared(app.FieldRegistryURL) {
+		fields = append(fields, app.FieldRegistryURL)
+	}
+	if m.FieldCleared(app.FieldRegistryUsername) {
+		fields = append(fields, app.FieldRegistryUsername)
+	}
+	if m.FieldCleared(app.FieldRegistryPassword) {
+		fields = append(fields, app.FieldRegistryPassword)
 	}
 	return fields
 }
@@ -928,8 +1347,29 @@ func (m *AppMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *AppMutation) ClearField(name string) error {
 	switch name {
+	case app.FieldImage:
+		m.ClearImage()
+		return nil
+	case app.FieldPort:
+		m.ClearPort()
+		return nil
 	case app.FieldRepoURL:
 		m.ClearRepoURL()
+		return nil
+	case app.FieldComposeContent:
+		m.ClearComposeContent()
+		return nil
+	case app.FieldComposePath:
+		m.ClearComposePath()
+		return nil
+	case app.FieldRegistryURL:
+		m.ClearRegistryURL()
+		return nil
+	case app.FieldRegistryUsername:
+		m.ClearRegistryUsername()
+		return nil
+	case app.FieldRegistryPassword:
+		m.ClearRegistryPassword()
 		return nil
 	}
 	return fmt.Errorf("unknown App nullable field %s", name)
@@ -959,6 +1399,24 @@ func (m *AppMutation) ResetField(name string) error {
 		return nil
 	case app.FieldBranch:
 		m.ResetBranch()
+		return nil
+	case app.FieldDeployMethod:
+		m.ResetDeployMethod()
+		return nil
+	case app.FieldComposeContent:
+		m.ResetComposeContent()
+		return nil
+	case app.FieldComposePath:
+		m.ResetComposePath()
+		return nil
+	case app.FieldRegistryURL:
+		m.ResetRegistryURL()
+		return nil
+	case app.FieldRegistryUsername:
+		m.ResetRegistryUsername()
+		return nil
+	case app.FieldRegistryPassword:
+		m.ResetRegistryPassword()
 		return nil
 	}
 	return fmt.Errorf("unknown App field %s", name)

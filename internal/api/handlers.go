@@ -22,6 +22,7 @@ type Handlers struct {
 	ACMEEmail       string
 	SkipCaddyReload bool
 	SelfContainer   string
+	ComposeBaseDir  string
 }
 
 type SiteDTO struct {

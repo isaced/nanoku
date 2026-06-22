@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -31,8 +33,26 @@ type AppDTO struct {
 	Branch    string        `json:"branch"`
 	Container *ContainerDTO `json:"container,omitempty"`
 	EnvVars   []EnvVarDTO   `json:"envVars,omitempty"`
-	CreatedAt string        `json:"createdAt"`
-	UpdatedAt string        `json:"updatedAt"`
+
+	// Deployment method: "docker" (default) or "compose".
+	DeployMethod string `json:"deployMethod"`
+	// Path to an existing compose file on the host. If set, overrides
+	// ComposeContent.
+	ComposePath string `json:"composePath,omitempty"`
+	// Inline compose YAML (used when DeployMethod="compose" and ComposePath is empty).
+	ComposeContent string `json:"composeContent,omitempty"`
+	// Resolved path on the host where the compose file actually lives
+	// (for UI display + cleanup). Equal to ComposePath if user-provided,
+	// otherwise the generated path under ComposeBaseDir.
+	ComposeFile string `json:"composeFile,omitempty"`
+
+	// Private registry credentials (password is never returned to the client).
+	RegistryConfigured bool   `json:"registryConfigured"`
+	RegistryURL        string `json:"registryUrl,omitempty"`
+	RegistryUsername   string `json:"registryUsername,omitempty"`
+
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
 type ContainerDTO struct {
@@ -55,11 +75,19 @@ type EnvVarInput struct {
 }
 
 type AppInput struct {
-	Name    *string `json:"name"`
-	Image   *string `json:"image"`
-	Port    *int    `json:"port"`
-	RepoURL *string `json:"repoUrl"`
-	Branch  *string `json:"branch"`
+	Name            *string `json:"name"`
+	Image           *string `json:"image"`
+	Port            *int    `json:"port"`
+	RepoURL         *string `json:"repoUrl"`
+	Branch          *string `json:"branch"`
+	DeployMethod    *string `json:"deployMethod"`
+	ComposePath     *string `json:"composePath"`
+	ComposeContent  *string `json:"composeContent"`
+	RegistryURL     *string `json:"registryUrl"`
+	RegistryUsername *string `json:"registryUsername"`
+	RegistryPassword *string `json:"registryPassword"`
+	// ClearRegistry wipes stored registry credentials.
+	ClearRegistry *bool `json:"clearRegistry"`
 }
 
 type DeployDTO struct {
@@ -124,14 +152,33 @@ func (h *Handlers) toAppDTO(ctx context.Context, a *db.App) AppDTO {
 	out := AppDTO{
 		ID:        a.ID,
 		Name:      a.Name,
-		Image:     a.Image,
-		Port:      a.Port,
+		Image:     appImage(a),
+		Port:      appPort(a),
 		Branch:    a.Branch,
 		CreatedAt: a.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt: a.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	if a.RepoURL != nil {
 		out.RepoURL = *a.RepoURL
+	}
+	out.DeployMethod = a.DeployMethod
+	if a.DeployMethod == "compose" {
+		if a.ComposePath != nil && *a.ComposePath != "" {
+			out.ComposePath = *a.ComposePath
+			out.ComposeFile = *a.ComposePath
+		} else if a.ComposeContent != nil && *a.ComposeContent != "" {
+			out.ComposeFile = h.composeFilePath(a.Name)
+		}
+		if a.ComposeContent != nil {
+			out.ComposeContent = *a.ComposeContent
+		}
+	}
+	if a.RegistryUsername != nil && *a.RegistryUsername != "" {
+		out.RegistryConfigured = true
+		out.RegistryUsername = *a.RegistryUsername
+		if a.RegistryURL != nil {
+			out.RegistryURL = *a.RegistryURL
+		}
 	}
 	if h.Docker != nil {
 		cur, err := a.QueryCurrentContainer().Only(ctx)
@@ -144,6 +191,70 @@ func (h *Handlers) toAppDTO(ctx context.Context, a *db.App) AppDTO {
 		}
 	}
 	return out
+}
+
+// composeFilePath returns the on-disk path where nanoku stores the
+// docker-compose.yml for an app (when deploy_method=compose and
+// compose_path is empty).
+func (h *Handlers) composeFilePath(appName string) string {
+	return filepath.Join(h.ComposeBaseDir, appName, "docker-compose.yml")
+}
+
+// writeComposeFile atomically writes the compose content to disk and
+// returns the path used. Creates parent dirs as needed.
+func (h *Handlers) writeComposeFile(appName, content string) (string, error) {
+	path := h.composeFilePath(appName)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", fmt.Errorf("mkdir: %w", err)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".docker-compose-*.yml.tmp")
+	if err != nil {
+		return "", fmt.Errorf("create temp: %w", err)
+	}
+	tmpPath := tmp.Name()
+	if _, err := tmp.WriteString(content); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("write: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("close: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("rename: %w", err)
+	}
+	return path, nil
+}
+
+// composeProjectName returns the compose project name nanoku uses for an app.
+// Format: "nanoku-<app-name>". This controls network / container prefix.
+func composeProjectName(appName string) string {
+	return "nanoku-" + appName
+}
+
+// resolveComposeFile returns the compose file path actually used at deploy time:
+// user-provided compose_path wins; otherwise the generated path.
+func (h *Handlers) resolveComposeFile(a *db.App) (project, filePath string) {
+	project = composeProjectName(a.Name)
+	if a.ComposePath != nil && *a.ComposePath != "" {
+		return project, *a.ComposePath
+	}
+	return project, h.composeFilePath(a.Name)
+}
+
+// appImage safely dereferences a's image pointer (nil → "").
+func appImage(a *db.App) string {
+	if a.Image == nil {
+		return ""
+	}
+	return *a.Image
+}
+
+// appPort returns the app's port (0 for compose-mode apps without one).
+func appPort(a *db.App) int {
+	return a.Port
 }
 
 func (h *Handlers) ListApps(w http.ResponseWriter, r *http.Request) {
@@ -169,13 +280,32 @@ func (h *Handlers) CreateApp(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, errors.New("name must match ^[a-z][a-z0-9-]{0,62}$"))
 		return
 	}
-	if in.Image == nil || strings.TrimSpace(*in.Image) == "" {
-		writeErr(w, http.StatusBadRequest, errors.New("image is required"))
-		return
+	deployMethod := "docker"
+	if in.DeployMethod != nil {
+		switch *in.DeployMethod {
+		case "docker", "compose":
+			deployMethod = *in.DeployMethod
+		default:
+			writeErr(w, http.StatusBadRequest, errors.New("deployMethod must be 'docker' or 'compose'"))
+			return
+		}
 	}
-	if in.Port == nil || *in.Port < 1 || *in.Port > 65535 {
-		writeErr(w, http.StatusBadRequest, errors.New("port must be 1..65535"))
-		return
+	if deployMethod == "docker" {
+		if in.Image == nil || strings.TrimSpace(*in.Image) == "" {
+			writeErr(w, http.StatusBadRequest, errors.New("image is required for docker mode"))
+			return
+		}
+		if in.Port == nil || *in.Port < 1 || *in.Port > 65535 {
+			writeErr(w, http.StatusBadRequest, errors.New("port must be 1..65535"))
+			return
+		}
+	} else {
+		hasPath := in.ComposePath != nil && strings.TrimSpace(*in.ComposePath) != ""
+		hasContent := in.ComposeContent != nil && strings.TrimSpace(*in.ComposeContent) != ""
+		if !hasPath && !hasContent {
+			writeErr(w, http.StatusBadRequest, errors.New("compose mode requires composePath or composeContent"))
+			return
+		}
 	}
 	branch := "main"
 	if in.Branch != nil && strings.TrimSpace(*in.Branch) != "" {
@@ -183,16 +313,47 @@ func (h *Handlers) CreateApp(w http.ResponseWriter, r *http.Request) {
 	}
 	create := h.DB.App.Create().
 		SetName(*in.Name).
-		SetImage(strings.TrimSpace(*in.Image)).
-		SetPort(*in.Port).
+		SetDeployMethod(deployMethod).
 		SetBranch(branch)
+	if deployMethod == "docker" {
+		create.SetImage(strings.TrimSpace(*in.Image))
+		if in.Port != nil {
+			create.SetPort(*in.Port)
+		}
+	}
 	if in.RepoURL != nil && strings.TrimSpace(*in.RepoURL) != "" {
 		create.SetRepoURL(strings.TrimSpace(*in.RepoURL))
+	}
+	// compose fields
+	if in.ComposePath != nil && strings.TrimSpace(*in.ComposePath) != "" {
+		create.SetComposePath(strings.TrimSpace(*in.ComposePath))
+	}
+	if in.ComposeContent != nil && strings.TrimSpace(*in.ComposeContent) != "" {
+		// written to disk after Save so we have an ID
+		create.SetComposeContent(strings.TrimSpace(*in.ComposeContent))
+	}
+	// registry
+	if in.RegistryURL != nil && strings.TrimSpace(*in.RegistryURL) != "" {
+		create.SetRegistryURL(strings.TrimSpace(*in.RegistryURL))
+	}
+	if in.RegistryUsername != nil && strings.TrimSpace(*in.RegistryUsername) != "" {
+		create.SetRegistryUsername(strings.TrimSpace(*in.RegistryUsername))
+	}
+	if in.RegistryPassword != nil && *in.RegistryPassword != "" {
+		create.SetRegistryPassword(*in.RegistryPassword)
 	}
 	a, err := create.Save(r.Context())
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
+	}
+	// Persist the compose file to disk right away so the file path returned
+	// in the DTO is always valid (not just after a deploy).
+	if deployMethod == "compose" && (in.ComposePath == nil || strings.TrimSpace(*in.ComposePath) == "") && in.ComposeContent != nil && strings.TrimSpace(*in.ComposeContent) != "" {
+		if _, werr := h.writeComposeFile(a.Name, strings.TrimSpace(*in.ComposeContent)); werr != nil {
+			// non-fatal: deploy will retry
+			_ = werr
+		}
 	}
 	writeJSON(w, http.StatusCreated, h.toAppDTO(r.Context(), a))
 }
@@ -242,12 +403,6 @@ func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
 	if in.Name != nil {
 		upd.SetName(*in.Name)
 	}
-	if in.Image != nil {
-		upd.SetImage(strings.TrimSpace(*in.Image))
-	}
-	if in.Port != nil {
-		upd.SetPort(*in.Port)
-	}
 	if in.Branch != nil {
 		upd.SetBranch(strings.TrimSpace(*in.Branch))
 	}
@@ -259,10 +414,70 @@ func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
 			upd.SetRepoURL(repo)
 		}
 	}
+	if in.Image != nil {
+		upd.SetImage(strings.TrimSpace(*in.Image))
+	}
+	if in.Port != nil {
+		upd.SetPort(*in.Port)
+	}
+	if in.DeployMethod != nil {
+		switch *in.DeployMethod {
+		case "docker", "compose":
+			upd.SetDeployMethod(*in.DeployMethod)
+		default:
+			writeErr(w, http.StatusBadRequest, errors.New("deployMethod must be 'docker' or 'compose'"))
+			return
+		}
+	}
+	if in.ComposePath != nil {
+		p := strings.TrimSpace(*in.ComposePath)
+		if p == "" {
+			upd.ClearComposePath()
+		} else {
+			upd.SetComposePath(p)
+		}
+	}
+	if in.ComposeContent != nil {
+		c := strings.TrimSpace(*in.ComposeContent)
+		if c == "" {
+			upd.ClearComposeContent()
+		} else {
+			upd.SetComposeContent(c)
+		}
+	}
+	if in.RegistryURL != nil {
+		u := strings.TrimSpace(*in.RegistryURL)
+		if u == "" {
+			upd.ClearRegistryURL()
+		} else {
+			upd.SetRegistryURL(u)
+		}
+	}
+	if in.RegistryUsername != nil {
+		u := strings.TrimSpace(*in.RegistryUsername)
+		if u == "" {
+			upd.ClearRegistryUsername()
+		} else {
+			upd.SetRegistryUsername(u)
+		}
+	}
+	if in.ClearRegistry != nil && *in.ClearRegistry {
+		upd.ClearRegistryPassword()
+		upd.ClearRegistryUsername()
+		upd.ClearRegistryURL()
+	} else if in.RegistryPassword != nil && *in.RegistryPassword != "" {
+		upd.SetRegistryPassword(*in.RegistryPassword)
+	}
 	a, err := upd.Save(r.Context())
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
+	}
+	// Sync the on-disk compose file with the latest content.
+	if a.DeployMethod == "compose" && (a.ComposePath == nil || *a.ComposePath == "") && a.ComposeContent != nil && *a.ComposeContent != "" {
+		if _, werr := h.writeComposeFile(a.Name, *a.ComposeContent); werr != nil {
+			_ = werr
+		}
 	}
 	writeJSON(w, http.StatusOK, h.toAppDTO(r.Context(), a))
 }
@@ -279,6 +494,12 @@ func (h *Handlers) DeleteApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.Docker != nil {
+		if a.DeployMethod == "compose" {
+			// Bring the whole stack down (compose down removes containers,
+			// default network, and the nanoku- prefix).
+			project, filePath := h.resolveComposeFile(a)
+			_ = h.Docker.ComposeDown(r.Context(), project, filePath)
+		}
 		if cur, err := a.QueryCurrentContainer().Only(r.Context()); err == nil && cur != nil {
 			if err := h.Docker.RemoveContainer(r.Context(), cur.Name); err != nil {
 				writeErr(w, http.StatusInternalServerError, fmt.Errorf("remove container: %w", err))
@@ -289,6 +510,10 @@ func (h *Handlers) DeleteApp(w http.ResponseWriter, r *http.Request) {
 		conts, _ := h.DB.Container.Query().Where(container.HasAppWith(app.IDEQ(a.ID))).All(r.Context())
 		for _, c := range conts {
 			_ = h.Docker.RemoveContainer(r.Context(), c.Name)
+		}
+		// Clean up generated compose file on disk (best-effort).
+		if a.DeployMethod == "compose" && (a.ComposePath == nil || *a.ComposePath == "") {
+			_ = os.Remove(h.composeFilePath(a.Name))
 		}
 	}
 	if err := h.DB.App.DeleteOneID(id).Exec(r.Context()); err != nil {
@@ -337,59 +562,137 @@ func (h *Handlers) DeployApp(w http.ResponseWriter, r *http.Request) {
 		envKVs = append(envKVs, e.Key+"="+e.Value)
 	}
 
-	if err := h.Docker.PullImage(r.Context(), a.Image); err != nil {
-		h.markDeployFailed(r.Context(), dep.ID, err)
-		writeErr(w, http.StatusBadGateway, fmt.Errorf("pull image: %w", err))
-		return
-	}
-
-	// stop & remove old current container (if any) so port mapping / state stays clean
+	// Wipe the previous primary container row (if any) before redeploying,
+	// so port mappings / state stay clean. For compose this is just a
+	// pointer — the actual services are managed by `docker compose`.
 	if cur, err := a.QueryCurrentContainer().Only(r.Context()); err == nil && cur != nil {
 		_ = h.Docker.StopContainer(r.Context(), cur.Name)
 		_ = h.Docker.RemoveContainer(r.Context(), cur.Name)
 		_ = h.DB.Container.DeleteOneID(cur.ID).Exec(r.Context())
 	}
+	// For compose mode, also try to take down the prior stack (best-effort).
+	if a.DeployMethod == "compose" {
+		project, filePath := h.resolveComposeFile(a)
+		_ = h.Docker.ComposeDown(r.Context(), project, filePath)
+	}
 
-	dockerID, containerName, err := h.Docker.CreateAppContainer(r.Context(), a.Name, a.Image, a.Port, envKVs, 0)
-	if err != nil {
+	regURL := ""
+	regUser := ""
+	regPass := ""
+	if a.RegistryURL != nil {
+		regURL = *a.RegistryURL
+	}
+	if a.RegistryUsername != nil {
+		regUser = *a.RegistryUsername
+	}
+	if a.RegistryPassword != nil {
+		regPass = *a.RegistryPassword
+	}
+
+	runUp := func() error {
+		if a.DeployMethod == "compose" {
+			project, filePath := h.resolveComposeFile(a)
+			// If the user provided inline content, write it to disk now
+			// (covers both first deploy and re-deploys after edits).
+			if (a.ComposePath == nil || *a.ComposePath == "") && a.ComposeContent != nil && *a.ComposeContent != "" {
+				written, werr := h.writeComposeFile(a.Name, *a.ComposeContent)
+				if werr != nil {
+					return fmt.Errorf("write compose file: %w", werr)
+				}
+				filePath = written
+			}
+			return h.Docker.ComposeUp(r.Context(), project, filePath, true)
+		}
+		// docker mode
+		img := appImage(a)
+		if img == "" {
+			return errors.New("image is required for docker mode")
+		}
+		if err := h.Docker.PullImage(r.Context(), img); err != nil {
+			return fmt.Errorf("pull image: %w", err)
+		}
+		_, _, err := h.Docker.CreateAppContainer(r.Context(), a.Name, img, appPort(a), envKVs, 0)
+		return err
+	}
+
+	if err := h.Docker.WithRegistry(r.Context(), regURL, regUser, regPass, runUp); err != nil {
 		h.markDeployFailed(r.Context(), dep.ID, err)
 		writeErr(w, http.StatusBadGateway, err)
 		return
 	}
 
+	// Resolve the primary container we just started and persist it.
+	var (
+		primaryName string
+		primaryImg  string
+	)
+	if a.DeployMethod == "compose" {
+		project, _ := h.resolveComposeFile(a)
+		names, _ := h.Docker.ComposePSNames(r.Context(), project, "")
+		primaryName = strings.Join(names, ",") // informational only when >1
+		if len(names) > 0 {
+			primaryName = names[0]
+		} else {
+			primaryName = composeProjectName(a.Name) + "-1"
+		}
+		primaryImg = appImage(a)
+	} else {
+		// docker mode: container name has the standard pattern
+		primaryName = fmt.Sprintf("nanoku-%s-", a.Name) // partial; we'll resolve below
+		_ = primaryName
+		// Re-list to find the actual name (since we don't track the suffix ourselves)
+		names := h.findNanokuAppContainers(r.Context(), a.Name)
+		if len(names) > 0 {
+			primaryName = names[0]
+		} else {
+			h.markDeployFailed(r.Context(), dep.ID, errors.New("container not found after deploy"))
+			writeErr(w, http.StatusInternalServerError, errors.New("container not found after deploy"))
+			return
+		}
+		primaryImg = appImage(a)
+	}
+
 	now := time.Now().UTC()
 	cont, err := h.DB.Container.Create().
-		SetDockerID(dockerID).
-		SetName(containerName).
-		SetImage(a.Image).
+		SetDockerID("").
+		SetName(primaryName).
+		SetImage(primaryImg).
 		SetStatus("running").
 		SetStartedAt(now).
 		SetAppID(a.ID).
 		SetDeployID(dep.ID).
 		Save(r.Context())
 	if err != nil {
-		_ = h.Docker.RemoveContainer(r.Context(), containerName)
 		h.markDeployFailed(r.Context(), dep.ID, err)
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	if err := h.DB.App.UpdateOneID(a.ID).SetCurrentContainerID(cont.ID).Exec(r.Context()); err != nil {
-		_ = h.Docker.RemoveContainer(r.Context(), containerName)
 		h.markDeployFailed(r.Context(), dep.ID, err)
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	_, _ = h.DB.Deploy.UpdateOneID(dep.ID).SetStatus("success").SetFinishedAt(time.Now().UTC()).Save(r.Context())
 
-	// new container name → any site bound to this app now points to a stale upstream.
-	// Regenerate the Caddyfile so it picks up the freshly rotated container name.
+	// Container name (or set of names) may have changed — regenerate the
+	// Caddyfile so it points at the freshly rotated upstream.
 	if err := h.regenerateAndReload(r); err != nil {
-		// don't fail the deploy — the new container is already running; user can manually re-trigger.
 		h.markDeployFailed(r.Context(), dep.ID, fmt.Errorf("post-deploy caddy regen: %w", err))
 	}
 
 	fresh, _ := h.DB.App.Get(r.Context(), a.ID)
 	writeJSON(w, http.StatusCreated, h.toAppDTO(r.Context(), fresh))
+}
+
+// findNanokuAppContainers returns the names of running containers whose
+// name starts with "nanoku-<appName>-". Used to discover the post-deploy
+// container name when we generated a random suffix.
+func (h *Handlers) findNanokuAppContainers(ctx context.Context, appName string) []string {
+	if h.Docker == nil {
+		return nil
+	}
+	names, _ := h.Docker.ListContainersByNamePrefix(ctx, "nanoku-"+appName+"-")
+	return names
 }
 
 func (h *Handlers) markDeployFailed(ctx context.Context, depID int, cause error) {
@@ -428,11 +731,43 @@ func (h *Handlers) containerAction(w http.ResponseWriter, r *http.Request, actio
 		writeErr(w, http.StatusNotFound, err)
 		return
 	}
-	cur, err := a.QueryCurrentContainer().Only(r.Context())
-	if err != nil || cur == nil {
+	cur, _ := a.QueryCurrentContainer().Only(r.Context())
+	if cur == nil {
 		writeErr(w, http.StatusConflict, errors.New("no deployed container for this app"))
 		return
 	}
+
+	// Compose mode: drive the whole stack via `docker compose ...`.
+	if a.DeployMethod == "compose" {
+		project, filePath := h.resolveComposeFile(a)
+		var actErr error
+		switch action {
+		case "start":
+			actErr = h.Docker.ComposeStart(r.Context(), project, filePath)
+		case "stop":
+			actErr = h.Docker.ComposeStop(r.Context(), project, filePath)
+		case "restart":
+			actErr = h.Docker.ComposeRestart(r.Context(), project, filePath)
+		}
+		if actErr != nil {
+			writeErr(w, http.StatusBadGateway, actErr)
+			return
+		}
+		now := time.Now().UTC()
+		upd := h.DB.Container.UpdateOneID(cur.ID)
+		switch action {
+		case "start", "restart":
+			upd.SetStatus("running").SetStartedAt(now).ClearStoppedAt()
+		case "stop":
+			upd.SetStatus("exited").SetStoppedAt(now)
+		}
+		_, _ = upd.Save(r.Context())
+		fresh, _ := h.DB.App.Get(r.Context(), id)
+		writeJSON(w, http.StatusOK, h.toAppDTO(r.Context(), fresh))
+		return
+	}
+
+	// Docker mode: drive the single container.
 	var actErr error
 	switch action {
 	case "start":

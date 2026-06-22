@@ -58,6 +58,10 @@ func init() {
 	appDescBranch := appFields[4].Descriptor()
 	// app.DefaultBranch holds the default value on creation for the branch field.
 	app.DefaultBranch = appDescBranch.Default.(string)
+	// appDescDeployMethod is the schema descriptor for deploy_method field.
+	appDescDeployMethod := appFields[5].Descriptor()
+	// app.DefaultDeployMethod holds the default value on creation for the deploy_method field.
+	app.DefaultDeployMethod = appDescDeployMethod.Default.(string)
 	containerMixin := schema.Container{}.Mixin()
 	containerMixinFields0 := containerMixin[0].Fields()
 	_ = containerMixinFields0

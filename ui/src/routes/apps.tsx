@@ -2,14 +2,19 @@ import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import {
   App,
   Button,
+  Checkbox,
+  Collapse,
+  Divider,
   Drawer,
   Form,
   Input,
   InputNumber,
   Modal,
   Popconfirm,
+  Radio,
   Select,
   Space,
+  Switch,
   Table,
   Tabs,
   Tag,
@@ -20,6 +25,7 @@ import {
   CircleDashed,
   CircleX,
   Container as ContainerIcon,
+  Key,
   Pencil,
   Play,
   Plus,
@@ -85,7 +91,7 @@ function AppsPage() {
   function openCreate() {
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ branch: 'main', port: 80 })
+    form.setFieldsValue({ branch: 'main', port: 80, deployMethod: 'docker' })
     setEditorOpen(true)
   }
 
@@ -97,6 +103,11 @@ function AppsPage() {
       port: a.port,
       repoUrl: a.repoUrl ?? '',
       branch: a.branch,
+      deployMethod: a.deployMethod ?? 'docker',
+      composePath: a.composePath ?? '',
+      composeContent: a.composeContent ?? '',
+      registryUrl: a.registryUrl ?? '',
+      registryUsername: a.registryUsername ?? '',
     })
     setEditorOpen(true)
   }
@@ -186,10 +197,25 @@ function AppsPage() {
                 ),
               },
               {
+                title: 'Method',
+                dataIndex: 'deployMethod',
+                width: 90,
+                render: (m: string) => (
+                  <Tag
+                    color={m === 'compose' ? 'purple' : 'default'}
+                    className="!m-0 mono text-[10px]"
+                  >
+                    {m ?? 'docker'}
+                  </Tag>
+                ),
+              },
+              {
                 title: 'Image',
                 dataIndex: 'image',
-                render: (i: string) => (
-                  <span className="mono text-xs text-[var(--fg-muted)]">{i}</span>
+                render: (i: string, row) => (
+                  <span className="mono text-xs text-[var(--fg-muted)]">
+                    {i || (row.deployMethod === 'compose' ? '(from compose)' : '—')}
+                  </span>
                 ),
               },
               {
@@ -314,6 +340,7 @@ function AppsPage() {
         onCancel={() => setEditorOpen(false)}
         okText={editing ? 'Save' : 'Create'}
         destroyOnClose
+        width={680}
       >
         <Form form={form} layout="vertical" preserve={false}>
           <Form.Item
@@ -327,29 +354,88 @@ function AppsPage() {
                   'Must start with a-z and contain only lowercase letters, digits, dashes',
               },
             ]}
-            extra="Used as Docker container prefix."
+            extra="Used as Docker container / compose project prefix."
           >
             <Input placeholder="myapp" autoFocus />
           </Form.Item>
+
           <Form.Item
-            name="image"
-            label="Image"
-            rules={[{ required: true, message: 'Image is required' }]}
-            extra="Docker image, e.g. nginx:1.27"
+            name="deployMethod"
+            label="Deploy method"
+            rules={[{ required: true }]}
+            initialValue="docker"
           >
-            <Input placeholder="nginxdemos/hello:plain-text" />
+            <DeployMethodSwitch />
           </Form.Item>
+
           <Form.Item
-            name="port"
-            label="Internal port"
-            rules={[
-              { required: true, message: 'Port is required' },
-              { type: 'number', min: 1, max: 65535 },
-            ]}
-            extra="Port the app listens on inside the container."
+            noStyle
+            shouldUpdate={(prev, curr) => prev.deployMethod !== curr.deployMethod}
           >
-            <InputNumber min={1} max={65535} className="w-full" />
+            {({ getFieldValue }) =>
+              getFieldValue('deployMethod') === 'compose' ? (
+                <>
+                  <Form.Item
+                    name="composePath"
+                    label="Compose file path on host (optional)"
+                    extra="If set, overrides the inline content below. Use an absolute path the nanoku process can read."
+                  >
+                    <Input placeholder="/opt/myapp/docker-compose.yml" />
+                  </Form.Item>
+                  <Form.Item
+                    name="composeContent"
+                    label="Compose YAML"
+                    rules={[
+                      {
+                        validator: (_, value) => {
+                          const pathVal = form.getFieldValue('composePath')
+                          if (pathVal && String(pathVal).trim()) return Promise.resolve()
+                          if (!value || !String(value).trim()) {
+                            return Promise.reject(
+                              new Error('Provide a compose file path or inline YAML'),
+                            )
+                          }
+                          return Promise.resolve()
+                        },
+                      },
+                    ]}
+                    extra="Multi-service stacks are supported. Container names will be prefixed with the app name."
+                  >
+                    <Input.TextArea
+                      rows={10}
+                      placeholder={'services:\n  web:\n    image: nginx:1.27\n    ports: ["8080:80"]'}
+                      className="mono text-xs"
+                    />
+                  </Form.Item>
+                </>
+              ) : (
+                <>
+                  <Form.Item
+                    name="image"
+                    label="Image"
+                    rules={[{ required: true, message: 'Image is required' }]}
+                    extra="Docker image, e.g. nginx:1.27"
+                  >
+                    <Input placeholder="nginxdemos/hello:plain-text" />
+                  </Form.Item>
+                  <Form.Item
+                    name="port"
+                    label="Internal port"
+                    rules={[
+                      { required: true, message: 'Port is required' },
+                      { type: 'number', min: 1, max: 65535 },
+                    ]}
+                    extra="Port the app listens on inside the container."
+                  >
+                    <InputNumber min={1} max={65535} className="w-full" />
+                  </Form.Item>
+                </>
+              )
+            }
           </Form.Item>
+
+          <RegistrySection editing={editing} />
+
           <Form.Item name="branch" label="Branch" initialValue="main">
             <Input placeholder="main" />
           </Form.Item>
@@ -365,6 +451,75 @@ function AppsPage() {
           onClose={() => setDetailAppId(null)}
           onChanged={reload}
         />
+      )}
+    </div>
+  )
+}
+
+function DeployMethodSwitch({ value, onChange }: { value?: string; onChange?: (v: string) => void }) {
+  return (
+    <Radio.Group
+      value={value}
+      onChange={(e) => onChange?.(e.target.value)}
+      optionType="button"
+      buttonStyle="solid"
+    >
+      <Radio.Button value="docker">Docker</Radio.Button>
+      <Radio.Button value="compose">Docker Compose</Radio.Button>
+    </Radio.Group>
+  )
+}
+
+function RegistrySection({ editing }: { editing: AppType | null }) {
+  return (
+    <div className="border border-[var(--border)] rounded-lg p-3 mb-2 bg-[var(--bg-input)]/30">
+      <div className="flex items-center gap-2 mb-2">
+        <Key size={13} className="text-[var(--fg-muted)]" />
+        <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
+          Private registry (optional)
+        </span>
+        {editing?.registryConfigured && (
+          <Tag color="blue" className="!m-0 ml-auto">
+            configured
+          </Tag>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Form.Item
+          name="registryUrl"
+          label="Registry URL"
+          extra="Empty = public registry"
+          className="!mb-2"
+        >
+          <Input placeholder="ghcr.io" />
+        </Form.Item>
+        <Form.Item
+          name="registryUsername"
+          label="Username"
+          className="!mb-2"
+        >
+          <Input placeholder="user" />
+        </Form.Item>
+      </div>
+      <Form.Item
+        name="registryPassword"
+        label={editing?.registryConfigured ? 'New password (leave empty to keep)' : 'Password'}
+        extra={
+          editing?.registryConfigured
+            ? 'Stored encrypted at rest is on the roadmap; currently stored in the SQLite DB.'
+            : undefined
+        }
+        className="!mb-0"
+      >
+        <Input.Password
+          placeholder={editing?.registryConfigured ? '•••••• (unchanged)' : 'password / token'}
+          autoComplete="off"
+        />
+      </Form.Item>
+      {editing?.registryConfigured && (
+        <Form.Item name="clearRegistry" valuePropName="checked" className="!mb-0 mt-2">
+          <Checkbox>Clear stored credentials</Checkbox>
+        </Form.Item>
       )}
     </div>
   )

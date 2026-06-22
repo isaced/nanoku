@@ -22,6 +22,7 @@ type Config struct {
 	DockerHost       string
 	SkipCaddyReload  bool
 	SelfContainer    string // nanoku's own container name (for log viewing); empty if not containerized
+	ComposeBaseDir   string // where nanoku stores generated docker-compose.yml files
 }
 
 func Load() (*Config, error) {
@@ -40,6 +41,7 @@ func Load() (*Config, error) {
 		DockerHost:       getEnv("DOCKER_HOST", "unix:///var/run/docker.sock"),
 		SkipCaddyReload:  false,
 		SelfContainer:    os.Getenv("NANOKU_SELF_CONTAINER"),
+		ComposeBaseDir:   getEnv("NANOKU_COMPOSE_DIR", "./composes"),
 	}
 
 	flag.StringVar(&c.Listen, "listen", c.Listen, "admin HTTP listen address")

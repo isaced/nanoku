@@ -24,14 +24,26 @@ type App struct {
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// DNS-1123 label; used as Docker container prefix.
 	Name string `json:"name,omitempty"`
-	// Docker image, e.g. nginx:1.27.
-	Image string `json:"image,omitempty"`
-	// Internal port the app listens on.
+	// Docker image, e.g. nginx:1.27. Ignored when deploy_method=compose.
+	Image *string `json:"image,omitempty"`
+	// Internal port the app listens on. Ignored when deploy_method=compose.
 	Port int `json:"port,omitempty"`
 	// Git repo URL for future webhook-driven deploys.
 	RepoURL *string `json:"repo_url,omitempty"`
 	// Branch holds the value of the "branch" field.
 	Branch string `json:"branch,omitempty"`
+	// docker | compose
+	DeployMethod string `json:"deploy_method,omitempty"`
+	// Inline compose YAML used when deploy_method=compose.
+	ComposeContent *string `json:"compose_content,omitempty"`
+	// Path to an existing compose file on the host. If set, overrides compose_content.
+	ComposePath *string `json:"compose_path,omitempty"`
+	// Registry hostname, e.g. ghcr.io or registry.example.com. Empty = use the public registry configured on the host.
+	RegistryURL *string `json:"registry_url,omitempty"`
+	// RegistryUsername holds the value of the "registry_username" field.
+	RegistryUsername *string `json:"registry_username,omitempty"`
+	// RegistryPassword holds the value of the "registry_password" field.
+	RegistryPassword *string `json:"-"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the AppQuery when eager-loading is set.
 	Edges        AppEdges `json:"edges"`
@@ -109,7 +121,7 @@ func (*App) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case app.FieldID, app.FieldPort:
 			values[i] = new(sql.NullInt64)
-		case app.FieldName, app.FieldImage, app.FieldRepoURL, app.FieldBranch:
+		case app.FieldName, app.FieldImage, app.FieldRepoURL, app.FieldBranch, app.FieldDeployMethod, app.FieldComposeContent, app.FieldComposePath, app.FieldRegistryURL, app.FieldRegistryUsername, app.FieldRegistryPassword:
 			values[i] = new(sql.NullString)
 		case app.FieldCreatedAt, app.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -156,7 +168,8 @@ func (_m *App) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field image", values[i])
 			} else if value.Valid {
-				_m.Image = value.String
+				_m.Image = new(string)
+				*_m.Image = value.String
 			}
 		case app.FieldPort:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -176,6 +189,47 @@ func (_m *App) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field branch", values[i])
 			} else if value.Valid {
 				_m.Branch = value.String
+			}
+		case app.FieldDeployMethod:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field deploy_method", values[i])
+			} else if value.Valid {
+				_m.DeployMethod = value.String
+			}
+		case app.FieldComposeContent:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field compose_content", values[i])
+			} else if value.Valid {
+				_m.ComposeContent = new(string)
+				*_m.ComposeContent = value.String
+			}
+		case app.FieldComposePath:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field compose_path", values[i])
+			} else if value.Valid {
+				_m.ComposePath = new(string)
+				*_m.ComposePath = value.String
+			}
+		case app.FieldRegistryURL:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field registry_url", values[i])
+			} else if value.Valid {
+				_m.RegistryURL = new(string)
+				*_m.RegistryURL = value.String
+			}
+		case app.FieldRegistryUsername:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field registry_username", values[i])
+			} else if value.Valid {
+				_m.RegistryUsername = new(string)
+				*_m.RegistryUsername = value.String
+			}
+		case app.FieldRegistryPassword:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field registry_password", values[i])
+			} else if value.Valid {
+				_m.RegistryPassword = new(string)
+				*_m.RegistryPassword = value.String
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -247,8 +301,10 @@ func (_m *App) String() string {
 	builder.WriteString("name=")
 	builder.WriteString(_m.Name)
 	builder.WriteString(", ")
-	builder.WriteString("image=")
-	builder.WriteString(_m.Image)
+	if v := _m.Image; v != nil {
+		builder.WriteString("image=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("port=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Port))
@@ -260,6 +316,31 @@ func (_m *App) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("branch=")
 	builder.WriteString(_m.Branch)
+	builder.WriteString(", ")
+	builder.WriteString("deploy_method=")
+	builder.WriteString(_m.DeployMethod)
+	builder.WriteString(", ")
+	if v := _m.ComposeContent; v != nil {
+		builder.WriteString("compose_content=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ComposePath; v != nil {
+		builder.WriteString("compose_path=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.RegistryURL; v != nil {
+		builder.WriteString("registry_url=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.RegistryUsername; v != nil {
+		builder.WriteString("registry_username=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	builder.WriteString("registry_password=<sensitive>")
 	builder.WriteByte(')')
 	return builder.String()
 }

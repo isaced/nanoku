@@ -109,7 +109,7 @@ function DashboardPage() {
   const summary = data?.summary
   const apps = data?.apps ?? []
   const sites = data?.sites ?? []
-  const stats = data?.stats ?? []
+  const stats = data?.stats ?? [] as ContainerStats[]
 
   return (
     <div className="flex-1 flex flex-col">
