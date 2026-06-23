@@ -16,11 +16,10 @@ import {
   RefreshCw,
   ShieldCheck,
 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
-import { api, ApiError } from '../lib/api'
 import { ensureAuth, isAuthenticated } from '../lib/auth'
-import type { Status, SystemStatus } from '../lib/types'
+import { useStatus, useSystemLogs, useSystemStatus } from '../lib/hooks'
 import { TopNav } from '../components/TopNav'
 
 export const Route = createFileRoute('/system')({
@@ -38,70 +37,53 @@ const SELF_CONTAINER_ENV = 'NANOKU_SELF_CONTAINER'
 function SystemPage() {
   const { message } = App.useApp()
   const { t } = useTranslation('system')
-  const [status, setStatus] = useState<Status | null>(null)
-  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [caddyLogs, setCaddyLogs] = useState<string>('')
-  const [caddyLoading, setCaddyLoading] = useState(false)
-  const [selfLogs, setSelfLogs] = useState<string>('')
-  const [selfLoading, setSelfLoading] = useState(false)
   const [tail, setTail] = useState<number>(200)
 
-  const reload = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [st, sys] = await Promise.all([api.status(), api.systemStatus()])
-      setStatus(st)
-      setSystemStatus(sys)
-    } catch (err) {
-      if (!(err instanceof ApiError && err.status === 401)) {
-        message.error((err as Error).message)
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [message])
+  const statusQuery = useStatus()
+  const systemStatusQuery = useSystemStatus()
+  const caddyLogs = useSystemLogs('caddy', tail, {
+    enabled: systemStatusQuery.data?.dockerAvailable === true,
+  })
+  const selfLogs = useSystemLogs('nanoku', tail, {
+    enabled: systemStatusQuery.data?.nanokuContainerConfigured === true,
+  })
+
+  const status = statusQuery.data ?? null
+  const systemStatus = systemStatusQuery.data ?? null
 
   useEffect(() => {
-    void reload()
-  }, [reload])
-
-  const loadCaddy = useCallback(async () => {
-    setCaddyLoading(true)
-    try {
-      const out = await api.systemLogs('caddy', tail)
-      setCaddyLogs(out)
-    } catch (err) {
-      message.error((err as Error).message)
-    } finally {
-      setCaddyLoading(false)
+    if (statusQuery.error) {
+      message.error((statusQuery.error as Error).message)
     }
-  }, [message, tail])
-
-  const loadSelf = useCallback(async () => {
-    if (!systemStatus?.nanokuContainerConfigured) return
-    setSelfLoading(true)
-    try {
-      const out = await api.systemLogs('nanoku', tail)
-      setSelfLogs(out)
-    } catch (err) {
-      message.error((err as Error).message)
-    } finally {
-      setSelfLoading(false)
-    }
-  }, [message, tail, systemStatus?.nanokuContainerConfigured])
-
+  }, [statusQuery.error, message])
   useEffect(() => {
-    if (systemStatus?.dockerAvailable) {
-      void loadCaddy()
+    if (systemStatusQuery.error) {
+      message.error((systemStatusQuery.error as Error).message)
     }
-  }, [loadCaddy, systemStatus?.dockerAvailable])
-
+  }, [systemStatusQuery.error, message])
   useEffect(() => {
-    if (systemStatus?.nanokuContainerConfigured) {
-      void loadSelf()
+    if (caddyLogs.error) {
+      message.error((caddyLogs.error as Error).message)
     }
-  }, [loadSelf, systemStatus?.nanokuContainerConfigured])
+  }, [caddyLogs.error, message])
+  useEffect(() => {
+    if (selfLogs.error) {
+      message.error((selfLogs.error as Error).message)
+    }
+  }, [selfLogs.error, message])
+
+  const loading =
+    statusQuery.isPending ||
+    statusQuery.isFetching ||
+    systemStatusQuery.isPending ||
+    systemStatusQuery.isFetching
+
+  const reload = () => {
+    void statusQuery.refetch()
+    void systemStatusQuery.refetch()
+    void caddyLogs.refetch()
+    void selfLogs.refetch()
+  }
 
   return (
     <div className="flex-1 flex flex-col">
@@ -126,10 +108,10 @@ function SystemPage() {
             <Button
               icon={<RefreshCw size={13} />}
               onClick={() => {
-                void loadCaddy()
-                void loadSelf()
+                void caddyLogs.refetch()
+                void selfLogs.refetch()
               }}
-              loading={caddyLoading || selfLoading}
+              loading={caddyLogs.isFetching || selfLogs.isFetching}
             >
               {t('refreshBoth')}
             </Button>
@@ -142,9 +124,9 @@ function SystemPage() {
             title={t('logPanel.nanokuSelf')}
             containerName={systemStatus?.nanokuContainerName}
             status={systemStatus?.nanokuContainerConfigured ? 'configured' : undefined}
-            loading={selfLoading}
-            logs={selfLogs}
-            onRefresh={loadSelf}
+            loading={selfLogs.isFetching}
+            logs={selfLogs.data ?? ''}
+            onRefresh={() => selfLogs.refetch()}
             emptyHint={
               !systemStatus?.nanokuContainerConfigured ? (
                 <div className="text-xs text-[var(--fg-muted)] space-y-1">
@@ -167,9 +149,9 @@ function SystemPage() {
             title={t('logPanel.caddy')}
             containerName={systemStatus?.caddyContainer}
             status={status?.caddyStatus}
-            loading={caddyLoading}
-            logs={caddyLogs}
-            onRefresh={loadCaddy}
+            loading={caddyLogs.isFetching}
+            logs={caddyLogs.data ?? ''}
+            onRefresh={() => caddyLogs.refetch()}
             emptyHint={
               !systemStatus?.dockerAvailable ? (
                 <div className="text-xs text-[var(--fg-muted)] flex items-center gap-1.5">

@@ -5,4 +5,23 @@ export const queryKeys = {
   status: {
     all: () => ['status'] as const,
   },
+  apps: {
+    all: () => ['apps'] as const,
+    detail: (id: number) => ['apps', id] as const,
+    env: (id: number) => ['apps', id, 'env'] as const,
+    volumes: (id: number) => ['apps', id, 'volumes'] as const,
+    deploys: (id: number) => ['apps', id, 'deploys'] as const,
+    logs: (id: number, tail: number) => ['apps', id, 'logs', tail] as const,
+  },
+  sites: {
+    all: () => ['sites'] as const,
+  },
+  caddyfile: {
+    all: () => ['caddyfile'] as const,
+  },
+  system: {
+    status: () => ['system', 'status'] as const,
+    logs: (source: 'caddy' | 'nanoku', tail: number) =>
+      ['system', 'logs', source, tail] as const,
+  },
 }

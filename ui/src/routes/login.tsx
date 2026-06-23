@@ -3,8 +3,9 @@ import { App, Button, Input } from 'antd'
 import { ArrowRight, Lock } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { api, ApiError } from '../lib/api'
+import { ApiError } from '../lib/api'
 import { markLoggedIn } from '../lib/auth'
+import { useLogin } from '../lib/hooks'
 
 export const Route = createFileRoute('/login')({
   component: Login,
@@ -16,25 +17,27 @@ function Login() {
   const { t } = useTranslation('login')
   const [user, setUser] = useState('admin')
   const [pass, setPass] = useState('')
-  const [busy, setBusy] = useState(false)
+  const login = useLogin()
 
-  async function onSubmit(e: React.FormEvent) {
+  function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!pass) return
-    setBusy(true)
-    try {
-      await api.login(user, pass)
-      markLoggedIn()
-      navigate({ to: '/sites' })
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 429) {
-        message.error(t('tooManyAttempts'))
-      } else {
-        message.error(t('invalidCredentials'))
-      }
-    } finally {
-      setBusy(false)
-    }
+    login.mutate(
+      { username: user, password: pass },
+      {
+        onSuccess: () => {
+          markLoggedIn()
+          navigate({ to: '/sites' })
+        },
+        onError: (err) => {
+          if (err instanceof ApiError && err.status === 429) {
+            message.error(t('tooManyAttempts'))
+          } else {
+            message.error(t('invalidCredentials'))
+          }
+        },
+      },
+    )
   }
 
   return (
@@ -82,7 +85,7 @@ function Login() {
             htmlType="submit"
             size="large"
             block
-            loading={busy}
+            loading={login.isPending}
             icon={<ArrowRight size={14} />}
             iconPosition="end"
           >

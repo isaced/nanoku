@@ -1,65 +1,71 @@
-import { useCallback, useEffect, useState } from 'react'
 import { App, Button, Drawer, Popconfirm, Tabs, Tag } from 'antd'
 import { Bell, Pencil, RefreshCw } from 'lucide-react'
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { api } from '../lib/api'
-import type { App as AppType, Deploy, EnvVar, Volume } from '../lib/types'
+import {
+  useApp,
+  useAppDeploys,
+  useAppEnv,
+  useAppLogs,
+  useAppVolumes,
+  useRotateTriggerToken,
+} from '../lib/hooks'
+import type { App as AppType } from '../lib/types'
 
 export function AppDetail({
   appId,
   onClose,
-  onChanged,
   onEditRequested,
 }: {
   appId: number
   onClose: () => void
-  onChanged: () => void
   onEditRequested: (app: AppType) => void
 }) {
   const { message } = App.useApp()
   const { t } = useTranslation('apps')
-  const [app, setApp] = useState<AppType | null>(null)
-  const [env, setEnv] = useState<EnvVar[]>([])
-  const [deploys, setDeploys] = useState<Deploy[]>([])
-  const [logs, setLogs] = useState<string>('')
-  const [logsLoading, setLogsLoading] = useState(false)
-  const [volumes, setVolumes] = useState<Volume[]>([])
 
-  const refresh = useCallback(async () => {
-    try {
-      const [a, e, d, v] = await Promise.all([
-        api.getApp(appId),
-        api.listAppEnv(appId),
-        api.listAppDeploys(appId),
-        api.listAppVolumes(appId),
-      ])
-      setApp(a)
-      setEnv(e)
-      setDeploys(d)
-      setVolumes(v)
-    } catch (err) {
-      message.error((err as Error).message)
-    }
-  }, [appId, message])
+  const appQuery = useApp(appId)
+  const envQuery = useAppEnv(appId)
+  const volumesQuery = useAppVolumes(appId)
+  const deploysQuery = useAppDeploys(appId)
+  const logsQuery = useAppLogs(appId, 300, { enabled: false })
+  const rotateToken = useRotateTriggerToken()
 
   useEffect(() => {
-    void refresh()
-  }, [refresh])
+    if (appQuery.error) {
+      message.error((appQuery.error as Error).message)
+    }
+  }, [appQuery.error, message])
+  useEffect(() => {
+    if (envQuery.error) {
+      message.error((envQuery.error as Error).message)
+    }
+  }, [envQuery.error, message])
+  useEffect(() => {
+    if (volumesQuery.error) {
+      message.error((volumesQuery.error as Error).message)
+    }
+  }, [volumesQuery.error, message])
+  useEffect(() => {
+    if (deploysQuery.error) {
+      message.error((deploysQuery.error as Error).message)
+    }
+  }, [deploysQuery.error, message])
+  useEffect(() => {
+    if (logsQuery.error) {
+      message.error((logsQuery.error as Error).message)
+    }
+  }, [logsQuery.error, message])
 
-  async function loadLogs() {
-    if (!app?.container) {
-      setLogs(t('detail.noContainer'))
-      return
-    }
-    setLogsLoading(true)
-    try {
-      const out = await api.appLogs(appId, 300)
-      setLogs(out)
-    } catch (err) {
-      message.error((err as Error).message)
-    } finally {
-      setLogsLoading(false)
-    }
+  const app = appQuery.data ?? null
+  const env = envQuery.data ?? []
+  const volumes = volumesQuery.data ?? []
+  const deploys = deploysQuery.data ?? []
+  const logs = logsQuery.data ?? ''
+
+  function loadLogs() {
+    if (!app?.container) return
+    void logsQuery.refetch()
   }
 
   return (
@@ -132,20 +138,24 @@ export function AppDetail({
                           title={t('trigger.rotateTitle')}
                           description={t('trigger.rotateDescriptionShort')}
                           okText={t('trigger.rotateButton')}
-                          onConfirm={async () => {
-                            try {
-                              await api.rotateTriggerToken(app.id)
-                              message.success(
-                                t('trigger.rotatedToast', {
-                                  url: `${window.location.origin}/api/apps/${app.name}/trigger`,
-                                }),
-                              )
-                              void refresh()
-                              void onChanged()
-                            } catch (err) {
-                              message.error((err as Error).message)
-                            }
-                          }}
+                          onConfirm={() =>
+                            new Promise<void>((resolve, reject) => {
+                              rotateToken.mutate(app.id, {
+                                onSuccess: () => {
+                                  message.success(
+                                    t('trigger.rotatedToast', {
+                                      url: `${window.location.origin}/api/apps/${app.name}/trigger`,
+                                    }),
+                                  )
+                                  resolve()
+                                },
+                                onError: (err) => {
+                                  message.error(err.message)
+                                  reject(err)
+                                },
+                              })
+                            })
+                          }
                         >
                           <Button size="small" icon={<RefreshCw size={12} />}>
                             {t('trigger.rotateButton')}
@@ -295,12 +305,15 @@ export function AppDetail({
                     size="small"
                     icon={<RefreshCw size={13} />}
                     onClick={loadLogs}
-                    loading={logsLoading}
+                    loading={logsQuery.isFetching}
+                    disabled={!app.container}
                   >
                     {t('detail.loadLogs')}
                   </Button>
                   <pre className="mono text-xs leading-relaxed bg-[var(--bg-input)] border border-[var(--border)] rounded-lg p-3 overflow-auto max-h-96 whitespace-pre-wrap break-all text-[var(--fg-muted)]">
-                    {logs || t('detail.loadLogsHint')}
+                    {!app.container
+                      ? t('detail.noContainer')
+                      : logs || t('detail.loadLogsHint')}
                   </pre>
                 </div>
               ),

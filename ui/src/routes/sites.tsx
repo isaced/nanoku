@@ -16,11 +16,20 @@ import {
   Power,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { api, ApiError } from '../lib/api'
 import { ensureAuth, isAuthenticated } from '../lib/auth'
-import type { App as AppType, Site, Status } from '../lib/types'
+import {
+  useApps,
+  useCaddyfile,
+  useCreateSite,
+  useDeleteSite,
+  useSites,
+  useStatus,
+  useToggleSite,
+  useUpdateSite,
+} from '../lib/hooks'
+import type { Site } from '../lib/types'
 import { TopNav } from '../components/TopNav'
 
 export const Route = createFileRoute('/sites')({
@@ -36,10 +45,6 @@ export const Route = createFileRoute('/sites')({
 function SitesPage() {
   const { message, modal } = App.useApp()
   const { t } = useTranslation('sites')
-  const [sites, setSites] = useState<Site[]>([])
-  const [status, setStatus] = useState<Status | null>(null)
-  const [apps, setApps] = useState<AppType[]>([])
-  const [loading, setLoading] = useState(true)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<Site | null>(null)
   const [form] = Form.useForm<{
@@ -49,29 +54,39 @@ function SitesPage() {
     scheme: 'http' | 'https';
   }>()
 
-  const reload = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [s, st, a] = await Promise.all([
-        api.listSites(),
-        api.status(),
-        api.listApps().catch(() => []),
-      ])
-      setSites(s)
-      setStatus(st)
-      setApps(a)
-    } catch (err) {
-      if (!(err instanceof ApiError && err.status === 401)) {
-        message.error((err as Error).message)
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [message])
+  const sitesQuery = useSites()
+  const statusQuery = useStatus()
+  const appsQuery = useApps()
+  const createSite = useCreateSite()
+  const updateSite = useUpdateSite()
+  const deleteSite = useDeleteSite()
+  const toggleSite = useToggleSite()
+
+  const sites = sitesQuery.data ?? []
+  const status = statusQuery.data ?? null
+  const apps = appsQuery.data ?? []
 
   useEffect(() => {
-    void reload()
-  }, [reload])
+    if (sitesQuery.error) {
+      message.error((sitesQuery.error as Error).message)
+    }
+  }, [sitesQuery.error, message])
+  useEffect(() => {
+    if (statusQuery.error) {
+      message.error((statusQuery.error as Error).message)
+    }
+  }, [statusQuery.error, message])
+
+  const loading =
+    sitesQuery.isPending ||
+    sitesQuery.isFetching ||
+    statusQuery.isPending ||
+    statusQuery.isFetching
+
+  const reload = () => {
+    void sitesQuery.refetch()
+    void statusQuery.refetch()
+  }
 
   function openCreate() {
     setEditing(null)
@@ -91,44 +106,53 @@ function SitesPage() {
     setEditorOpen(true)
   }
 
-  async function onSubmit() {
-    const values = await form.validateFields()
-    const payload: Parameters<typeof api.createSite>[0] = {
-      domain: values.domain,
-      scheme: values.scheme,
-    }
-    if (values.appId) {
-      payload.appId = values.appId
-    } else if (values.upstream) {
-      payload.upstream = values.upstream
-    }
-    try {
-      if (editing) {
-        await api.updateSite(editing.id, payload)
-        message.success(t('toast.updated', { domain: values.domain }))
-      } else {
-        await api.createSite(payload)
-        message.success(t('toast.added', { domain: values.domain }))
+  function onSubmit() {
+    void form.validateFields().then((values) => {
+      const payload: Parameters<typeof createSite.mutate>[0] = {
+        domain: values.domain,
+        scheme: values.scheme,
       }
-      setEditorOpen(false)
-      void reload()
-    } catch (err) {
-      message.error((err as Error).message)
-    }
+      if (values.appId) {
+        payload.appId = values.appId
+      } else if (values.upstream) {
+        payload.upstream = values.upstream
+      }
+      const onOk = () => {
+        setEditorOpen(false)
+      }
+      const onErr = (err: Error) => {
+        message.error(err.message)
+      }
+      if (editing) {
+        updateSite.mutate(
+          { id: editing.id, input: payload },
+          { onSuccess: onOk, onError: onErr },
+        )
+      } else {
+        createSite.mutate(payload, {
+          onSuccess: (created) => {
+            onOk()
+            message.success(t('toast.added', { domain: created.domain }))
+          },
+          onError: onErr,
+        })
+      }
+    })
   }
 
-  async function onToggle(s: Site) {
-    try {
-      await api.toggleSite(s.id)
-      message.success(
-        s.enabled
-          ? t('toast.disabled', { domain: s.domain })
-          : t('toast.enabled', { domain: s.domain }),
-      )
-      void reload()
-    } catch (err) {
-      message.error((err as Error).message)
-    }
+  function onToggle(s: Site) {
+    toggleSite.mutate(s.id, {
+      onSuccess: (updated) => {
+        message.success(
+          s.enabled
+            ? t('toast.disabled', { domain: updated.domain })
+            : t('toast.enabled', { domain: updated.domain }),
+        )
+      },
+      onError: (err) => {
+        message.error(err.message)
+      },
+    })
   }
 
   function onDelete(s: Site) {
@@ -137,15 +161,19 @@ function SitesPage() {
       content: t('delete.content'),
       okText: t('actions.delete', { ns: 'common' }),
       okType: 'danger',
-      onOk: async () => {
-        try {
-          await api.deleteSite(s.id)
-          message.success(t('toast.deleted', { domain: s.domain }))
-          void reload()
-        } catch (err) {
-          message.error((err as Error).message)
-        }
-      },
+      onOk: () =>
+        new Promise<void>((resolve, reject) => {
+          deleteSite.mutate(s.id, {
+            onSuccess: () => {
+              message.success(t('toast.deleted', { domain: s.domain }))
+              resolve()
+            },
+            onError: (err) => {
+              message.error(err.message)
+              reject(err)
+            },
+          })
+        }),
     })
   }
 
@@ -294,6 +322,7 @@ function SitesPage() {
         okText={editing ? t('editor.save') : t('editor.create')}
         cancelText={t('actions.cancel', { ns: 'common' })}
         destroyOnClose
+        confirmLoading={createSite.isPending || updateSite.isPending}
       >
         <Form form={form} layout="vertical" preserve={false}>
           <Form.Item
@@ -389,31 +418,20 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 
 function CaddyfilePreview() {
   const { t } = useTranslation('sites')
-  const [content, setContent] = useState<string>('')
-  const [loading, setLoading] = useState(true)
+  const caddyfile = useCaddyfile()
 
-  useEffect(() => {
-    let cancel = false
-    setLoading(true)
-    api
-      .caddyfile()
-      .then((c) => {
-        if (!cancel) setContent(c)
-      })
-      .catch(() => {
-        if (!cancel) setContent(t('caddyfile.failed'))
-      })
-      .finally(() => {
-        if (!cancel) setLoading(false)
-      })
-    return () => {
-      cancel = true
-    }
-  }, [t])
+  let content: string
+  if (caddyfile.isPending) {
+    content = t('caddyfile.loading')
+  } else if (caddyfile.error) {
+    content = t('caddyfile.failed')
+  } else {
+    content = caddyfile.data || t('caddyfile.empty')
+  }
 
   return (
     <pre className="mono text-xs leading-relaxed bg-[var(--bg-input)] border border-[var(--border)] rounded-lg p-4 overflow-auto max-h-96 text-[var(--fg-muted)]">
-      {loading ? t('caddyfile.loading') : content || t('caddyfile.empty')}
+      {content}
     </pre>
   )
 }

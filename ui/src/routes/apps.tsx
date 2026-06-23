@@ -13,11 +13,19 @@ import {
   Square,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { api, ApiError } from '../lib/api'
 import { ensureAuth, isAuthenticated } from '../lib/auth'
-import type { App as AppType, Status } from '../lib/types'
+import {
+  useApps,
+  useDeleteApp,
+  useDeployApp,
+  useRestartApp,
+  useStartApp,
+  useStatus,
+  useStopApp,
+} from '../lib/hooks'
+import type { App as AppType } from '../lib/types'
 import { TopNav } from '../components/TopNav'
 import { AppDetail } from '../components/AppDetailDrawer'
 import { AppEditorModal, type AppEditorSaveResult } from '../components/AppEditorModal'
@@ -36,33 +44,43 @@ export const Route = createFileRoute('/apps')({
 function AppsPage() {
   const { message, modal } = App.useApp()
   const { t } = useTranslation('apps')
-  const [apps, setApps] = useState<AppType[]>([])
-  const [status, setStatus] = useState<Status | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [busyId, setBusyId] = useState<number | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<AppType | null>(null)
   const [detailAppId, setDetailAppId] = useState<number | null>(null)
   const [revealedToken, setRevealedToken] = useState<{ url: string; token: string; appName: string } | null>(null)
 
-  const reload = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [a, st] = await Promise.all([api.listApps(), api.status()])
-      setApps(a)
-      setStatus(st)
-    } catch (err) {
-      if (!(err instanceof ApiError && err.status === 401)) {
-        message.error((err as Error).message)
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [message])
+  const appsQuery = useApps()
+  const statusQuery = useStatus()
+  const deployApp = useDeployApp()
+  const startApp = useStartApp()
+  const stopApp = useStopApp()
+  const restartApp = useRestartApp()
+  const deleteApp = useDeleteApp()
+
+  const apps = appsQuery.data ?? []
+  const status = statusQuery.data ?? null
 
   useEffect(() => {
-    void reload()
-  }, [reload])
+    if (appsQuery.error) {
+      message.error((appsQuery.error as Error).message)
+    }
+  }, [appsQuery.error, message])
+  useEffect(() => {
+    if (statusQuery.error) {
+      message.error((statusQuery.error as Error).message)
+    }
+  }, [statusQuery.error, message])
+
+  const loading =
+    appsQuery.isPending ||
+    appsQuery.isFetching ||
+    statusQuery.isPending ||
+    statusQuery.isFetching
+
+  const reload = () => {
+    void appsQuery.refetch()
+    void statusQuery.refetch()
+  }
 
   function openCreate() {
     setEditing(null)
@@ -75,10 +93,12 @@ function AppsPage() {
   }
 
   function handleSaved({ saved, previous, isNew }: AppEditorSaveResult) {
-    message.success(t(isNew ? 'toast.added' : 'toast.updated', { name: saved.name }))
+    if (!isNew) {
+      message.success(t('toast.updated', { name: saved.name }))
+    }
     setEditorOpen(false)
-    void reload()
     if (isNew) {
+      message.success(t('toast.added', { name: saved.name }))
       if (saved.triggerToken) {
         setRevealedToken({
           url: `${window.location.origin}/api/apps/${saved.name}/trigger`,
@@ -94,36 +114,18 @@ function AppsPage() {
       content: t('redeployPrompt.content'),
       okText: t('redeployPrompt.ok'),
       cancelText: t('redeployPrompt.cancel'),
-      onOk: () => runAction(appForRedeploy, 'redeployed', () => api.deployApp(appForRedeploy.id)),
+      onOk: () => runAction(appForRedeploy, 'redeployed', () => deployApp.mutateAsync(appForRedeploy.id)),
     })
   }
 
-  async function rotateToken(a: AppType) {
-    try {
-      const updated = await api.rotateTriggerToken(a.id)
-      if (updated.triggerToken) {
-        setRevealedToken({
-          url: `${window.location.origin}/api/apps/${a.name}/trigger`,
-          token: updated.triggerToken,
-          appName: a.name,
-        })
-      }
-    } catch (err) {
-      message.error((err as Error).message)
-    }
-  }
-
-  async function runAction(app: AppType, name: string, fn: () => Promise<unknown>) {
-    setBusyId(app.id)
-    try {
-      await fn()
-      message.success(t('toast.' + name, { name: app.name }))
-      void reload()
-    } catch (err) {
-      message.error((err as Error).message)
-    } finally {
-      setBusyId(null)
-    }
+  function runAction(app: AppType, name: string, fn: () => Promise<unknown>) {
+    return fn()
+      .then(() => {
+        message.success(t('toast.' + name, { name: app.name }))
+      })
+      .catch((err: Error) => {
+        message.error(err.message)
+      })
   }
 
   function confirmDelete(app: AppType) {
@@ -132,7 +134,19 @@ function AppsPage() {
       content: t('delete.content'),
       okText: t('actions.delete', { ns: 'common' }),
       okType: 'danger',
-      onOk: () => runAction(app, 'deleted', () => api.deleteApp(app.id)),
+      onOk: () =>
+        new Promise<void>((resolve, reject) => {
+          deleteApp.mutate(app.id, {
+            onSuccess: () => {
+              message.success(t('toast.deleted', { name: app.name }))
+              resolve()
+            },
+            onError: (err) => {
+              message.error(err.message)
+              reject(err)
+            },
+          })
+        }),
     })
   }
 
@@ -232,10 +246,10 @@ function AppsPage() {
                         <Button
                           type="text"
                           size="small"
-                          loading={busyId === row.id}
+                          loading={deployApp.isPending && deployApp.variables === row.id}
                           icon={<Rocket size={14} />}
                           onClick={() =>
-                            runAction(row, 'deployed', () => api.deployApp(row.id))
+                            runAction(row, 'deployed', () => deployApp.mutateAsync(row.id))
                           }
                         />
                       </Tooltip>
@@ -246,10 +260,10 @@ function AppsPage() {
                           <Button
                             type="text"
                             size="small"
-                            loading={busyId === row.id}
+                            loading={stopApp.isPending && stopApp.variables === row.id}
                             icon={<Square size={14} />}
                             onClick={() =>
-                              runAction(row, 'stopped', () => api.stopApp(row.id))
+                              runAction(row, 'stopped', () => stopApp.mutateAsync(row.id))
                             }
                           />
                         </Tooltip>
@@ -257,11 +271,11 @@ function AppsPage() {
                           <Button
                             type="text"
                             size="small"
-                            loading={busyId === row.id}
+                            loading={restartApp.isPending && restartApp.variables === row.id}
                             icon={<RefreshCw size={14} />}
                             onClick={() =>
                               runAction(row, 'restarted', () =>
-                                api.restartApp(row.id),
+                                restartApp.mutateAsync(row.id),
                               )
                             }
                           />
@@ -273,10 +287,10 @@ function AppsPage() {
                         <Button
                           type="text"
                           size="small"
-                          loading={busyId === row.id}
+                          loading={startApp.isPending && startApp.variables === row.id}
                           icon={<Play size={14} />}
                           onClick={() =>
-                            runAction(row, 'started', () => api.startApp(row.id))
+                            runAction(row, 'started', () => startApp.mutateAsync(row.id))
                           }
                         />
                       </Tooltip>
@@ -286,11 +300,11 @@ function AppsPage() {
                         <Button
                           type="text"
                           size="small"
-                          loading={busyId === row.id}
+                          loading={deployApp.isPending && deployApp.variables === row.id}
                           icon={<ContainerIcon size={14} />}
                           onClick={() =>
                             runAction(row, 'redeployed', () =>
-                              api.deployApp(row.id),
+                              deployApp.mutateAsync(row.id),
                             )
                           }
                         />
@@ -325,7 +339,6 @@ function AppsPage() {
         editing={editing}
         onClose={() => setEditorOpen(false)}
         onSaved={handleSaved}
-        onRotate={() => editing && rotateToken(editing)}
       />
 
       {revealedToken && (
@@ -341,10 +354,9 @@ function AppsPage() {
         <AppDetail
           appId={detailAppId}
           onClose={() => setDetailAppId(null)}
-          onChanged={reload}
           onEditRequested={(a) => {
             setDetailAppId(null)
-            void openEdit(a)
+            openEdit(a)
           }}
         />
       )}

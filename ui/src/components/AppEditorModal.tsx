@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import {
   App,
   Button,
@@ -22,8 +21,17 @@ import {
   RefreshCw,
   Trash2,
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { api } from '../lib/api'
+import {
+  useAppEnv,
+  useAppVolumes,
+  useCreateApp,
+  useReplaceAppEnv,
+  useReplaceAppVolumes,
+  useRotateTriggerToken,
+  useUpdateApp,
+} from '../lib/hooks'
 import type { App as AppType, AppInput, EnvVar, VolumeInput } from '../lib/types'
 import { CopyableValue } from './CodeBlock'
 import { TriggerUsage } from './TriggerUsage'
@@ -40,19 +48,37 @@ export function AppEditorModal({
   editing,
   onClose,
   onSaved,
-  onRotate,
 }: {
   open: boolean
   editing: AppType | null
   onClose: () => void
   onSaved: (result: AppEditorSaveResult) => void
-  onRotate: () => void
 }) {
   const { message } = App.useApp()
   const { t } = useTranslation('apps')
   const [form] = Form.useForm<AppInput>()
   const [envDraft, setEnvDraft] = useState<EnvVar[]>([])
   const [volumeDraft, setVolumeDraft] = useState<VolumeInput[]>([])
+
+  const createApp = useCreateApp()
+  const updateApp = useUpdateApp()
+  const replaceEnv = useReplaceAppEnv()
+  const replaceVolumes = useReplaceAppVolumes()
+  const rotateToken = useRotateTriggerToken()
+
+  const envQuery = useAppEnv(editing?.id ?? null)
+  const volumesQuery = useAppVolumes(editing?.id ?? null)
+
+  useEffect(() => {
+    if (envQuery.error) {
+      message.error((envQuery.error as Error).message)
+    }
+  }, [envQuery.error, message])
+  useEffect(() => {
+    if (volumesQuery.error) {
+      message.error((volumesQuery.error as Error).message)
+    }
+  }, [volumesQuery.error, message])
 
   useEffect(() => {
     if (!open) return
@@ -79,35 +105,28 @@ export function AppEditorModal({
       enableTrigger: editing.triggerConfigured,
       deleteVolumesOnRemove: editing.deleteVolumesOnRemove,
     })
-    let cancelled = false
-    void (async () => {
-      try {
-        const [env, vols] = await Promise.all([
-          api.listAppEnv(editing.id),
-          api.listAppVolumes(editing.id),
-        ])
-        if (cancelled) return
-        setEnvDraft(env)
-        setVolumeDraft(
-          vols.map((row) => ({
-            type: row.type,
-            source: row.source.startsWith(`nanoku-${editing.name}-vol-`)
-              ? ''
-              : row.source,
-            target: row.target,
-            readOnly: row.readOnly,
-          })),
-        )
-      } catch (err) {
-        if (!cancelled) {
-          message.error((err as Error).message)
-        }
-      }
-    })()
-    return () => {
-      cancelled = true
+  }, [open, editing, form])
+
+  useEffect(() => {
+    if (!editing) {
+      setEnvDraft([])
+      setVolumeDraft([])
+      return
     }
-  }, [open, editing, form, message])
+    if (envQuery.data) setEnvDraft(envQuery.data)
+    if (volumesQuery.data) {
+      setVolumeDraft(
+        volumesQuery.data.map((row) => ({
+          type: row.type,
+          source: row.source.startsWith(`nanoku-${editing.name}-vol-`)
+            ? ''
+            : row.source,
+          target: row.target,
+          readOnly: row.readOnly,
+        })),
+      )
+    }
+  }, [editing, envQuery.data, volumesQuery.data])
 
   function cleanedEnv(): EnvVar[] {
     return envDraft
@@ -125,22 +144,45 @@ export function AppEditorModal({
       .filter((r) => r.target !== '')
   }
 
-  async function handleSubmit() {
-    const values = await form.validateFields()
-    const isCompose = values.deployMethod === 'compose'
-    const isNew = !editing
-    try {
-      const saved = isNew
-        ? await api.createApp(values)
-        : await api.updateApp(editing!.id, values)
-      await api.replaceAppEnv(saved.id, cleanedEnv())
-      if (!isCompose) {
-        await api.replaceAppVolumes(saved.id, cleanedVolumes())
+  function handleSubmit() {
+    void form.validateFields().then(async (values) => {
+      const isCompose = values.deployMethod === 'compose'
+      const isNew = !editing
+      const saveMutation = isNew
+        ? createApp.mutateAsync(values)
+        : updateApp.mutateAsync({ id: editing!.id, input: values })
+      try {
+        const saved = await saveMutation
+        await replaceEnv.mutateAsync({ id: saved.id, vars: cleanedEnv() })
+        if (!isCompose) {
+          await replaceVolumes.mutateAsync({
+            id: saved.id,
+            vols: cleanedVolumes(),
+          })
+        }
+        onSaved({ saved, previous: editing, isNew })
+      } catch (err) {
+        message.error((err as Error).message)
       }
-      onSaved({ saved, previous: editing, isNew })
-    } catch (err) {
-      message.error((err as Error).message)
-    }
+    })
+  }
+
+  function onRotate() {
+    if (!editing) return
+    rotateToken.mutate(editing.id, {
+      onSuccess: (updated) => {
+        if (updated.triggerToken) {
+          onSaved({
+            saved: updated,
+            previous: editing,
+            isNew: false,
+          })
+        }
+      },
+      onError: (err) => {
+        message.error(err.message)
+      },
+    })
   }
 
   return (
@@ -153,6 +195,12 @@ export function AppEditorModal({
       cancelText={t('actions.cancel', { ns: 'common' })}
       destroyOnClose
       width={680}
+      confirmLoading={
+        createApp.isPending ||
+        updateApp.isPending ||
+        replaceEnv.isPending ||
+        replaceVolumes.isPending
+      }
     >
       <Form form={form} layout="vertical" preserve={false}>
         <Form.Item
