@@ -3,7 +3,6 @@ import {
   createRootRoute,
   HeadContent,
 } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
 import { App as AntdApp, ConfigProvider } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import enUS from 'antd/locale/en_US'
@@ -47,16 +46,9 @@ function RootLayout() {
 
 function RootShell() {
   const statusQuery = useStatus()
-  const queryClient = useQueryClient()
-  const fetching = statusQuery.isFetching
-  const reload = () => {
-    void queryClient.invalidateQueries()
-  }
   return (
     <TopNav
       status={statusQuery.data ?? null}
-      onRefresh={reload}
-      loading={fetching}
     />
   )
 }

@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   LogOut,
   Package,
-  RefreshCw,
   Settings,
 } from 'lucide-react'
 import type { Status } from '../lib/types'
@@ -22,12 +21,8 @@ type NavKey = (typeof navKeys)[number]
 
 export function TopNav({
   status,
-  onRefresh,
-  loading,
 }: {
   status: Status | null | undefined
-  onRefresh: () => void
-  loading: boolean
 }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -118,20 +113,7 @@ export function TopNav({
             </Button>
           </Dropdown>
         </Tooltip>
-        <Tooltip title={t('refresh')}>
-          <Button
-            type="text"
-            size="small"
-            icon={
-              <RefreshCw
-                size={15}
-                className={loading ? 'animate-spin' : ''}
-              />
-            }
-            onClick={onRefresh}
-            className="!text-[var(--fg-muted)] hover:!text-[var(--fg)] hover:!bg-[var(--bg-elevated)]"
-          />
-        </Tooltip>
+        <div className="w-px h-5 bg-(--border) mx-1" />
         <Tooltip title={t('logout')}>
           <Button
             type="text"
