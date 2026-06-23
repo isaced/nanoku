@@ -9,6 +9,7 @@
     "domain": "域名",
     "upstream": "上游",
     "scheme": "协议",
+    "status": "状态",
     "actions": {
       "disable": "停用",
       "enable": "启用",

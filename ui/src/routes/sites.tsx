@@ -15,8 +15,9 @@ import {
 import {
   Pencil,
   Plus,
-  Power,
   RefreshCw,
+  ToggleLeft,
+  ToggleRight,
   Trash2,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -33,6 +34,7 @@ import {
 } from '../lib/hooks'
 import type { Site } from '../lib/types'
 import { QueryErrorBoundary } from '../components/QueryErrorBoundary'
+import { SiteStatusBadge } from '../components/SiteStatusBadge'
 import { RouteError } from '../components/RouteError'
 import { RouteFallback } from '../components/RouteFallback'
 
@@ -243,6 +245,12 @@ function SitesPageContent() {
                 ),
               },
               {
+                title: t('table.status'),
+                dataIndex: 'enabled',
+                width: 60,
+                render: (e: boolean) => <SiteStatusBadge enabled={e} />,
+              },
+              {
                 title: '',
                 key: 'actions',
                 width: 140,
@@ -260,14 +268,9 @@ function SitesPageContent() {
                         type="text"
                         size="small"
                         icon={
-                          <Power
-                            size={14}
-                            className={
-                              row.enabled
-                                ? 'text-[var(--accent)]'
-                                : 'text-[var(--fg-muted)]'
-                            }
-                          />
+                          <span className={row.enabled ? 'text-[var(--accent)]' : 'text-[var(--fg-muted)]'}>
+                            {row.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
+                          </span>
                         }
                         onClick={() => onToggle(row)}
                       />

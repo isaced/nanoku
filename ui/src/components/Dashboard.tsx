@@ -23,7 +23,6 @@ import {
   MemoryStick,
   Pause,
   Play,
-  Power,
   RefreshCw,
 } from 'lucide-react'
 import { Suspense, useEffect, useState } from 'react'
@@ -32,6 +31,7 @@ import { api } from '../lib/api'
 import { queryKeys } from '../lib/queryKeys'
 import type { Dashboard, Status } from '../lib/types'
 import { RouteFallback } from './RouteFallback'
+import { SiteStatusBadge } from './SiteStatusBadge'
 
 const AUTO_REFRESH_MS = 5000
 
@@ -250,21 +250,10 @@ function DashboardContent() {
                   ),
                 },
                 {
-                  title: '',
+                  title: t('table.status'),
                   dataIndex: 'enabled',
                   width: 60,
-                  align: 'right',
-                  render: (e: boolean) => (
-                    <span
-                      className={
-                        e
-                          ? 'text-[var(--success)]'
-                          : 'text-[var(--fg-muted)]'
-                      }
-                    >
-                      <Power size={13} />
-                    </span>
-                  ),
+                  render: (e: boolean) => <SiteStatusBadge enabled={e} />,
                 },
               ]}
             />

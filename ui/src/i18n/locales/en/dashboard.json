@@ -35,7 +35,8 @@
     "cpu": "CPU",
     "memory": "Memory",
     "pids": "PIDs",
-    "netIo": "Net I/O"
+    "netIo": "Net I/O",
+    "status": "Status"
   },
   "memoryCard": {
     "title_one": "Total memory across {{count}} container",

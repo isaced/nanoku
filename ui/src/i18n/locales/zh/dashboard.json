@@ -35,7 +35,8 @@
     "cpu": "CPU",
     "memory": "内存",
     "pids": "进程数",
-    "netIo": "网络 I/O"
+    "netIo": "网络 I/O",
+    "status": "状态"
   },
   "memoryCard": {
     "title_one": "{{count}} 个容器的内存总量",

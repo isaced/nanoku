@@ -9,6 +9,7 @@
     "domain": "Domain",
     "upstream": "Upstream",
     "scheme": "Scheme",
+    "status": "Status",
     "actions": {
       "disable": "Disable",
       "enable": "Enable",
