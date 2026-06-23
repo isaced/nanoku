@@ -5,10 +5,11 @@ import { useTranslation } from 'react-i18next'
 import { api } from '../lib/api'
 import type { App as AppType, Deploy, EnvVar, Volume } from '../lib/types'
 
-// How often to refresh the deploys list while a deploy is in flight.
-// 1.5s keeps the UI feeling live without hammering the server for a
-// multi-second pull.
-const DEPLOY_POLL_INTERVAL_MS = 1500
+// How often to refresh the deploys list. We run a single 3s tick and let
+// the consumer decide based on the polled data whether a deploy is still
+// in flight — fast polling for the running → terminal transition is
+// driven by the mutation that kicked off the deploy, not by this loop.
+const DEPLOY_POLL_INTERVAL_MS = 3000
 
 type TabKey = 'overview' | 'deploys' | 'logs'
 
@@ -29,17 +30,19 @@ export function AppDetail({
   const { t } = useTranslation('apps')
   const [app, setApp] = useState<AppType | null>(null)
   const [env, setEnv] = useState<EnvVar[]>([])
-  const [deploys, setDeploys] = useState<Deploy[]>([])
   const [logs, setLogs] = useState<string>('')
   const [logsLoading, setLogsLoading] = useState(false)
   const [volumes, setVolumes] = useState<Volume[]>([])
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab ?? 'overview')
 
-  // refetch counter used to drive the deploys query on a timer while a
-  // deploy is in flight. The TanStack query interval option polls
-  // unconditionally; we want to stop polling as soon as the row reaches a
-  // terminal status.
-  const [pollTick, setPollTick] = useState(0)
+  // Local deploys state with a self-managed poll. We don't use TanStack
+  // Query's refetchInterval here because the AppDetailDrawer renders
+  // inside a modal portal that mounts/unmounts with the underlying Tab
+  // visibility, and we want the polling to keep ticking even when the
+  // user isn't actively looking at the Deploys tab — for example to
+  // surface a CI-triggered deploy that lands while the user is reading
+  // Overview.
+  const [deploys, setDeploys] = useState<Deploy[]>([])
 
   const refresh = useCallback(async () => {
     try {
@@ -62,44 +65,27 @@ export function AppDetail({
     void refresh()
   }, [refresh])
 
-  // Drive a poll while the most recent deploy is in flight. This is the
-  // contract from the backend: a successful deploy returns 202 immediately
-  // with a deployId; the goroutine then writes success/failed to the DB.
-  // The UI needs to surface that transition without a manual reload.
-  const inFlight = hasRunningDeploy(deploys)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Deploys polling loop. We use a self-managed setInterval (instead of
+  // TanStack Query's refetchInterval) so the timer survives tab switches
+  // inside the Drawer and so a CI-triggered deploy row appears without
+  // a manual reload. The mutation that triggered the deploy also
+  // invalidates the apps.deploys query, which gives us the immediate
+  // "running" row before this 3s tick kicks in for the terminal-state
+  // transition.
   useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
-    }
-    if (!inFlight) return
-    intervalRef.current = setInterval(() => {
-      setPollTick((n) => n + 1)
+    const id = setInterval(() => {
+      void api
+        .listAppDeploys(appId)
+        .then(setDeploys)
+        .catch((err: Error) => message.error(err.message))
     }, DEPLOY_POLL_INTERVAL_MS)
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
-      }
-    }
-  }, [inFlight])
+    return () => clearInterval(id)
+  }, [appId, message])
 
-  // The poll tick triggers a deploys-list refetch that also picks up the
-  // container row update. We don't want to refetch the whole app/env on
-  // every tick (env is immutable during deploy); the deploys query is
-  // enough to drive the spinner → success transition.
-  useEffect(() => {
-    if (pollTick === 0) return
-    void api
-      .listAppDeploys(appId)
-      .then(setDeploys)
-      .catch((err: Error) => message.error(err.message))
-  }, [pollTick, appId, message])
-
-  // Once the in-flight deploy resolves, do a full refresh so the App
-  // row reflects the new container (appsQuery was invalidated by the
-  // mutation, but our local drawer state is stale until we pull).
+  // When a deploy finishes, the App row's container status changes too.
+  // The mutation invalidates `apps.all` and `apps.detail(id)` but not our
+  // local app state — pull a fresh copy when we observe the transition.
+  const inFlight = hasRunningDeploy(deploys)
   const wasInFlight = useRef(false)
   useEffect(() => {
     if (wasInFlight.current && !inFlight) {
@@ -108,16 +94,18 @@ export function AppDetail({
     wasInFlight.current = inFlight
   }, [inFlight, refresh])
 
-  // Surface deploy terminal status to the user. Only fire when the
-  // transition is observed by the poll, not when refresh() runs from a
-  // user action (manual reload). The poll tick is the trigger.
-  const lastReportedDeployId = useRef<number | null>(null)
+  // Surface deploy terminal status to the user. We watch the deploys
+  // query data and fire once per new (id, terminal-status) pair so a
+  // successful deploy shows a success toast, a failed one shows an error
+  // toast with the underlying message.
+  const lastReported = useRef<{ id: number; status: string } | null>(null)
   useEffect(() => {
-    if (pollTick === 0) return
     const top = deploys[0]
-    if (!top || top.status === 'running') return
-    if (lastReportedDeployId.current === top.id) return
-    lastReportedDeployId.current = top.id
+    if (!top) return
+    if (top.status === 'running') return
+    const prev = lastReported.current
+    if (prev && prev.id === top.id && prev.status === top.status) return
+    lastReported.current = { id: top.id, status: top.status }
     if (top.status === 'success') {
       message.success(t('detail.deploySuccess', { name: app?.name ?? '' }))
     } else if (top.status === 'failed') {
@@ -128,7 +116,7 @@ export function AppDetail({
         }),
       )
     }
-  }, [pollTick, deploys, app?.name, message, t])
+  }, [deploys, app?.name, message, t])
 
   async function loadLogs() {
     if (!app?.container) {
@@ -328,6 +316,10 @@ export function AppDetail({
                 </span>
               ),
               children: deploys.length === 0 ? (
+                <div className="py-8 text-center text-[var(--fg-muted)] text-sm">
+                  {t('common:status.loading', { ns: 'common' })}
+                </div>
+              ) : deploys.length === 0 ? (
                 <div className="py-8 text-center text-[var(--fg-muted)] text-sm">
                   {t('detail.noDeploys')}
                 </div>

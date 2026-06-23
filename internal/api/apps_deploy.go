@@ -14,14 +14,16 @@ import (
 // inherit the request's context, which would kill the pull on client
 // disconnect). The response is 202 with the new deployId; the UI polls
 // GET /api/apps/{id}/deployments for status.
+//
+// The handler does NOT pre-check h.Docker — the trigger path doesn't either,
+// and short-circuiting on a missing docker manager would leave the manual
+// path returning 503 instead of an async-failed Deploy row that the UI
+// can poll. The executor reports docker-unavailable as a Deploy row status
+// transition, the same shape CI users already see on trigger.
 func (h *Handlers) DeployApp(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
-		return
-	}
-	if h.Docker == nil {
-		writeErr(w, http.StatusServiceUnavailable, errors.New("docker unavailable"))
 		return
 	}
 	a, err := h.DB.App.Get(r.Context(), id)

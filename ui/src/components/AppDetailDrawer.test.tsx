@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
 import { App as AntdApp } from 'antd'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import '../i18n'
 
 // Stub the Antd Drawer so the children render synchronously instead of
@@ -71,7 +72,14 @@ function makeDeploy(overrides: Partial<Deploy> = {}): Deploy {
 }
 
 function Providers({ children }: { children: React.ReactNode }) {
-  return <AntdApp>{children}</AntdApp>
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, refetchInterval: false } },
+  })
+  return (
+    <QueryClientProvider client={qc}>
+      <AntdApp>{children}</AntdApp>
+    </QueryClientProvider>
+  )
 }
 
 describe('AppDetailDrawer', () => {
