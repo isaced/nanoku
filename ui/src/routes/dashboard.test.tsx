@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import {
   QueryClient,
   QueryClientProvider,
@@ -40,7 +40,22 @@ import { ApiError, api, setUnauthorizedHandler } from '../lib/api'
 import { isAuthenticated, markLoggedIn } from '../lib/auth'
 import { queryKeys } from '../lib/queryKeys'
 import { createAppQueryClient } from '../lib/queryClient'
-import type { Dashboard, Status } from '../lib/types'
+import type { ContainerStats, Dashboard, Status } from '../lib/types'
+
+function makeStats(name: string, pids: number): ContainerStats {
+  return {
+    name,
+    cpuPerc: 0,
+    memUsedBytes: 0,
+    memLimitBytes: 1,
+    memPerc: 0,
+    netRxBytes: 0,
+    netTxBytes: 0,
+    blockReadBytes: 0,
+    blockWriteBytes: 0,
+    pids,
+  }
+}
 
 function Providers({ queryClient }: { queryClient: QueryClient }) {
   const router = createRouter({
@@ -151,5 +166,63 @@ describe('Dashboard route', () => {
       expect(onUnauthorized).toHaveBeenCalledTimes(1)
     })
     expect(isAuthenticated()).toBe(false)
+  })
+})
+
+describe('Dashboard containers table — running-only filter', () => {
+  let queryClient: QueryClient
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    queryClient = createAppQueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  it('hides stopped containers (pids === 0) and shows only running ones', async () => {
+    vi.mocked(api.dashboard).mockResolvedValue({
+      ...mockDashboard,
+      stats: [
+        makeStats('c-running-1', 5),
+        makeStats('c-stopped', 0),
+        makeStats('c-running-2', 3),
+      ],
+    })
+    vi.mocked(api.status).mockResolvedValue(mockStatus)
+
+    render(<Providers queryClient={queryClient} />)
+
+    expect(await screen.findByText('c-running-1')).toBeTruthy()
+    expect(screen.getByText('c-running-2')).toBeTruthy()
+    expect(screen.queryByText('c-stopped')).toBeNull()
+  })
+
+  it('shows all containers when every one has pids > 0', async () => {
+    vi.mocked(api.dashboard).mockResolvedValue({
+      ...mockDashboard,
+      stats: [makeStats('c-a', 2), makeStats('c-b', 1)],
+    })
+    vi.mocked(api.status).mockResolvedValue(mockStatus)
+
+    render(<Providers queryClient={queryClient} />)
+
+    expect(await screen.findByText('c-a')).toBeTruthy()
+    expect(screen.getByText('c-b')).toBeTruthy()
+  })
+
+  it('renders no container rows when every container has pids === 0', async () => {
+    vi.mocked(api.dashboard).mockResolvedValue({
+      ...mockDashboard,
+      stats: [makeStats('c-x', 0), makeStats('c-y', 0)],
+    })
+    vi.mocked(api.status).mockResolvedValue(mockStatus)
+
+    render(<Providers queryClient={queryClient} />)
+
+    await waitFor(() => {
+      expect(api.dashboard).toHaveBeenCalled()
+    })
+    expect(screen.queryByText('c-x')).toBeNull()
+    expect(screen.queryByText('c-y')).toBeNull()
   })
 })

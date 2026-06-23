@@ -266,7 +266,7 @@ export function DashboardPage() {
 
         <section>
           <h2 className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-3">
-            {t('sections.allContainers')}
+            {t('sections.runningContainers')}
           </h2>
           <div className="border border-[var(--border)] rounded-lg overflow-hidden bg-[var(--bg-elevated)]">
             <Table

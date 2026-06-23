@@ -20,7 +20,7 @@
   "sections": {
     "apps": "应用",
     "sites": "站点",
-    "allContainers": "运行中容器"
+    "runningContainers": "运行中容器"
   },
   "empty": {
     "noApps": "暂无应用",
