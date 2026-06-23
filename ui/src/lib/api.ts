@@ -3,6 +3,7 @@ import type {
   AppInput,
   Dashboard,
   Deploy,
+  DeployResponse,
   EnvVar,
   Site,
   SiteInput,
@@ -94,7 +95,7 @@ export const api = {
   deleteApp: (id: number) =>
     request<void>(`/api/apps/${id}`, { method: 'DELETE' }),
   deployApp: (id: number) =>
-    request<App>(`/api/apps/${id}/deployments`, { method: 'POST' }),
+    request<DeployResponse>(`/api/apps/${id}/deployments`, { method: 'POST' }),
   startApp: (id: number) =>
     request<App>(`/api/apps/${id}/start`, { method: 'POST' }),
   stopApp: (id: number) =>

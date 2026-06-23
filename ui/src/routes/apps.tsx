@@ -47,6 +47,7 @@ function AppsPage() {
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<AppType | null>(null)
   const [detailAppId, setDetailAppId] = useState<number | null>(null)
+  const [detailInitialTab, setDetailInitialTab] = useState<'overview' | 'deploys' | 'logs'>('overview')
   const [revealedToken, setRevealedToken] = useState<{ url: string; token: string; appName: string } | null>(null)
 
   const appsQuery = useApps()
@@ -114,7 +115,30 @@ function AppsPage() {
       content: t('redeployPrompt.content'),
       okText: t('redeployPrompt.ok'),
       cancelText: t('redeployPrompt.cancel'),
-      onOk: () => runAction(appForRedeploy, 'redeployed', () => deployApp.mutateAsync(appForRedeploy.id)),
+      onOk: () => triggerDeploy(appForRedeploy),
+    })
+  }
+
+  // Deploy is asynchronous: the server returns 202 immediately with a
+  // deployId, the actual pull/create runs in a goroutine. Show a
+  // "deploying" toast and pop the drawer onto the deploys tab so the
+  // user can watch progress without the page blocking.
+  function triggerDeploy(app: AppType) {
+    deployApp.mutate(app.id, {
+      onSuccess: (resp) => {
+        if (!resp.accepted) {
+          message.warning(
+            t('toast.deployBusy', { name: app.name, reason: resp.reason ?? '' }),
+          )
+          return
+        }
+        message.info(t('toast.deployStarted', { name: app.name }))
+        setDetailAppId(app.id)
+        setDetailInitialTab('deploys')
+      },
+      onError: (err) => {
+        message.error(err.message)
+      },
     })
   }
 
@@ -248,9 +272,7 @@ function AppsPage() {
                           size="small"
                           loading={deployApp.isPending && deployApp.variables === row.id}
                           icon={<Rocket size={14} />}
-                          onClick={() =>
-                            runAction(row, 'deployed', () => deployApp.mutateAsync(row.id))
-                          }
+                          onClick={() => triggerDeploy(row)}
                         />
                       </Tooltip>
                     )}
@@ -302,11 +324,7 @@ function AppsPage() {
                           size="small"
                           loading={deployApp.isPending && deployApp.variables === row.id}
                           icon={<ContainerIcon size={14} />}
-                          onClick={() =>
-                            runAction(row, 'redeployed', () =>
-                              deployApp.mutateAsync(row.id),
-                            )
-                          }
+                          onClick={() => triggerDeploy(row)}
                         />
                       </Tooltip>
                     )}
@@ -352,10 +370,17 @@ function AppsPage() {
 
       {detailAppId !== null && (
         <AppDetail
+          key={`${detailAppId}:${detailInitialTab}`}
           appId={detailAppId}
-          onClose={() => setDetailAppId(null)}
+          initialTab={detailInitialTab}
+          onClose={() => {
+            setDetailAppId(null)
+            setDetailInitialTab('overview')
+          }}
+          onChanged={() => reload()}
           onEditRequested={(a) => {
             setDetailAppId(null)
+            setDetailInitialTab('overview')
             openEdit(a)
           }}
         />

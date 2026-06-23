@@ -1,71 +1,149 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { App, Button, Drawer, Popconfirm, Tabs, Tag } from 'antd'
 import { Bell, Pencil, RefreshCw } from 'lucide-react'
-import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  useApp,
-  useAppDeploys,
-  useAppEnv,
-  useAppLogs,
-  useAppVolumes,
-  useRotateTriggerToken,
-} from '../lib/hooks'
-import type { App as AppType } from '../lib/types'
+import { api } from '../lib/api'
+import type { App as AppType, Deploy, EnvVar, Volume } from '../lib/types'
+
+// How often to refresh the deploys list while a deploy is in flight.
+// 1.5s keeps the UI feeling live without hammering the server for a
+// multi-second pull.
+const DEPLOY_POLL_INTERVAL_MS = 1500
+
+type TabKey = 'overview' | 'deploys' | 'logs'
 
 export function AppDetail({
   appId,
+  initialTab,
   onClose,
+  onChanged,
   onEditRequested,
 }: {
   appId: number
+  initialTab?: TabKey
   onClose: () => void
+  onChanged: () => void
   onEditRequested: (app: AppType) => void
 }) {
   const { message } = App.useApp()
   const { t } = useTranslation('apps')
+  const [app, setApp] = useState<AppType | null>(null)
+  const [env, setEnv] = useState<EnvVar[]>([])
+  const [deploys, setDeploys] = useState<Deploy[]>([])
+  const [logs, setLogs] = useState<string>('')
+  const [logsLoading, setLogsLoading] = useState(false)
+  const [volumes, setVolumes] = useState<Volume[]>([])
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab ?? 'overview')
 
-  const appQuery = useApp(appId)
-  const envQuery = useAppEnv(appId)
-  const volumesQuery = useAppVolumes(appId)
-  const deploysQuery = useAppDeploys(appId)
-  const logsQuery = useAppLogs(appId, 300, { enabled: false })
-  const rotateToken = useRotateTriggerToken()
+  // refetch counter used to drive the deploys query on a timer while a
+  // deploy is in flight. The TanStack query interval option polls
+  // unconditionally; we want to stop polling as soon as the row reaches a
+  // terminal status.
+  const [pollTick, setPollTick] = useState(0)
+
+  const refresh = useCallback(async () => {
+    try {
+      const [a, e, d, v] = await Promise.all([
+        api.getApp(appId),
+        api.listAppEnv(appId),
+        api.listAppDeploys(appId),
+        api.listAppVolumes(appId),
+      ])
+      setApp(a)
+      setEnv(e)
+      setDeploys(d)
+      setVolumes(v)
+    } catch (err) {
+      message.error((err as Error).message)
+    }
+  }, [appId, message])
 
   useEffect(() => {
-    if (appQuery.error) {
-      message.error((appQuery.error as Error).message)
-    }
-  }, [appQuery.error, message])
-  useEffect(() => {
-    if (envQuery.error) {
-      message.error((envQuery.error as Error).message)
-    }
-  }, [envQuery.error, message])
-  useEffect(() => {
-    if (volumesQuery.error) {
-      message.error((volumesQuery.error as Error).message)
-    }
-  }, [volumesQuery.error, message])
-  useEffect(() => {
-    if (deploysQuery.error) {
-      message.error((deploysQuery.error as Error).message)
-    }
-  }, [deploysQuery.error, message])
-  useEffect(() => {
-    if (logsQuery.error) {
-      message.error((logsQuery.error as Error).message)
-    }
-  }, [logsQuery.error, message])
+    void refresh()
+  }, [refresh])
 
-  const app = appQuery.data ?? null
-  const env = envQuery.data ?? []
-  const volumes = volumesQuery.data ?? []
-  const deploys = deploysQuery.data ?? []
-  const logs = logsQuery.data ?? ''
+  // Drive a poll while the most recent deploy is in flight. This is the
+  // contract from the backend: a successful deploy returns 202 immediately
+  // with a deployId; the goroutine then writes success/failed to the DB.
+  // The UI needs to surface that transition without a manual reload.
+  const inFlight = hasRunningDeploy(deploys)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+    if (!inFlight) return
+    intervalRef.current = setInterval(() => {
+      setPollTick((n) => n + 1)
+    }, DEPLOY_POLL_INTERVAL_MS)
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+  }, [inFlight])
 
-  function loadLogs() {
-    if (!app?.container) return
-    void logsQuery.refetch()
+  // The poll tick triggers a deploys-list refetch that also picks up the
+  // container row update. We don't want to refetch the whole app/env on
+  // every tick (env is immutable during deploy); the deploys query is
+  // enough to drive the spinner → success transition.
+  useEffect(() => {
+    if (pollTick === 0) return
+    void api
+      .listAppDeploys(appId)
+      .then(setDeploys)
+      .catch((err: Error) => message.error(err.message))
+  }, [pollTick, appId, message])
+
+  // Once the in-flight deploy resolves, do a full refresh so the App
+  // row reflects the new container (appsQuery was invalidated by the
+  // mutation, but our local drawer state is stale until we pull).
+  const wasInFlight = useRef(false)
+  useEffect(() => {
+    if (wasInFlight.current && !inFlight) {
+      void refresh()
+    }
+    wasInFlight.current = inFlight
+  }, [inFlight, refresh])
+
+  // Surface deploy terminal status to the user. Only fire when the
+  // transition is observed by the poll, not when refresh() runs from a
+  // user action (manual reload). The poll tick is the trigger.
+  const lastReportedDeployId = useRef<number | null>(null)
+  useEffect(() => {
+    if (pollTick === 0) return
+    const top = deploys[0]
+    if (!top || top.status === 'running') return
+    if (lastReportedDeployId.current === top.id) return
+    lastReportedDeployId.current = top.id
+    if (top.status === 'success') {
+      message.success(t('detail.deploySuccess', { name: app?.name ?? '' }))
+    } else if (top.status === 'failed') {
+      message.error(
+        t('detail.deployFailed', {
+          name: app?.name ?? '',
+          error: top.error ?? '',
+        }),
+      )
+    }
+  }, [pollTick, deploys, app?.name, message, t])
+
+  async function loadLogs() {
+    if (!app?.container) {
+      setLogs(t('detail.noContainer'))
+      return
+    }
+    setLogsLoading(true)
+    try {
+      const out = await api.appLogs(appId, 300)
+      setLogs(out)
+    } catch (err) {
+      message.error((err as Error).message)
+    } finally {
+      setLogsLoading(false)
+    }
   }
 
   return (
@@ -96,7 +174,8 @@ export function AppDetail({
         </div>
       ) : (
         <Tabs
-          defaultActiveKey="overview"
+          activeKey={activeTab}
+          onChange={(k) => setActiveTab(k as TabKey)}
           items={[
             {
               key: 'overview',
@@ -138,24 +217,20 @@ export function AppDetail({
                           title={t('trigger.rotateTitle')}
                           description={t('trigger.rotateDescriptionShort')}
                           okText={t('trigger.rotateButton')}
-                          onConfirm={() =>
-                            new Promise<void>((resolve, reject) => {
-                              rotateToken.mutate(app.id, {
-                                onSuccess: () => {
-                                  message.success(
-                                    t('trigger.rotatedToast', {
-                                      url: `${window.location.origin}/api/apps/${app.name}/trigger`,
-                                    }),
-                                  )
-                                  resolve()
-                                },
-                                onError: (err) => {
-                                  message.error(err.message)
-                                  reject(err)
-                                },
-                              })
-                            })
-                          }
+                          onConfirm={async () => {
+                            try {
+                              await api.rotateTriggerToken(app.id)
+                              message.success(
+                                t('trigger.rotatedToast', {
+                                  url: `${window.location.origin}/api/apps/${app.name}/trigger`,
+                                }),
+                              )
+                              void refresh()
+                              void onChanged()
+                            } catch (err) {
+                              message.error((err as Error).message)
+                            }
+                          }}
                         >
                           <Button size="small" icon={<RefreshCw size={12} />}>
                             {t('trigger.rotateButton')}
@@ -241,7 +316,17 @@ export function AppDetail({
             },
             {
               key: 'deploys',
-              label: t('detail.tabDeploys', { count: deploys.length }),
+              label: (
+                <span className="inline-flex items-center gap-2">
+                  {t('detail.tabDeploys', { count: deploys.length })}
+                  {inFlight && (
+                    <span
+                      className="inline-block size-1.5 rounded-full bg-[var(--accent)] animate-pulse"
+                      aria-label={t('detail.deployInFlight')}
+                    />
+                  )}
+                </span>
+              ),
               children: deploys.length === 0 ? (
                 <div className="py-8 text-center text-[var(--fg-muted)] text-sm">
                   {t('detail.noDeploys')}
@@ -305,15 +390,12 @@ export function AppDetail({
                     size="small"
                     icon={<RefreshCw size={13} />}
                     onClick={loadLogs}
-                    loading={logsQuery.isFetching}
-                    disabled={!app.container}
+                    loading={logsLoading}
                   >
                     {t('detail.loadLogs')}
                   </Button>
                   <pre className="mono text-xs leading-relaxed bg-[var(--bg-input)] border border-[var(--border)] rounded-lg p-3 overflow-auto max-h-96 whitespace-pre-wrap break-all text-[var(--fg-muted)]">
-                    {!app.container
-                      ? t('detail.noContainer')
-                      : logs || t('detail.loadLogsHint')}
+                    {logs || t('detail.loadLogsHint')}
                   </pre>
                 </div>
               ),
@@ -368,4 +450,8 @@ function Field({
       <span className={mono ? 'mono text-xs' : 'text-sm'}>{value}</span>
     </div>
   )
+}
+
+function hasRunningDeploy(deploys: Deploy[]): boolean {
+  return deploys.length > 0 && deploys[0].status === 'running'
 }

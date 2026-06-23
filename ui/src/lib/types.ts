@@ -101,6 +101,17 @@ export type Deploy = {
   containerName?: string;
 };
 
+// Response from POST /api/apps/{id}/deployments and POST /api/apps/{name}/trigger.
+// accepted=false means another deploy is already in flight for this app
+// (lock contention); accepted=true means a new Deploy row was created
+// with status=running and `deployId` is the id to poll for status.
+export type DeployResponse = {
+  accepted: boolean;
+  appId: number;
+  deployId?: number;
+  reason?: string;
+};
+
 export type Status = {
   dockerConnected: boolean;
   caddyStatus: string;

@@ -29,7 +29,9 @@
     "restarted": "Restarted {{name}}",
     "started": "Started {{name}}",
     "redeployed": "Redeployed {{name}}",
-    "deleted": "Deleted {{name}}"
+    "deleted": "Deleted {{name}}",
+    "deployStarted": "Deploying {{name}} — check the Deploys tab for progress",
+    "deployBusy": "Another deploy for {{name}} is already running{{reason}}"
   },
   "delete": {
     "title": "Delete {{name}}?",
@@ -139,6 +141,9 @@
     "trigger": "HTTP trigger",
     "triggerActive": "active",
     "noDeploys": "No deploys yet.",
+    "deployInFlight": "Deploy in progress",
+    "deploySuccess": "{{name}} deployed",
+    "deployFailed": "Deploy failed for {{name}}: {{error}}",
     "containerLabel": "container",
     "duplicateKeys": "duplicate keys",
     "logs": "Logs",

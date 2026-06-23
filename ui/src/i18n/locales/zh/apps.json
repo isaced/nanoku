@@ -29,7 +29,9 @@
     "restarted": "已重启 {{name}}",
     "started": "已启动 {{name}}",
     "redeployed": "已重新部署 {{name}}",
-    "deleted": "已删除 {{name}}"
+    "deleted": "已删除 {{name}}",
+    "deployStarted": "正在部署 {{name}} — 切到「部署记录」查看进度",
+    "deployBusy": "{{name}} 已有另一个部署在跑{{reason}}"
   },
   "delete": {
     "title": "删除 {{name}}?",
@@ -139,6 +141,9 @@
     "trigger": "HTTP 触发",
     "triggerActive": "已激活",
     "noDeploys": "暂无部署记录。",
+    "deployInFlight": "部署进行中",
+    "deploySuccess": "{{name}} 已部署",
+    "deployFailed": "{{name}} 部署失败：{{error}}",
     "containerLabel": "容器",
     "duplicateKeys": "存在重复的 key",
     "logs": "日志",

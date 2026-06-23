@@ -5,7 +5,15 @@ import {
 } from '@tanstack/react-query'
 import { api } from '../api'
 import { queryKeys } from '../queryKeys'
-import type { App, AppInput, EnvVar, Site, SiteInput, VolumeInput } from '../types'
+import type {
+  App,
+  AppInput,
+  DeployResponse,
+  EnvVar,
+  Site,
+  SiteInput,
+  VolumeInput,
+} from '../types'
 
 function invalidateAppList(qc: ReturnType<typeof useQueryClient>, id?: number) {
   void qc.invalidateQueries({ queryKey: queryKeys.apps.all() })
@@ -51,11 +59,16 @@ export function useDeleteApp(): UseMutationResult<void, Error, number> {
   })
 }
 
-export function useDeployApp(): UseMutationResult<App, Error, number> {
+export function useDeployApp(): UseMutationResult<DeployResponse, Error, number> {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id) => api.deployApp(id),
-    onSuccess: (_data, id) => invalidateAppList(qc, id),
+    onSuccess: (_data, id) => {
+      invalidateAppList(qc, id)
+      // Refresh the deploys list so the new "running" row shows up
+      // immediately; the drawer's poll loop takes over after that.
+      void qc.invalidateQueries({ queryKey: queryKeys.apps.deploys(id) })
+    },
   })
 }
 
