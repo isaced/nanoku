@@ -20,7 +20,7 @@
   "sections": {
     "apps": "Apps",
     "sites": "Sites",
-    "allContainers": "All containers"
+    "allContainers": "Running containers"
   },
   "empty": {
     "noApps": "No apps yet",

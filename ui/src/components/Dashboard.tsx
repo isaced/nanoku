@@ -92,6 +92,7 @@ export function DashboardPage() {
   const apps = data?.apps ?? []
   const sites = data?.sites ?? []
   const stats = data?.stats ?? ([] as ContainerStats[])
+  const runningContainers = stats.filter((s) => s.pids > 0)
 
   return (
     <div className="flex-1 flex flex-col">
@@ -269,7 +270,7 @@ export function DashboardPage() {
           </h2>
           <div className="border border-[var(--border)] rounded-lg overflow-hidden bg-[var(--bg-elevated)]">
             <Table
-              dataSource={stats}
+              dataSource={runningContainers}
               rowKey="name"
               pagination={false}
               size="small"
