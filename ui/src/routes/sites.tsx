@@ -32,7 +32,6 @@ import {
   useUpdateSite,
 } from '../lib/hooks'
 import type { Site } from '../lib/types'
-import { TopNav } from '../components/TopNav'
 import { QueryErrorBoundary } from '../components/QueryErrorBoundary'
 import { RouteError } from '../components/RouteError'
 import { RouteFallback } from '../components/RouteFallback'
@@ -46,7 +45,6 @@ export const Route = createFileRoute('/sites')({
   },
   component: SitesPage,
   errorComponent: RouteError,
-  pendingComponent: () => <RouteFallback variant="page" />,
 })
 
 function SitesPage() {
@@ -82,11 +80,6 @@ function SitesPageContent() {
   const apps = appsQuery.data
 
   const fetching = sitesQuery.isFetching || statusQuery.isFetching
-
-  const reload = () => {
-    void sitesQuery.refetch()
-    void statusQuery.refetch()
-  }
 
   function openCreate() {
     setEditing(null)
@@ -179,8 +172,6 @@ function SitesPageContent() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <TopNav status={status} onRefresh={reload} loading={fetching} />
-
       <main className="flex-1 px-8 py-8 max-w-6xl w-full mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>

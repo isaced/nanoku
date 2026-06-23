@@ -25,7 +25,7 @@ export function TopNav({
   onRefresh,
   loading,
 }: {
-  status: Status | null
+  status: Status | null | undefined
   onRefresh: () => void
   loading: boolean
 }) {

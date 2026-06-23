@@ -1,4 +1,9 @@
-import { Outlet, createRootRoute, HeadContent } from '@tanstack/react-router'
+import {
+  Outlet,
+  createRootRoute,
+  HeadContent,
+} from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { App as AntdApp, ConfigProvider } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import enUS from 'antd/locale/en_US'
@@ -6,7 +11,8 @@ import { useTranslation } from 'react-i18next'
 
 import '../styles.css'
 import { RouteError } from '../components/RouteError'
-import { RouteFallback } from '../components/RouteFallback'
+import { TopNav } from '../components/TopNav'
+import { useStatus } from '../lib/hooks'
 
 export const Route = createRootRoute({
   head: () => ({
@@ -17,12 +23,11 @@ export const Route = createRootRoute({
       { name: 'description', content: 'Self-hosted deployment hub' },
     ],
   }),
-  component: RootComponent,
+  component: RootLayout,
   errorComponent: RouteError,
-  pendingComponent: () => <RouteFallback variant="page" />,
 })
 
-function RootComponent() {
+function RootLayout() {
   const { i18n } = useTranslation()
   const locale = i18n.language?.startsWith('zh') ? zhCN : enUS
   return (
@@ -31,10 +36,27 @@ function RootComponent() {
       <ConfigProvider locale={locale}>
         <AntdApp>
           <div className="min-h-screen flex flex-col bg-[var(--bg)]">
+            <RootShell />
             <Outlet />
           </div>
         </AntdApp>
       </ConfigProvider>
     </>
+  )
+}
+
+function RootShell() {
+  const statusQuery = useStatus()
+  const queryClient = useQueryClient()
+  const fetching = statusQuery.isFetching
+  const reload = () => {
+    void queryClient.invalidateQueries()
+  }
+  return (
+    <TopNav
+      status={statusQuery.data ?? null}
+      onRefresh={reload}
+      loading={fetching}
+    />
   )
 }

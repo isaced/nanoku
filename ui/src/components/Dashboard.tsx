@@ -31,7 +31,6 @@ import { useTranslation } from 'react-i18next'
 import { api } from '../lib/api'
 import { queryKeys } from '../lib/queryKeys'
 import type { Dashboard, Status } from '../lib/types'
-import { TopNav } from './TopNav'
 import { RouteFallback } from './RouteFallback'
 
 const AUTO_REFRESH_MS = 5000
@@ -76,7 +75,6 @@ function DashboardContent() {
   const statusQuery = useStatusQuery()
 
   const data = dashboardQuery.data
-  const status = statusQuery.data
 
   useEffect(() => {
     if (!autoRefresh) return
@@ -107,8 +105,6 @@ function DashboardContent() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <TopNav status={status} onRefresh={reload} loading={fetching} />
-
       <main className="flex-1 px-8 py-8 max-w-6xl w-full mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>

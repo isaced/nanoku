@@ -26,7 +26,6 @@ import {
   useSuspenseStatus,
 } from '../lib/hooks'
 import type { App as AppType } from '../lib/types'
-import { TopNav } from '../components/TopNav'
 import { AppDetail } from '../components/AppDetailDrawer'
 import { AppEditorModal, type AppEditorSaveResult } from '../components/AppEditorModal'
 import { TriggerTokenModal } from '../components/TriggerTokenModal'
@@ -42,7 +41,6 @@ export const Route = createFileRoute('/apps')({
   },
   component: AppsPage,
   errorComponent: RouteError,
-  pendingComponent: () => <RouteFallback variant="page" />,
 })
 
 function AppsPage() {
@@ -169,8 +167,6 @@ function AppsPageContent() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <TopNav status={status} onRefresh={reload} loading={fetching} />
-
       <main className="flex-1 px-8 py-8 max-w-6xl w-full mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>

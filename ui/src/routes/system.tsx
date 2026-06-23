@@ -24,7 +24,6 @@ import {
   useSuspenseSystemStatus,
   useSystemLogs,
 } from '../lib/hooks'
-import { TopNav } from '../components/TopNav'
 import { RouteError } from '../components/RouteError'
 import { RouteFallback } from '../components/RouteFallback'
 
@@ -37,7 +36,6 @@ export const Route = createFileRoute('/system')({
   },
   component: SystemPage,
   errorComponent: RouteError,
-  pendingComponent: () => <RouteFallback variant="page" />,
 })
 
 const SELF_CONTAINER_ENV = 'NANOKU_SELF_CONTAINER'
@@ -67,23 +65,8 @@ function SystemPageContent() {
   const status = statusQuery.data
   const systemStatus = systemStatusQuery.data
 
-  const fetching =
-    statusQuery.isFetching ||
-    systemStatusQuery.isFetching ||
-    caddyLogs.isFetching ||
-    selfLogs.isFetching
-
-  const reload = () => {
-    void statusQuery.refetch()
-    void systemStatusQuery.refetch()
-    void caddyLogs.refetch()
-    void selfLogs.refetch()
-  }
-
   return (
     <div className="flex-1 flex flex-col">
-      <TopNav status={status} onRefresh={reload} loading={fetching} />
-
       <main className="flex-1 px-8 py-8 max-w-6xl w-full mx-auto w-full">
         <div className="flex items-center justify-between mb-6">
           <div>
