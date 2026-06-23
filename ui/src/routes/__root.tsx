@@ -5,6 +5,8 @@ import enUS from 'antd/locale/en_US'
 import { useTranslation } from 'react-i18next'
 
 import '../styles.css'
+import { RouteError } from '../components/RouteError'
+import { RouteFallback } from '../components/RouteFallback'
 
 export const Route = createRootRoute({
   head: () => ({
@@ -16,6 +18,8 @@ export const Route = createRootRoute({
     ],
   }),
   component: RootComponent,
+  errorComponent: RouteError,
+  pendingComponent: () => <RouteFallback variant="page" />,
 })
 
 function RootComponent() {
@@ -24,9 +28,7 @@ function RootComponent() {
   return (
     <>
       <HeadContent />
-      <ConfigProvider
-        locale={locale}
-      >
+      <ConfigProvider locale={locale}>
         <AntdApp>
           <div className="min-h-screen flex flex-col bg-[var(--bg)]">
             <Outlet />
