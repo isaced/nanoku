@@ -3,13 +3,17 @@ package api
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 )
 
+// DeployApp is the manual UI deploy entry point. Like the HTTP trigger path,
+// it now records the deploy as running and dispatches the actual work to a
+// goroutine so a slow image pull doesn't hold the HTTP request open (or
+// inherit the request's context, which would kill the pull on client
+// disconnect). The response is 202 with the new deployId; the UI polls
+// GET /api/apps/{id}/deployments for status.
 func (h *Handlers) DeployApp(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {
@@ -30,21 +34,23 @@ func (h *Handlers) DeployApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Serialize deploys per app. Manual UI deploys take the same lock as the
-	// HTTP trigger path so an external trigger can't race a manual redeploy
-	// (or vice versa) on the same container / caddyfile. Different apps still
-	// deploy in parallel.
+	// Serialize deploys per app so an external trigger can't race a manual
+	// redeploy (or vice versa) on the same container / caddyfile. Lock
+	// release happens in the executor goroutine, not here — a busy lock
+	// returns 202 accepted:false so the UI knows a deploy is in flight.
 	if h.DeployLock == nil {
 		writeErr(w, http.StatusInternalServerError, errors.New("deploy lock not configured"))
 		return
 	}
 	if !h.DeployLock.TryAcquire(a.ID) {
-		writeErr(w, http.StatusConflict, errors.New("another deploy is already running for this app"))
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"accepted": false,
+			"reason":   "another deploy is already running for this app",
+			"appId":    a.ID,
+		})
 		return
 	}
-	defer h.DeployLock.Release(a.ID)
 
-	// start deploy record
 	dep, err := h.DB.Deploy.Create().
 		SetAppID(a.ID).
 		SetTrigger("manual").
@@ -52,151 +58,20 @@ func (h *Handlers) DeployApp(w http.ResponseWriter, r *http.Request) {
 		SetStartedAt(time.Now().UTC()).
 		Save(r.Context())
 	if err != nil {
+		h.DeployLock.Release(a.ID)
 		writeInternalErr(w, err)
 		return
 	}
 
-	envVars, err := a.QueryEnvVars().All(r.Context())
-	if err != nil {
-		h.markDeployFailed(r.Context(), dep.ID, err)
-		writeInternalErr(w, err)
-		return
-	}
-	envKVs := make([]string, 0, len(envVars))
-	for _, e := range envVars {
-		envKVs = append(envKVs, e.Key+"="+e.Value)
-	}
+	// Detached context: the goroutine must outlive the HTTP request,
+	// otherwise a client disconnect would kill an in-flight pull.
+	go h.executeDeploy(context.Background(), a.ID, dep.ID, "")
 
-	// Wipe the previous primary container row (if any) before redeploying,
-	// so port mappings / state stay clean. For compose this is just a
-	// pointer — the actual services are managed by `docker compose`.
-	if cur, err := a.QueryCurrentContainer().Only(r.Context()); err == nil && cur != nil {
-		_ = h.Docker.StopContainer(r.Context(), cur.Name)
-		_ = h.Docker.RemoveContainer(r.Context(), cur.Name)
-		_ = h.DB.Container.DeleteOneID(cur.ID).Exec(r.Context())
-	}
-	// For compose mode, also try to take down the prior stack (best-effort).
-	if a.DeployMethod == "compose" {
-		project, filePath := h.resolveComposeFile(a)
-		_ = h.Docker.ComposeDown(r.Context(), project, filePath)
-	}
-
-	regURL := ""
-	regUser := ""
-	regPass := ""
-	if a.RegistryURL != nil {
-		regURL = *a.RegistryURL
-	}
-	if a.RegistryUsername != nil {
-		regUser = *a.RegistryUsername
-	}
-	if a.RegistryPassword != nil {
-		regPass = *a.RegistryPassword
-	}
-
-	runUp := func() error {
-		if a.DeployMethod == "compose" {
-			project, filePath := h.resolveComposeFile(a)
-			// If the user provided inline content, write it to disk now
-			// (covers both first deploy and re-deploys after edits).
-			if (a.ComposePath == nil || *a.ComposePath == "") && a.ComposeContent != nil && *a.ComposeContent != "" {
-				written, werr := h.writeComposeFile(a.Name, *a.ComposeContent)
-				if werr != nil {
-					return fmt.Errorf("write compose file: %w", werr)
-				}
-				filePath = written
-			}
-			return h.Docker.ComposeUp(r.Context(), project, filePath, true)
-		}
-		// docker mode
-		img := appImage(a)
-		if img == "" {
-			return errors.New("image is required for docker mode")
-		}
-		if err := h.Docker.PullImage(r.Context(), img); err != nil {
-			return fmt.Errorf("pull image: %w", err)
-		}
-		mounts, merr := loadMounts(r.Context(), a)
-		if merr != nil {
-			return fmt.Errorf("load mounts: %w", merr)
-		}
-		_, _, err := h.Docker.CreateAppContainer(r.Context(), a.Name, img, appPort(a), envKVs, 0, mounts)
-		return err
-	}
-
-	if err := h.Docker.WithRegistry(r.Context(), regURL, regUser, regPass, runUp); err != nil {
-		h.markDeployFailed(r.Context(), dep.ID, err)
-		writeErr(w, http.StatusBadGateway, err)
-		return
-	}
-
-	// Resolve the primary container we just started and persist it.
-	var (
-		primaryName string
-		primaryImg  string
-	)
-	if a.DeployMethod == "compose" {
-		project, _ := h.resolveComposeFile(a)
-		names, _ := h.Docker.ComposePSNames(r.Context(), project, "")
-		primaryName = strings.Join(names, ",") // informational only when >1
-		if len(names) > 0 {
-			primaryName = names[0]
-		} else {
-			primaryName = composeProjectName(a.Name) + "-1"
-		}
-		primaryImg = appImage(a)
-	} else {
-		// docker mode: container name is deterministic — just nanoku-<appName>.
-		primaryName = "nanoku-" + a.Name
-		// Make sure the container actually exists before we record it; a
-		// deploy that returned no container (e.g. docker run failed after
-		// the call returned) would otherwise leave a dangling Container row.
-		names, _ := h.Docker.ListContainersByNamePrefix(r.Context(), primaryName)
-		found := false
-		for _, n := range names {
-			if n == primaryName {
-				found = true
-				break
-			}
-		}
-		if !found {
-			h.markDeployFailed(r.Context(), dep.ID, errors.New("container not found after deploy"))
-			writeErr(w, http.StatusInternalServerError, errors.New("container not found after deploy"))
-			return
-		}
-		primaryImg = appImage(a)
-	}
-
-	now := time.Now().UTC()
-	cont, err := h.DB.Container.Create().
-		SetDockerID("").
-		SetName(primaryName).
-		SetImage(primaryImg).
-		SetStatus("running").
-		SetStartedAt(now).
-		SetAppID(a.ID).
-		SetDeployID(dep.ID).
-		Save(r.Context())
-	if err != nil {
-		h.markDeployFailed(r.Context(), dep.ID, err)
-		writeInternalErr(w, err)
-		return
-	}
-	if err := h.DB.App.UpdateOneID(a.ID).SetCurrentContainerID(cont.ID).Exec(r.Context()); err != nil {
-		h.markDeployFailed(r.Context(), dep.ID, err)
-		writeInternalErr(w, err)
-		return
-	}
-	_, _ = h.DB.Deploy.UpdateOneID(dep.ID).SetStatus("success").SetFinishedAt(time.Now().UTC()).Save(r.Context())
-
-	// Container name (or set of names) may have changed — regenerate the
-	// Caddyfile so it points at the freshly rotated upstream.
-	if err := h.regenerateAndReload(r); err != nil {
-		h.markDeployFailed(r.Context(), dep.ID, fmt.Errorf("post-deploy caddy regen: %w", err))
-	}
-
-	fresh, _ := h.DB.App.Get(r.Context(), a.ID)
-	writeJSON(w, http.StatusCreated, h.toAppDTO(r.Context(), fresh))
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"accepted": true,
+		"deployId": dep.ID,
+		"appId":    a.ID,
+	})
 }
 
 func (h *Handlers) markDeployFailed(ctx context.Context, depID int, cause error) {

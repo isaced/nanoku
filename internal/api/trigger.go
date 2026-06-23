@@ -125,7 +125,7 @@ func (h *Handlers) Trigger(w http.ResponseWriter, r *http.Request) {
 
 	// Detached context: the goroutine must outlive the HTTP request,
 	// otherwise a client disconnect would kill an in-flight pull.
-	go h.executeTriggerDeploy(context.Background(), a.ID, dep.ID, image, p.CommitMessage)
+	go h.executeDeploy(context.Background(), a.ID, dep.ID, image)
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"accepted": true,
