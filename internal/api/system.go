@@ -53,12 +53,17 @@ func (h *Handlers) SystemLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 // SystemStatus reports availability of the two system log sources so the UI
-// can show useful hints (e.g. "set NANOKU_SELF_CONTAINER").
+// can show useful hints (e.g. "set NANOKU_SELF_CONTAINER"). Build-time
+// version metadata is also exposed for the Footer / update-check UI.
 type SystemStatus struct {
 	NanokuContainerConfigured bool   `json:"nanokuContainerConfigured"`
 	NanokuContainerName       string `json:"nanokuContainerName,omitempty"`
 	CaddyContainer            string `json:"caddyContainer"`
 	DockerAvailable           bool   `json:"dockerAvailable"`
+	Version                   string `json:"version"`
+	Commit                    string `json:"commit"`
+	Date                      string `json:"date"`
+	BuildType                 string `json:"buildType"`
 }
 
 func (h *Handlers) SystemStatus(w http.ResponseWriter, r *http.Request) {
@@ -72,5 +77,9 @@ func (h *Handlers) SystemStatus(w http.ResponseWriter, r *http.Request) {
 			out.CaddyContainer = h.Docker.CaddyContainerName()
 		}
 	}
+	out.Version = h.Version
+	out.Commit = h.Commit
+	out.Date = h.Date
+	out.BuildType = h.BuildType
 	writeJSON(w, http.StatusOK, out)
 }

@@ -26,6 +26,10 @@ type Handlers struct {
 	ComposeBaseDir  string
 	DeployLock      *DeployLock
 	Sessions        *SessionStore
+	Version         string
+	Commit          string
+	Date            string
+	BuildType       string
 }
 
 type SiteDTO struct {

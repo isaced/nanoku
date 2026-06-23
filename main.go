@@ -16,6 +16,13 @@ import (
 	"github.com/isaced/nanoku/internal/docker"
 )
 
+var (
+	version   = "dev"
+	commit    = "none"
+	date      = "unknown"
+	buildType = "source" // "release" by Dockerfile / goreleaser ldflags
+)
+
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -81,6 +88,10 @@ func main() {
 		ComposeBaseDir:  cfg.ComposeBaseDir,
 		DeployLock:      api.NewDeployLock(),
 		Sessions:        sessions,
+		Version:         version,
+		Commit:          commit,
+		Date:            date,
+		BuildType:       buildType,
 	}
 
 	mux := http.NewServeMux()

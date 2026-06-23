@@ -12,6 +12,9 @@ COPY ui/ ./
 RUN npm run build
 
 FROM golang:${GO_VERSION}-bookworm AS go
+ARG VERSION=docker
+ARG COMMIT=docker
+ARG DATE
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -22,7 +25,9 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 \
-    go build -trimpath -ldflags="-s -w" -o /out/nanoku .
+    go build -trimpath \
+    -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)} -X main.buildType=release" \
+    -o /out/nanoku .
 
 FROM docker:27-cli AS docker-cli
 
