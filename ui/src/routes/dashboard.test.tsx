@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { Suspense } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import {
@@ -65,7 +66,9 @@ function Providers({ queryClient }: { queryClient: QueryClient }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AntdApp>
-        <RouterProvider router={router} />
+        <Suspense fallback={<div data-testid="suspense-fallback">loading</div>}>
+          <RouterProvider router={router} />
+        </Suspense>
       </AntdApp>
     </QueryClientProvider>
   )
@@ -131,8 +134,8 @@ describe('Dashboard route', () => {
       expect(queryClient.getQueryData(queryKeys.dashboard.all())).toEqual(
         mockDashboard,
       )
+      expect(queryClient.getQueryData(queryKeys.status.all())).toEqual(mockStatus)
     })
-    expect(queryClient.getQueryData(queryKeys.status.all())).toEqual(mockStatus)
     expect(api.dashboard).toHaveBeenCalledTimes(1)
     expect(api.status).toHaveBeenCalledTimes(1)
   })

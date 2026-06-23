@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import { Suspense, useState } from 'react'
 import {
-  App,
   Button,
   InputNumber,
   Space,
@@ -17,11 +17,16 @@ import {
   RefreshCw,
   ShieldCheck,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { ensureAuth, isAuthenticated } from '../lib/auth'
-import { useStatus, useSystemLogs, useSystemStatus } from '../lib/hooks'
+import {
+  useSuspenseStatus,
+  useSuspenseSystemStatus,
+  useSystemLogs,
+} from '../lib/hooks'
 import { TopNav } from '../components/TopNav'
+import { RouteError } from '../components/RouteError'
+import { RouteFallback } from '../components/RouteFallback'
 
 export const Route = createFileRoute('/system')({
   beforeLoad: async () => {
@@ -31,54 +36,42 @@ export const Route = createFileRoute('/system')({
     }
   },
   component: SystemPage,
+  errorComponent: RouteError,
+  pendingComponent: () => <RouteFallback variant="page" />,
 })
 
 const SELF_CONTAINER_ENV = 'NANOKU_SELF_CONTAINER'
 
 function SystemPage() {
-  const { message } = App.useApp()
+  return (
+    <Suspense fallback={<RouteFallback variant="page" />}>
+      <SystemPageContent />
+    </Suspense>
+  )
+}
+
+function SystemPageContent() {
   const { t } = useTranslation('system')
   const [tail, setTail] = useState<number>(200)
   const [wordWrap, setWordWrap] = useState<boolean>(true)
 
-  const statusQuery = useStatus()
-  const systemStatusQuery = useSystemStatus()
+  const statusQuery = useSuspenseStatus()
+  const systemStatusQuery = useSuspenseSystemStatus()
   const caddyLogs = useSystemLogs('caddy', tail, {
-    enabled: systemStatusQuery.data?.dockerAvailable === true,
+    enabled: systemStatusQuery.data.dockerAvailable === true,
   })
   const selfLogs = useSystemLogs('nanoku', tail, {
-    enabled: systemStatusQuery.data?.nanokuContainerConfigured === true,
+    enabled: systemStatusQuery.data.nanokuContainerConfigured === true,
   })
 
-  const status = statusQuery.data ?? null
-  const systemStatus = systemStatusQuery.data ?? null
+  const status = statusQuery.data
+  const systemStatus = systemStatusQuery.data
 
-  useEffect(() => {
-    if (statusQuery.error) {
-      message.error((statusQuery.error as Error).message)
-    }
-  }, [statusQuery.error, message])
-  useEffect(() => {
-    if (systemStatusQuery.error) {
-      message.error((systemStatusQuery.error as Error).message)
-    }
-  }, [systemStatusQuery.error, message])
-  useEffect(() => {
-    if (caddyLogs.error) {
-      message.error((caddyLogs.error as Error).message)
-    }
-  }, [caddyLogs.error, message])
-  useEffect(() => {
-    if (selfLogs.error) {
-      message.error((selfLogs.error as Error).message)
-    }
-  }, [selfLogs.error, message])
-
-  const loading =
-    statusQuery.isPending ||
+  const fetching =
     statusQuery.isFetching ||
-    systemStatusQuery.isPending ||
-    systemStatusQuery.isFetching
+    systemStatusQuery.isFetching ||
+    caddyLogs.isFetching ||
+    selfLogs.isFetching
 
   const reload = () => {
     void statusQuery.refetch()
@@ -89,7 +82,7 @@ function SystemPage() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <TopNav status={status} onRefresh={reload} loading={loading} />
+      <TopNav status={status} onRefresh={reload} loading={fetching} />
 
       <main className="flex-1 px-8 py-8 max-w-6xl w-full mx-auto w-full">
         <div className="flex items-center justify-between mb-6">
@@ -133,14 +126,14 @@ function SystemPage() {
           <LogPanel
             icon={<ShieldCheck size={14} />}
             title={t('logPanel.nanokuSelf')}
-            containerName={systemStatus?.nanokuContainerName}
-            status={systemStatus?.nanokuContainerConfigured ? 'configured' : undefined}
+            containerName={systemStatus.nanokuContainerName}
+            status={systemStatus.nanokuContainerConfigured ? 'configured' : undefined}
             loading={selfLogs.isFetching}
             logs={selfLogs.data ?? ''}
             wordWrap={wordWrap}
             onRefresh={() => selfLogs.refetch()}
             emptyHint={
-              !systemStatus?.nanokuContainerConfigured ? (
+              !systemStatus.nanokuContainerConfigured ? (
                 <div className="text-xs text-[var(--fg-muted)] space-y-1">
                   <div className="flex items-center gap-1.5">
                     <Info size={12} />
@@ -168,14 +161,14 @@ function SystemPage() {
           <LogPanel
             icon={<ContainerIcon size={14} />}
             title={t('logPanel.caddy')}
-            containerName={systemStatus?.caddyContainer}
-            status={status?.caddyStatus}
+            containerName={systemStatus.caddyContainer}
+            status={status.caddyStatus}
             loading={caddyLogs.isFetching}
             logs={caddyLogs.data ?? ''}
             wordWrap={wordWrap}
             onRefresh={() => caddyLogs.refetch()}
             emptyHint={
-              !systemStatus?.dockerAvailable ? (
+              !systemStatus.dockerAvailable ? (
                 <div className="text-xs text-[var(--fg-muted)] flex items-center gap-1.5">
                   <Info size={12} />
                   {t('dockerHint')}

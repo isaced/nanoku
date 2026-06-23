@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { Suspense } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
 import {
@@ -52,7 +53,9 @@ function Providers({ queryClient }: { queryClient: QueryClient }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AntdApp>
-        <RouterProvider router={router} />
+        <Suspense fallback={<div data-testid="suspense-fallback">loading</div>}>
+          <RouterProvider router={router} />
+        </Suspense>
       </AntdApp>
     </QueryClientProvider>
   )

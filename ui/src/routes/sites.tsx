@@ -1,4 +1,5 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import { Suspense, useState } from 'react'
 import {
   App,
   Button,
@@ -6,6 +7,7 @@ import {
   Input,
   Modal,
   Select,
+  Skeleton,
   Table,
   Tag,
   Tooltip,
@@ -14,23 +16,26 @@ import {
   Pencil,
   Plus,
   Power,
+  RefreshCw,
   Trash2,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ensureAuth, isAuthenticated } from '../lib/auth'
 import {
-  useApps,
-  useCaddyfile,
   useCreateSite,
   useDeleteSite,
-  useSites,
-  useStatus,
+  useSuspenseApps,
+  useSuspenseCaddyfile,
+  useSuspenseSites,
+  useSuspenseStatus,
   useToggleSite,
   useUpdateSite,
 } from '../lib/hooks'
 import type { Site } from '../lib/types'
 import { TopNav } from '../components/TopNav'
+import { QueryErrorBoundary } from '../components/QueryErrorBoundary'
+import { RouteError } from '../components/RouteError'
+import { RouteFallback } from '../components/RouteFallback'
 
 export const Route = createFileRoute('/sites')({
   beforeLoad: async () => {
@@ -40,9 +45,19 @@ export const Route = createFileRoute('/sites')({
     }
   },
   component: SitesPage,
+  errorComponent: RouteError,
+  pendingComponent: () => <RouteFallback variant="page" />,
 })
 
 function SitesPage() {
+  return (
+    <Suspense fallback={<RouteFallback variant="page" />}>
+      <SitesPageContent />
+    </Suspense>
+  )
+}
+
+function SitesPageContent() {
   const { message, modal } = App.useApp()
   const { t } = useTranslation('sites')
   const [editorOpen, setEditorOpen] = useState(false)
@@ -54,34 +69,19 @@ function SitesPage() {
     scheme: 'http' | 'https';
   }>()
 
-  const sitesQuery = useSites()
-  const statusQuery = useStatus()
-  const appsQuery = useApps()
+  const sitesQuery = useSuspenseSites()
+  const statusQuery = useSuspenseStatus()
+  const appsQuery = useSuspenseApps()
   const createSite = useCreateSite()
   const updateSite = useUpdateSite()
   const deleteSite = useDeleteSite()
   const toggleSite = useToggleSite()
 
-  const sites = sitesQuery.data ?? []
-  const status = statusQuery.data ?? null
-  const apps = appsQuery.data ?? []
+  const sites = sitesQuery.data
+  const status = statusQuery.data
+  const apps = appsQuery.data
 
-  useEffect(() => {
-    if (sitesQuery.error) {
-      message.error((sitesQuery.error as Error).message)
-    }
-  }, [sitesQuery.error, message])
-  useEffect(() => {
-    if (statusQuery.error) {
-      message.error((statusQuery.error as Error).message)
-    }
-  }, [statusQuery.error, message])
-
-  const loading =
-    sitesQuery.isPending ||
-    sitesQuery.isFetching ||
-    statusQuery.isPending ||
-    statusQuery.isFetching
+  const fetching = sitesQuery.isFetching || statusQuery.isFetching
 
   const reload = () => {
     void sitesQuery.refetch()
@@ -179,7 +179,7 @@ function SitesPage() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <TopNav status={status} onRefresh={reload} loading={loading} />
+      <TopNav status={status} onRefresh={reload} loading={fetching} />
 
       <main className="flex-1 px-8 py-8 max-w-6xl w-full mx-auto">
         <div className="flex items-center justify-between mb-6">
@@ -190,7 +190,7 @@ function SitesPage() {
                 ? t('subtitleEmpty')
                 : t(sites.length === 1 ? 'subtitleOne' : 'subtitleOther', {
                     count: sites.length,
-                    active: status?.enabledSiteCount ?? 0,
+                    active: status.enabledSiteCount,
                   })}
             </p>
           </div>
@@ -207,7 +207,7 @@ function SitesPage() {
           <Table<Site>
             dataSource={sites}
             rowKey="id"
-            loading={loading}
+            loading={fetching}
             pagination={false}
             locale={{ emptyText: <EmptyState onCreate={openCreate} /> }}
             columns={[
@@ -304,14 +304,12 @@ function SitesPage() {
           />
         </div>
 
-        {status && (
-          <div className="mt-8">
-            <h2 className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-3">
-              {t('generatedCaddyfile')}
-            </h2>
-            <CaddyfilePreview />
-          </div>
-        )}
+        <div className="mt-8">
+          <h2 className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-3">
+            {t('generatedCaddyfile')}
+          </h2>
+          <CaddyfilePreview />
+        </div>
       </main>
 
       <Modal
@@ -418,20 +416,42 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 
 function CaddyfilePreview() {
   const { t } = useTranslation('sites')
-  const caddyfile = useCaddyfile()
+  return (
+    <QueryErrorBoundary
+      fallback={(err, reset) => (
+        <div className="border border-[var(--border)] rounded-lg bg-[var(--bg-elevated)] p-4 flex items-center justify-between gap-3">
+          <span className="text-xs text-[var(--danger)] mono">
+            {t('caddyfile.failed')}: {(err as Error).message}
+          </span>
+          <Button
+            size="small"
+            icon={<RefreshCw size={12} />}
+            onClick={reset}
+          >
+            {t('actions.retry', { ns: 'common' })}
+          </Button>
+        </div>
+      )}
+    >
+      <Suspense
+        fallback={
+          <pre className="mono text-xs leading-relaxed bg-[var(--bg-input)] border border-[var(--border)] rounded-lg p-4 overflow-auto max-h-96 text-[var(--fg-muted)]">
+            <Skeleton active paragraph={{ rows: 4 }} title={false} />
+          </pre>
+        }
+      >
+        <CaddyfileContent />
+      </Suspense>
+    </QueryErrorBoundary>
+  )
+}
 
-  let content: string
-  if (caddyfile.isPending) {
-    content = t('caddyfile.loading')
-  } else if (caddyfile.error) {
-    content = t('caddyfile.failed')
-  } else {
-    content = caddyfile.data || t('caddyfile.empty')
-  }
-
+function CaddyfileContent() {
+  const { t } = useTranslation('sites')
+  const caddyfile = useSuspenseCaddyfile()
   return (
     <pre className="mono text-xs leading-relaxed bg-[var(--bg-input)] border border-[var(--border)] rounded-lg p-4 overflow-auto max-h-96 text-[var(--fg-muted)]">
-      {content}
+      {caddyfile.data || t('caddyfile.empty')}
     </pre>
   )
 }

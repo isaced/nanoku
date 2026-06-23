@@ -10,8 +10,6 @@ import '../i18n'
 // hook logic (fetch, poll, state) is what we want to exercise.
 vi.mock('antd', async () => {
   const actual = await vi.importActual<typeof import('antd')>('antd')
-  const React = await import('react')
-  void React
   return {
     ...actual,
     Drawer: ({ children, title }: { children: React.ReactNode; title: React.ReactNode }) => (
@@ -39,6 +37,7 @@ vi.mock('../lib/api', async () => {
 })
 
 import { api } from '../lib/api'
+import { queryKeys } from '../lib/queryKeys'
 import { AppDetail } from './AppDetailDrawer'
 import type { App, Deploy, EnvVar, Volume } from '../lib/types'
 
@@ -71,18 +70,30 @@ function makeDeploy(overrides: Partial<Deploy> = {}): Deploy {
   }
 }
 
-function Providers({ children }: { children: React.ReactNode }) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false, refetchInterval: false } },
-  })
+function Providers({
+  children,
+  queryClient,
+}: {
+  children: React.ReactNode
+  queryClient: QueryClient
+}) {
   return (
-    <QueryClientProvider client={qc}>
+    <QueryClientProvider client={queryClient}>
       <AntdApp>{children}</AntdApp>
     </QueryClientProvider>
   )
 }
 
+function primeCache(queryClient: QueryClient, appId: number, deploys: Deploy[]) {
+  queryClient.setQueryData(queryKeys.apps.detail(appId), makeApp())
+  queryClient.setQueryData(queryKeys.apps.env(appId), baseEnv)
+  queryClient.setQueryData(queryKeys.apps.volumes(appId), baseVolumes)
+  queryClient.setQueryData(queryKeys.apps.deploys(appId), deploys)
+}
+
 describe('AppDetailDrawer', () => {
+  let queryClient: QueryClient
+
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(api.getApp).mockResolvedValue(makeApp())
@@ -92,11 +103,15 @@ describe('AppDetailDrawer', () => {
       makeDeploy({ status: 'success', commitSha: 'abc1234' }),
     ])
     vi.mocked(api.appLogs).mockResolvedValue('// logs')
+
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchInterval: false } },
+    })
   })
 
-  it('fetches the deploys list on mount', async () => {
+  it('fetches the deploys list on mount when the cache is empty', async () => {
     render(
-      <Providers>
+      <Providers queryClient={queryClient}>
         <AppDetail
           appId={1}
           onClose={() => {}}
@@ -112,8 +127,12 @@ describe('AppDetailDrawer', () => {
   })
 
   it('renders the most recent deploy row in the deploys tab', async () => {
+    primeCache(queryClient, 1, [
+      makeDeploy({ status: 'success', commitSha: 'abc1234' }),
+    ])
+
     const { getByText } = render(
-      <Providers>
+      <Providers queryClient={queryClient}>
         <AppDetail
           appId={1}
           initialTab="deploys"
@@ -131,12 +150,12 @@ describe('AppDetailDrawer', () => {
   })
 
   it('renders a failed deploy with its error message', async () => {
-    vi.mocked(api.listAppDeploys).mockResolvedValue([
+    primeCache(queryClient, 1, [
       makeDeploy({ id: 1, status: 'failed', error: 'pull access denied' }),
     ])
 
     const { getByText } = render(
-      <Providers>
+      <Providers queryClient={queryClient}>
         <AppDetail
           appId={1}
           initialTab="deploys"

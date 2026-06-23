@@ -1,4 +1,5 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import { Suspense, useState } from 'react'
 import { App, Button, Space, Table, Tag, Tooltip } from 'antd'
 import {
   CircleCheck,
@@ -13,23 +14,24 @@ import {
   Square,
   Trash2,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ensureAuth, isAuthenticated } from '../lib/auth'
 import {
-  useApps,
   useDeleteApp,
   useDeployApp,
   useRestartApp,
   useStartApp,
-  useStatus,
   useStopApp,
+  useSuspenseApps,
+  useSuspenseStatus,
 } from '../lib/hooks'
 import type { App as AppType } from '../lib/types'
 import { TopNav } from '../components/TopNav'
 import { AppDetail } from '../components/AppDetailDrawer'
 import { AppEditorModal, type AppEditorSaveResult } from '../components/AppEditorModal'
 import { TriggerTokenModal } from '../components/TriggerTokenModal'
+import { RouteError } from '../components/RouteError'
+import { RouteFallback } from '../components/RouteFallback'
 
 export const Route = createFileRoute('/apps')({
   beforeLoad: async () => {
@@ -39,9 +41,19 @@ export const Route = createFileRoute('/apps')({
     }
   },
   component: AppsPage,
+  errorComponent: RouteError,
+  pendingComponent: () => <RouteFallback variant="page" />,
 })
 
 function AppsPage() {
+  return (
+    <Suspense fallback={<RouteFallback variant="page" />}>
+      <AppsPageContent />
+    </Suspense>
+  )
+}
+
+function AppsPageContent() {
   const { message, modal } = App.useApp()
   const { t } = useTranslation('apps')
   const [editorOpen, setEditorOpen] = useState(false)
@@ -50,33 +62,18 @@ function AppsPage() {
   const [detailInitialTab, setDetailInitialTab] = useState<'overview' | 'deploys' | 'logs'>('overview')
   const [revealedToken, setRevealedToken] = useState<{ url: string; token: string; appName: string } | null>(null)
 
-  const appsQuery = useApps()
-  const statusQuery = useStatus()
+  const appsQuery = useSuspenseApps()
+  const statusQuery = useSuspenseStatus()
   const deployApp = useDeployApp()
   const startApp = useStartApp()
   const stopApp = useStopApp()
   const restartApp = useRestartApp()
   const deleteApp = useDeleteApp()
 
-  const apps = appsQuery.data ?? []
-  const status = statusQuery.data ?? null
+  const apps = appsQuery.data
+  const status = statusQuery.data
 
-  useEffect(() => {
-    if (appsQuery.error) {
-      message.error((appsQuery.error as Error).message)
-    }
-  }, [appsQuery.error, message])
-  useEffect(() => {
-    if (statusQuery.error) {
-      message.error((statusQuery.error as Error).message)
-    }
-  }, [statusQuery.error, message])
-
-  const loading =
-    appsQuery.isPending ||
-    appsQuery.isFetching ||
-    statusQuery.isPending ||
-    statusQuery.isFetching
+  const fetching = appsQuery.isFetching || statusQuery.isFetching
 
   const reload = () => {
     void appsQuery.refetch()
@@ -119,10 +116,6 @@ function AppsPage() {
     })
   }
 
-  // Deploy is asynchronous: the server returns 202 immediately with a
-  // deployId, the actual pull/create runs in a goroutine. Show a
-  // "deploying" toast and pop the drawer onto the deploys tab so the
-  // user can watch progress without the page blocking.
   function triggerDeploy(app: AppType) {
     deployApp.mutate(app.id, {
       onSuccess: (resp) => {
@@ -176,7 +169,7 @@ function AppsPage() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <TopNav status={status} onRefresh={reload} loading={loading} />
+      <TopNav status={status} onRefresh={reload} loading={fetching} />
 
       <main className="flex-1 px-8 py-8 max-w-6xl w-full mx-auto">
         <div className="flex items-center justify-between mb-6">
@@ -187,7 +180,7 @@ function AppsPage() {
                 ? t('subtitleEmpty')
                 : t(apps.length === 1 ? 'subtitleOne' : 'subtitleOther', {
                     count: apps.length,
-                    running: status?.runningAppCount ?? 0,
+                    running: status.runningAppCount,
                   })}
             </p>
           </div>
@@ -204,7 +197,7 @@ function AppsPage() {
           <Table<AppType>
             dataSource={apps}
             rowKey="id"
-            loading={loading}
+            loading={fetching}
             pagination={false}
             locale={{ emptyText: <EmptyState onCreate={openCreate} /> }}
             columns={[
@@ -369,22 +362,36 @@ function AppsPage() {
       )}
 
       {detailAppId !== null && (
-        <AppDetail
-          key={`${detailAppId}:${detailInitialTab}`}
-          appId={detailAppId}
-          initialTab={detailInitialTab}
-          onClose={() => {
-            setDetailAppId(null)
-            setDetailInitialTab('overview')
-          }}
-          onChanged={() => reload()}
-          onEditRequested={(a) => {
-            setDetailAppId(null)
-            setDetailInitialTab('overview')
-            openEdit(a)
-          }}
-        />
+        <Suspense fallback={<DrawerLoadingFallback />}>
+          <AppDetail
+            key={`${detailAppId}:${detailInitialTab}`}
+            appId={detailAppId}
+            initialTab={detailInitialTab}
+            onClose={() => {
+              setDetailAppId(null)
+              setDetailInitialTab('overview')
+            }}
+            onChanged={() => reload()}
+            onEditRequested={(a) => {
+              setDetailAppId(null)
+              setDetailInitialTab('overview')
+              openEdit(a)
+            }}
+          />
+        </Suspense>
       )}
+    </div>
+  )
+}
+
+function DrawerLoadingFallback() {
+  return (
+    <div
+      className="fixed inset-y-0 right-0 w-[680px] max-w-full bg-[var(--bg)] border-l border-[var(--border)] shadow-xl z-50 flex items-center justify-center"
+      role="status"
+      aria-label="loading"
+    >
+      <RouteFallback variant="drawer" />
     </div>
   )
 }

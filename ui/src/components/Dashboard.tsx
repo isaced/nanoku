@@ -1,6 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
 import {
-  App,
+  useSuspenseQuery,
+  type UseSuspenseQueryResult,
+} from '@tanstack/react-query'
+import {
   Button,
   Empty,
   Progress,
@@ -24,12 +26,13 @@ import {
   Power,
   RefreshCw,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../lib/api'
 import { queryKeys } from '../lib/queryKeys'
-import type { ContainerStats, Dashboard } from '../lib/types'
+import type { Dashboard, Status } from '../lib/types'
 import { TopNav } from './TopNav'
+import { RouteFallback } from './RouteFallback'
 
 const AUTO_REFRESH_MS = 5000
 
@@ -43,41 +46,49 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`
 }
 
+function useDashboardQuery(): UseSuspenseQueryResult<Dashboard> {
+  return useSuspenseQuery({
+    queryKey: queryKeys.dashboard.all(),
+    queryFn: api.dashboard,
+  })
+}
+
+function useStatusQuery(): UseSuspenseQueryResult<Status> {
+  return useSuspenseQuery({
+    queryKey: queryKeys.status.all(),
+    queryFn: api.status,
+  })
+}
+
 export function DashboardPage() {
-  const { message } = App.useApp()
+  return (
+    <Suspense fallback={<RouteFallback variant="page" />}>
+      <DashboardContent />
+    </Suspense>
+  )
+}
+
+function DashboardContent() {
   const { t } = useTranslation('dashboard')
   const [autoRefresh, setAutoRefresh] = useState(true)
 
-  const refetchInterval = autoRefresh ? AUTO_REFRESH_MS : false
-  const dashboardQuery = useQuery({
-    queryKey: queryKeys.dashboard.all(),
-    queryFn: api.dashboard,
-    refetchInterval,
-  })
-  const statusQuery = useQuery({
-    queryKey: queryKeys.status.all(),
-    queryFn: api.status,
-    refetchInterval,
-  })
+  const dashboardQuery = useDashboardQuery()
+  const statusQuery = useStatusQuery()
 
   const data = dashboardQuery.data
-  const status = statusQuery.data ?? null
-  const loading =
-    dashboardQuery.isPending ||
-    dashboardQuery.isFetching ||
-    statusQuery.isPending ||
-    statusQuery.isFetching
+  const status = statusQuery.data
 
   useEffect(() => {
-    if (dashboardQuery.error) {
-      message.error((dashboardQuery.error as Error).message)
-    }
-  }, [dashboardQuery.error, message])
-  useEffect(() => {
-    if (statusQuery.error) {
-      message.error((statusQuery.error as Error).message)
-    }
-  }, [statusQuery.error, message])
+    if (!autoRefresh) return
+    const id = setInterval(() => {
+      void dashboardQuery.refetch()
+      void statusQuery.refetch()
+    }, AUTO_REFRESH_MS)
+    return () => clearInterval(id)
+  }, [autoRefresh, dashboardQuery, statusQuery])
+
+  const fetching =
+    dashboardQuery.isFetching || statusQuery.isFetching
 
   const reload = () => {
     void dashboardQuery.refetch()
@@ -88,15 +99,15 @@ export function DashboardPage() {
     ? new Date(dashboardQuery.dataUpdatedAt)
     : null
 
-  const summary = data?.summary
-  const apps = data?.apps ?? []
-  const sites = data?.sites ?? []
-  const stats = data?.stats ?? ([] as ContainerStats[])
+  const summary = data.summary
+  const apps = data.apps
+  const sites = data.sites
+  const stats = data.stats
   const runningContainers = stats.filter((s) => s.pids > 0)
 
   return (
     <div className="flex-1 flex flex-col">
-      <TopNav status={status} onRefresh={reload} loading={loading} />
+      <TopNav status={status} onRefresh={reload} loading={fetching} />
 
       <main className="flex-1 px-8 py-8 max-w-6xl w-full mx-auto">
         <div className="flex items-center justify-between mb-6">
@@ -128,11 +139,11 @@ export function DashboardPage() {
               icon={
                 <RefreshCw
                   size={13}
-                  className={loading ? 'animate-spin' : ''}
+                  className={fetching ? 'animate-spin' : ''}
                 />
               }
               onClick={reload}
-              loading={loading}
+              loading={fetching}
             >
               {t('refresh')}
             </Button>
@@ -143,19 +154,19 @@ export function DashboardPage() {
           <StatTile
             icon={<Globe size={14} />}
             label={t('stats.sites')}
-            value={summary?.totalSites ?? 0}
-            sub={t('stats.enabledSites', { count: summary?.enabledSites ?? 0 })}
+            value={summary.totalSites}
+            sub={t('stats.enabledSites', { count: summary.enabledSites })}
           />
           <StatTile
             icon={<Layers size={14} />}
             label={t('stats.apps')}
-            value={summary?.totalApps ?? 0}
-            sub={t('stats.runningApps', { count: summary?.runningApps ?? 0 })}
+            value={summary.totalApps}
+            sub={t('stats.runningApps', { count: summary.runningApps })}
           />
           <StatTile
             icon={<ContainerIcon size={14} />}
             label={t('stats.containers')}
-            value={summary?.containerCount ?? 0}
+            value={summary.containerCount}
             sub={t('stats.activeContainers', {
               count: stats.filter((s) => s.pids > 0).length,
             })}
@@ -163,11 +174,11 @@ export function DashboardPage() {
           <StatTile
             icon={<Cpu size={14} />}
             label={t('stats.totalCpu')}
-            value={`${(summary?.totalCpuPerc ?? 0).toFixed(1)}%`}
+            value={`${summary.totalCpuPerc.toFixed(1)}%`}
             sub={
               <UsageBar
-                value={summary?.totalCpuPerc ?? 0}
-                max={100 * Math.max(summary?.containerCount ?? 1, 1)}
+                value={summary.totalCpuPerc}
+                max={100 * Math.max(summary.containerCount, 1)}
                 color="cpu"
                 compact
               />
@@ -360,9 +371,8 @@ function StatTile({
   )
 }
 
-function MemCard({ summary }: { summary: Dashboard['summary'] | undefined }) {
+function MemCard({ summary }: { summary: Dashboard['summary'] }) {
   const { t } = useTranslation('dashboard')
-  if (!summary) return null
   const pct = summary.totalMemPerc
   return (
     <div className="md:col-span-3 border border-[var(--border)] rounded-lg bg-[var(--bg-elevated)] p-4">

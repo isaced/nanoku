@@ -9,7 +9,8 @@
     "copy": "复制",
     "done": "完成",
     "rotate": "重置",
-    "add": "添加"
+    "add": "添加",
+    "retry": "重试"
   },
   "status": {
     "loading": "加载中…",
@@ -36,5 +37,9 @@
     "cpu": "CPU",
     "memory": "内存",
     "updated": "更新于"
+  },
+  "error": {
+    "loadFailed": "加载失败",
+    "unknown": "未知错误"
   }
 }

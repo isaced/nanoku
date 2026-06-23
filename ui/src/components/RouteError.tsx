@@ -5,7 +5,11 @@ import { useTranslation } from 'react-i18next'
 export function RouteError({ error, reset }: { error: unknown; reset?: () => void }) {
   const { t } = useTranslation('common')
   const message =
-    error instanceof Error ? error.message : t('error.unknown', { defaultValue: 'Unknown error' })
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : t('error.unknown', { defaultValue: 'Unknown error' })
 
   return (
     <div className="flex-1 flex items-start justify-center px-8 py-12">

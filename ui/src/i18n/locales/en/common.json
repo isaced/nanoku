@@ -9,7 +9,8 @@
     "copy": "Copy",
     "done": "Done",
     "rotate": "Rotate",
-    "add": "Add"
+    "add": "Add",
+    "retry": "Retry"
   },
   "status": {
     "loading": "Loading…",
@@ -36,5 +37,9 @@
     "cpu": "CPU",
     "memory": "Memory",
     "updated": "updated"
+  },
+  "error": {
+    "loadFailed": "Failed to load",
+    "unknown": "Unknown error"
   }
 }
