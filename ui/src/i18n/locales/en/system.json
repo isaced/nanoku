@@ -2,6 +2,7 @@
   "title": "System",
   "subtitle": "Live logs for nanoku itself and the managed Caddy container.",
   "tailLines": "Tail lines",
+  "wordWrap": "Word wrap",
   "refreshBoth": "Refresh both",
   "logPanel": {
     "nanokuSelf": "Nanoku self",
@@ -10,8 +11,8 @@
     "clickRefresh": "// click refresh to load"
   },
   "nanokuHint": {
-    "set": "Set <code>{{envVar}}=&lt;name&gt;</code> to enable.",
-    "docker": "When nanoku runs in Docker, set the env var to the container name (e.g. <span class=\"mono\">nanoku</span>) and restart. Logs will then stream here via <span class=\"mono\">docker logs</span>."
+    "set": "Set <codeExample/> to enable.",
+    "docker": "When nanoku runs in Docker, set the env var to the container name (e.g. <mono>nanoku</mono>) and restart. Logs will then stream here via <mono>docker logs</mono>."
   },
   "dockerHint": "Docker unavailable — start nanoku with the docker socket mounted."
 }

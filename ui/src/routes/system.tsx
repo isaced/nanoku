@@ -4,6 +4,7 @@ import {
   Button,
   InputNumber,
   Space,
+  Switch,
   Tag,
   Tooltip,
 } from 'antd'
@@ -38,6 +39,7 @@ function SystemPage() {
   const { message } = App.useApp()
   const { t } = useTranslation('system')
   const [tail, setTail] = useState<number>(200)
+  const [wordWrap, setWordWrap] = useState<boolean>(true)
 
   const statusQuery = useStatus()
   const systemStatusQuery = useSystemStatus()
@@ -96,6 +98,15 @@ function SystemPage() {
             <p className="text-sm text-[var(--fg-muted)] mt-1">{t('subtitle')}</p>
           </div>
           <Space>
+            <span className="text-xs text-[var(--fg-muted)]">
+              {t('wordWrap')}
+            </span>
+            <Switch
+              size="small"
+              checked={wordWrap}
+              onChange={setWordWrap}
+              aria-label={t('wordWrap')}
+            />
             <span className="text-xs text-[var(--fg-muted)]">{t('tailLines')}</span>
             <InputNumber
               min={50}
@@ -126,6 +137,7 @@ function SystemPage() {
             status={systemStatus?.nanokuContainerConfigured ? 'configured' : undefined}
             loading={selfLogs.isFetching}
             logs={selfLogs.data ?? ''}
+            wordWrap={wordWrap}
             onRefresh={() => selfLogs.refetch()}
             emptyHint={
               !systemStatus?.nanokuContainerConfigured ? (
@@ -135,11 +147,20 @@ function SystemPage() {
                     <Trans
                       ns="system"
                       i18nKey="nanokuHint.set"
-                      values={{ envVar: SELF_CONTAINER_ENV }}
-                      components={{ code: <code className="mono text-[var(--fg)]" /> }}
+                      components={{
+                        codeExample: (
+                          <code className="mono text-[var(--fg)]">
+                            {`${SELF_CONTAINER_ENV}=<name>`}
+                          </code>
+                        ),
+                      }}
                     />
                   </div>
-                  <div>{t('nanokuHint.docker')}</div>
+                  <Trans
+                    ns="system"
+                    i18nKey="nanokuHint.docker"
+                    components={{ mono: <span className="mono text-[var(--fg)]" /> }}
+                  />
                 </div>
               ) : null
             }
@@ -151,6 +172,7 @@ function SystemPage() {
             status={status?.caddyStatus}
             loading={caddyLogs.isFetching}
             logs={caddyLogs.data ?? ''}
+            wordWrap={wordWrap}
             onRefresh={() => caddyLogs.refetch()}
             emptyHint={
               !systemStatus?.dockerAvailable ? (
@@ -174,6 +196,7 @@ function LogPanel({
   status,
   loading,
   logs,
+  wordWrap,
   onRefresh,
   emptyHint,
 }: {
@@ -183,6 +206,7 @@ function LogPanel({
   status?: string
   loading: boolean
   logs: string
+  wordWrap: boolean
   onRefresh: () => void
   emptyHint?: React.ReactNode
 }) {
@@ -218,7 +242,11 @@ function LogPanel({
         {emptyHint ? (
           <div className="p-4">{emptyHint}</div>
         ) : (
-          <pre className="mono text-xs leading-relaxed bg-[var(--bg-input)] p-3 overflow-auto h-96 whitespace-pre-wrap break-all text-[var(--fg-muted)]">
+          <pre
+            className={`mono text-xs leading-relaxed bg-[var(--bg-input)] p-3 overflow-auto h-96 text-[var(--fg-muted)] ${
+              wordWrap ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'
+            }`}
+          >
             {logs || t('logPanel.clickRefresh')}
           </pre>
         )}
