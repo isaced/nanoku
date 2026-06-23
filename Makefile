@@ -18,6 +18,12 @@ export NANOKU_CADDYFILE := $(CADDYFILE)
 all: build
 
 dev:
+	@PIDS=$$(lsof -ti :3000 -i :8080 2>/dev/null); \
+	if [ -n "$$PIDS" ]; then \
+		echo "Killing stale dev processes on :3000, :8080: $$PIDS"; \
+		echo "$$PIDS" | xargs kill 2>/dev/null || true; \
+		sleep 1; \
+	fi
 	$(MAKE) -j2 dev-ui dev-go
 
 dev-ui:

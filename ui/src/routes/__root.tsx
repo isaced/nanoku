@@ -9,9 +9,10 @@ import enUS from 'antd/locale/en_US'
 import { useTranslation } from 'react-i18next'
 
 import '../styles.css'
+import { Footer } from '../components/Footer'
 import { RouteError } from '../components/RouteError'
 import { TopNav } from '../components/TopNav'
-import { useStatus } from '../lib/hooks'
+import { useStatus, useSystemStatus } from '../lib/hooks'
 
 export const Route = createRootRoute({
   head: () => ({
@@ -29,6 +30,7 @@ export const Route = createRootRoute({
 function RootLayout() {
   const { i18n } = useTranslation()
   const locale = i18n.language?.startsWith('zh') ? zhCN : enUS
+  const systemStatusQuery = useSystemStatus()
   return (
     <>
       <HeadContent />
@@ -37,6 +39,7 @@ function RootLayout() {
           <div className="min-h-screen flex flex-col bg-[var(--bg)]">
             <RootShell />
             <Outlet />
+            <Footer systemStatus={systemStatusQuery.data ?? null} />
           </div>
         </AntdApp>
       </ConfigProvider>

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   cleanup,
   fireEvent,
@@ -15,9 +15,11 @@ import type { SystemStatus } from '../lib/types'
 
 afterEach(() => {
   cleanup()
+  vi.restoreAllMocks()
 })
 
 const GITHUB_URL = 'https://github.com/isaced/nanoku'
+const RELEASES_URL = `${GITHUB_URL}/releases/latest`
 
 function makeSystemStatus(
   overrides: Partial<SystemStatus> = {},
@@ -57,12 +59,6 @@ describe('Footer', () => {
     const year = new Date().getFullYear()
     expect(screen.getByText(`© ${year} nanoku`)).toBeTruthy()
     expect(screen.queryByTestId('footer-version')).toBeNull()
-  })
-
-  it('disables the check-update button', () => {
-    renderWithProviders(<Footer systemStatus={makeSystemStatus()} />)
-    const btn = screen.getByTestId('footer-check-update') as HTMLButtonElement
-    expect(btn.disabled).toBe(true)
   })
 
   it('links to the GitHub repo with target=_blank', () => {
@@ -121,5 +117,70 @@ describe('Footer', () => {
     const version = screen.getByTestId('footer-version')
     expect(version.textContent).toContain('v0.1.0')
     expect(version.querySelector('span[aria-label="dev"]')).not.toBeNull()
+  })
+
+  describe('update check', () => {
+    beforeEach(() => {
+      // Default: no network. Tests override per-case with mockResolvedValueOnce.
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('{}', { status: 200 }),
+      )
+    })
+
+    it('queries GitHub for the latest release on mount for release builds', async () => {
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+        new Response(JSON.stringify({ tag_name: 'v0.1.0' }), { status: 200 }),
+      )
+      renderWithProviders(<Footer systemStatus={makeSystemStatus()} />)
+      await waitFor(() => {
+        expect(globalThis.fetch).toHaveBeenCalledWith(
+          'https://api.github.com/repos/isaced/nanoku/releases/latest',
+          expect.objectContaining({ headers: expect.any(Object) }),
+        )
+      })
+    })
+
+    it('does not query GitHub for dev builds (commit === "none")', () => {
+      renderWithProviders(
+        <Footer
+          systemStatus={makeSystemStatus({ commit: 'none', buildType: 'source' })}
+        />,
+      )
+      expect(globalThis.fetch).not.toHaveBeenCalled()
+    })
+
+    it('renders an update-available link when remote version is newer', async () => {
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+        new Response(JSON.stringify({ tag_name: 'v0.2.0' }), { status: 200 }),
+      )
+      renderWithProviders(<Footer systemStatus={makeSystemStatus()} />)
+      const link = (await waitFor(() =>
+        screen.getByTestId('footer-update-available'),
+      )) as HTMLAnchorElement
+      expect(link.href).toBe(RELEASES_URL)
+      expect(link.target).toBe('_blank')
+      expect(link.textContent).toContain('v0.2.0')
+    })
+
+    it('does not render an update link when remote version is older or equal', async () => {
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+        new Response(JSON.stringify({ tag_name: 'v0.0.9' }), { status: 200 }),
+      )
+      renderWithProviders(<Footer systemStatus={makeSystemStatus()} />)
+      await waitFor(() => {
+        expect(globalThis.fetch).toHaveBeenCalled()
+      })
+      expect(screen.queryByTestId('footer-update-available')).toBeNull()
+    })
+
+    it('silently swallows fetch errors', async () => {
+      vi.mocked(globalThis.fetch).mockRejectedValueOnce(new Error('offline'))
+      renderWithProviders(<Footer systemStatus={makeSystemStatus()} />)
+      await waitFor(() => {
+        expect(globalThis.fetch).toHaveBeenCalled()
+      })
+      expect(screen.queryByTestId('footer-update-available')).toBeNull()
+      expect(screen.getByText('v0.1.0')).toBeTruthy()
+    })
   })
 })

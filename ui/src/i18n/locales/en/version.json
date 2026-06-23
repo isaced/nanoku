@@ -2,9 +2,8 @@
   "copyright": "© {{year}} nanoku",
   "version": "v{{version}}",
   "dev": "dev",
-  "checkUpdate": "Check for updates",
-  "checkUpdateSoon": "Coming soon",
   "viewOnGithub": "View on GitHub",
+  "updateAvailable": "New version v{{latest}} available",
   "tooltip": {
     "commit": "commit {{commit}}",
     "built": "built {{date}}"
