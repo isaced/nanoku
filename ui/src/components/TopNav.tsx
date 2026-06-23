@@ -6,8 +6,11 @@ import {
   CircleDashed,
   CircleX,
   Globe,
+  LayoutDashboard,
   LogOut,
+  Package,
   RefreshCw,
+  Settings,
 } from 'lucide-react'
 import type { Status } from '../lib/types'
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from '../i18n'
@@ -44,10 +47,10 @@ export function TopNav({
   }
 
   const navItems = [
-    { key: '/dashboard', label: t('dashboard') },
-    { key: '/sites', label: t('sites') },
-    { key: '/apps', label: t('apps') },
-    { key: '/system', label: t('system') },
+    { key: '/dashboard', icon: <LayoutDashboard size={15} />, label: t('dashboard') },
+    { key: '/sites', icon: <Globe size={15} />, label: t('sites') },
+    { key: '/apps', icon: <Package size={15} />, label: t('apps') },
+    { key: '/system', icon: <Settings size={15} />, label: t('system') },
   ]
 
   const currentLang: SupportedLanguage = i18n.language?.startsWith('zh')
@@ -62,7 +65,7 @@ export function TopNav({
         onClick={() => navigate({ to: '/dashboard' })}
         className="flex items-center gap-2.5 cursor-pointer bg-transparent border-0 p-0"
       >
-        <div className="size-7 rounded-md bg-[var(--accent)] flex items-center justify-center text-white font-bold text-[15px] leading-none shadow-[0_1px_2px_rgba(240,180,41,0.35)]">
+        <div className="size-7 rounded-md bg-[var(--accent)] flex items-center justify-center text-white font-bold text-[15px] leading-none shadow-[0_1px_2px_rgba(0,112,243,0.35)]">
           N
         </div>
         <span className="text-[15px] font-semibold tracking-tight text-[var(--fg)]">
@@ -84,7 +87,7 @@ export function TopNav({
             <CaddyBadge status={status} />
           </div>
         )}
-        <div className="w-px h-5 bg-[var(--border)] mx-1" />
+        <div className="w-px h-5 bg-(--border) mx-1" />
         <Tooltip title={t('language')}>
           <Dropdown
             placement="bottomRight"

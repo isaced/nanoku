@@ -1,5 +1,5 @@
 import { Outlet, createRootRoute, HeadContent } from '@tanstack/react-router'
-import { App as AntdApp, ConfigProvider, theme } from 'antd'
+import { App as AntdApp, ConfigProvider } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import enUS from 'antd/locale/en_US'
 import { useTranslation } from 'react-i18next'
@@ -26,32 +26,6 @@ function RootComponent() {
       <HeadContent />
       <ConfigProvider
         locale={locale}
-        theme={{
-          algorithm: theme.defaultAlgorithm,
-          token: {
-            colorPrimary: '#f0b429',
-            colorInfo: '#f0b429',
-            colorLink: '#1f2937',
-            colorLinkHover: '#f0b429',
-            borderRadius: 6,
-          },
-          components: {
-            Menu: {
-              itemColor: '#6b7280',
-              itemHoverColor: '#1f2937',
-              itemHoverBg: '#fafafa',
-              itemSelectedColor: '#f0b429',
-              horizontalItemSelectedColor: '#f0b429',
-              horizontalItemHoverColor: '#1f2937',
-              horizontalItemHoverBg: '#fafafa',
-              itemActiveBg: 'transparent',
-            },
-            Layout: {
-              headerBg: '#ffffff',
-              headerHeight: 64,
-            },
-          },
-        }}
       >
         <AntdApp>
           <div className="min-h-screen flex flex-col bg-[var(--bg)]">
