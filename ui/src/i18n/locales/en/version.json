@@ -1,0 +1,12 @@
+{
+  "copyright": "© {{year}} nanoku",
+  "version": "v{{version}}",
+  "dev": "dev",
+  "checkUpdate": "Check for updates",
+  "checkUpdateSoon": "Coming soon",
+  "viewOnGithub": "View on GitHub",
+  "tooltip": {
+    "commit": "commit {{commit}}",
+    "built": "built {{date}}"
+  }
+}

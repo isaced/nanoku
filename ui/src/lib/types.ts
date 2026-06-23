@@ -127,6 +127,10 @@ export type SystemStatus = {
   nanokuContainerName?: string;
   caddyContainer: string;
   dockerAvailable: boolean;
+  version: string;
+  commit: string;
+  date: string;
+  buildType: 'source' | 'release';
 };
 
 export type ContainerStats = {
