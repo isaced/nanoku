@@ -247,7 +247,7 @@ function SitesPageContent() {
                       s === 'http' ? '!bg-amber-500/10 !text-amber-600' : ''
                     }`}
                   >
-                    {s}
+                    {s.toUpperCase()}
                   </Tag>
                 ),
               },
