@@ -36,7 +36,8 @@
     "enabled": "已启用",
     "cpu": "CPU",
     "memory": "内存",
-    "updated": "更新于"
+    "updated": "更新于",
+    "cancel": "取消"
   },
   "error": {
     "loadFailed": "加载失败",

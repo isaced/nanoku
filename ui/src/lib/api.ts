@@ -120,6 +120,11 @@ export const api = {
     request<Deploy[]>(`/api/apps/${id}/deployments`),
   rotateTriggerToken: (id: number) =>
     request<App>(`/api/apps/${id}/rotate-trigger-token`, { method: 'POST' }),
+  rollbackApp: (id: number, deployId: number) =>
+    request<DeployResponse>(`/api/apps/${id}/rollback`, {
+      method: 'POST',
+      body: JSON.stringify({ deployId }),
+    }),
 
   systemStatus: () => request<SystemStatus>('/api/system/status'),
   systemLogs: (source: 'caddy' | 'nanoku', tail = 200) =>

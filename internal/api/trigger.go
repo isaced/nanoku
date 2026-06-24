@@ -122,6 +122,7 @@ func (h *Handlers) Trigger(w http.ResponseWriter, r *http.Request) {
 		SetCommitSha(p.Tag).
 		SetCommitMessage(p.CommitMessage).
 		SetStartedAt(time.Now().UTC()).
+		SetImage(image).
 		Save(r.Context())
 	if err != nil {
 		h.DeployLock.Release(a.ID)

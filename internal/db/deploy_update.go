@@ -164,6 +164,26 @@ func (_u *DeployUpdate) ClearFinishedAt() *DeployUpdate {
 	return _u
 }
 
+// SetImage sets the "image" field.
+func (_u *DeployUpdate) SetImage(v string) *DeployUpdate {
+	_u.mutation.SetImage(v)
+	return _u
+}
+
+// SetNillableImage sets the "image" field if the given value is not nil.
+func (_u *DeployUpdate) SetNillableImage(v *string) *DeployUpdate {
+	if v != nil {
+		_u.SetImage(*v)
+	}
+	return _u
+}
+
+// ClearImage clears the value of the "image" field.
+func (_u *DeployUpdate) ClearImage() *DeployUpdate {
+	_u.mutation.ClearImage()
+	return _u
+}
+
 // SetAppID sets the "app" edge to the App entity by ID.
 func (_u *DeployUpdate) SetAppID(id int) *DeployUpdate {
 	_u.mutation.SetAppID(id)
@@ -320,6 +340,12 @@ func (_u *DeployUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.FinishedAtCleared() {
 		_spec.ClearField(deploy.FieldFinishedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Image(); ok {
+		_spec.SetField(deploy.FieldImage, field.TypeString, value)
+	}
+	if _u.mutation.ImageCleared() {
+		_spec.ClearField(deploy.FieldImage, field.TypeString)
 	}
 	if _u.mutation.AppCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -533,6 +559,26 @@ func (_u *DeployUpdateOne) ClearFinishedAt() *DeployUpdateOne {
 	return _u
 }
 
+// SetImage sets the "image" field.
+func (_u *DeployUpdateOne) SetImage(v string) *DeployUpdateOne {
+	_u.mutation.SetImage(v)
+	return _u
+}
+
+// SetNillableImage sets the "image" field if the given value is not nil.
+func (_u *DeployUpdateOne) SetNillableImage(v *string) *DeployUpdateOne {
+	if v != nil {
+		_u.SetImage(*v)
+	}
+	return _u
+}
+
+// ClearImage clears the value of the "image" field.
+func (_u *DeployUpdateOne) ClearImage() *DeployUpdateOne {
+	_u.mutation.ClearImage()
+	return _u
+}
+
 // SetAppID sets the "app" edge to the App entity by ID.
 func (_u *DeployUpdateOne) SetAppID(id int) *DeployUpdateOne {
 	_u.mutation.SetAppID(id)
@@ -719,6 +765,12 @@ func (_u *DeployUpdateOne) sqlSave(ctx context.Context) (_node *Deploy, err erro
 	}
 	if _u.mutation.FinishedAtCleared() {
 		_spec.ClearField(deploy.FieldFinishedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Image(); ok {
+		_spec.SetField(deploy.FieldImage, field.TypeString, value)
+	}
+	if _u.mutation.ImageCleared() {
+		_spec.ClearField(deploy.FieldImage, field.TypeString)
 	}
 	if _u.mutation.AppCleared() {
 		edge := &sqlgraph.EdgeSpec{

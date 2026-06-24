@@ -2636,6 +2636,7 @@ type DeployMutation struct {
 	error            *string
 	started_at       *time.Time
 	finished_at      *time.Time
+	image            *string
 	clearedFields    map[string]struct{}
 	app              *int
 	clearedapp       bool
@@ -3133,6 +3134,55 @@ func (m *DeployMutation) ResetFinishedAt() {
 	delete(m.clearedFields, deploy.FieldFinishedAt)
 }
 
+// SetImage sets the "image" field.
+func (m *DeployMutation) SetImage(s string) {
+	m.image = &s
+}
+
+// Image returns the value of the "image" field in the mutation.
+func (m *DeployMutation) Image() (r string, exists bool) {
+	v := m.image
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImage returns the old "image" field's value of the Deploy entity.
+// If the Deploy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeployMutation) OldImage(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImage: %w", err)
+	}
+	return oldValue.Image, nil
+}
+
+// ClearImage clears the value of the "image" field.
+func (m *DeployMutation) ClearImage() {
+	m.image = nil
+	m.clearedFields[deploy.FieldImage] = struct{}{}
+}
+
+// ImageCleared returns if the "image" field was cleared in this mutation.
+func (m *DeployMutation) ImageCleared() bool {
+	_, ok := m.clearedFields[deploy.FieldImage]
+	return ok
+}
+
+// ResetImage resets all changes to the "image" field.
+func (m *DeployMutation) ResetImage() {
+	m.image = nil
+	delete(m.clearedFields, deploy.FieldImage)
+}
+
 // SetAppID sets the "app" edge to the App entity by id.
 func (m *DeployMutation) SetAppID(id int) {
 	m.app = &id
@@ -3245,7 +3295,7 @@ func (m *DeployMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DeployMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 10)
 	if m.created_at != nil {
 		fields = append(fields, deploy.FieldCreatedAt)
 	}
@@ -3273,6 +3323,9 @@ func (m *DeployMutation) Fields() []string {
 	if m.finished_at != nil {
 		fields = append(fields, deploy.FieldFinishedAt)
 	}
+	if m.image != nil {
+		fields = append(fields, deploy.FieldImage)
+	}
 	return fields
 }
 
@@ -3299,6 +3352,8 @@ func (m *DeployMutation) Field(name string) (ent.Value, bool) {
 		return m.StartedAt()
 	case deploy.FieldFinishedAt:
 		return m.FinishedAt()
+	case deploy.FieldImage:
+		return m.Image()
 	}
 	return nil, false
 }
@@ -3326,6 +3381,8 @@ func (m *DeployMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldStartedAt(ctx)
 	case deploy.FieldFinishedAt:
 		return m.OldFinishedAt(ctx)
+	case deploy.FieldImage:
+		return m.OldImage(ctx)
 	}
 	return nil, fmt.Errorf("unknown Deploy field %s", name)
 }
@@ -3398,6 +3455,13 @@ func (m *DeployMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetFinishedAt(v)
 		return nil
+	case deploy.FieldImage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImage(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Deploy field %s", name)
 }
@@ -3443,6 +3507,9 @@ func (m *DeployMutation) ClearedFields() []string {
 	if m.FieldCleared(deploy.FieldFinishedAt) {
 		fields = append(fields, deploy.FieldFinishedAt)
 	}
+	if m.FieldCleared(deploy.FieldImage) {
+		fields = append(fields, deploy.FieldImage)
+	}
 	return fields
 }
 
@@ -3471,6 +3538,9 @@ func (m *DeployMutation) ClearField(name string) error {
 		return nil
 	case deploy.FieldFinishedAt:
 		m.ClearFinishedAt()
+		return nil
+	case deploy.FieldImage:
+		m.ClearImage()
 		return nil
 	}
 	return fmt.Errorf("unknown Deploy nullable field %s", name)
@@ -3506,6 +3576,9 @@ func (m *DeployMutation) ResetField(name string) error {
 		return nil
 	case deploy.FieldFinishedAt:
 		m.ResetFinishedAt()
+		return nil
+	case deploy.FieldImage:
+		m.ResetImage()
 		return nil
 	}
 	return fmt.Errorf("unknown Deploy field %s", name)

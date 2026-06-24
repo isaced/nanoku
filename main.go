@@ -175,6 +175,7 @@ func main() {
 	mux.HandleFunc("PUT /api/apps/{id}/volumes", handlers.ReplaceAppVolumes)
 	mux.HandleFunc("GET /api/apps/{id}/deployments", handlers.ListAppDeploys)
 	mux.HandleFunc("POST /api/apps/{id}/rotate-trigger-token", handlers.RotateTriggerToken)
+	mux.HandleFunc("POST /api/apps/{id}/rollback", handlers.RollbackApp)
 
 	mux.HandleFunc("GET /api/system/status", handlers.SystemStatus)
 	mux.HandleFunc("GET /api/system/logs", handlers.SystemLogs)

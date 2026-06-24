@@ -90,6 +90,11 @@ func FinishedAt(v time.Time) predicate.Deploy {
 	return predicate.Deploy(sql.FieldEQ(FieldFinishedAt, v))
 }
 
+// Image applies equality check predicate on the "image" field. It's identical to ImageEQ.
+func Image(v string) predicate.Deploy {
+	return predicate.Deploy(sql.FieldEQ(FieldImage, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Deploy {
 	return predicate.Deploy(sql.FieldEQ(FieldCreatedAt, v))
@@ -533,6 +538,81 @@ func FinishedAtIsNil() predicate.Deploy {
 // FinishedAtNotNil applies the NotNil predicate on the "finished_at" field.
 func FinishedAtNotNil() predicate.Deploy {
 	return predicate.Deploy(sql.FieldNotNull(FieldFinishedAt))
+}
+
+// ImageEQ applies the EQ predicate on the "image" field.
+func ImageEQ(v string) predicate.Deploy {
+	return predicate.Deploy(sql.FieldEQ(FieldImage, v))
+}
+
+// ImageNEQ applies the NEQ predicate on the "image" field.
+func ImageNEQ(v string) predicate.Deploy {
+	return predicate.Deploy(sql.FieldNEQ(FieldImage, v))
+}
+
+// ImageIn applies the In predicate on the "image" field.
+func ImageIn(vs ...string) predicate.Deploy {
+	return predicate.Deploy(sql.FieldIn(FieldImage, vs...))
+}
+
+// ImageNotIn applies the NotIn predicate on the "image" field.
+func ImageNotIn(vs ...string) predicate.Deploy {
+	return predicate.Deploy(sql.FieldNotIn(FieldImage, vs...))
+}
+
+// ImageGT applies the GT predicate on the "image" field.
+func ImageGT(v string) predicate.Deploy {
+	return predicate.Deploy(sql.FieldGT(FieldImage, v))
+}
+
+// ImageGTE applies the GTE predicate on the "image" field.
+func ImageGTE(v string) predicate.Deploy {
+	return predicate.Deploy(sql.FieldGTE(FieldImage, v))
+}
+
+// ImageLT applies the LT predicate on the "image" field.
+func ImageLT(v string) predicate.Deploy {
+	return predicate.Deploy(sql.FieldLT(FieldImage, v))
+}
+
+// ImageLTE applies the LTE predicate on the "image" field.
+func ImageLTE(v string) predicate.Deploy {
+	return predicate.Deploy(sql.FieldLTE(FieldImage, v))
+}
+
+// ImageContains applies the Contains predicate on the "image" field.
+func ImageContains(v string) predicate.Deploy {
+	return predicate.Deploy(sql.FieldContains(FieldImage, v))
+}
+
+// ImageHasPrefix applies the HasPrefix predicate on the "image" field.
+func ImageHasPrefix(v string) predicate.Deploy {
+	return predicate.Deploy(sql.FieldHasPrefix(FieldImage, v))
+}
+
+// ImageHasSuffix applies the HasSuffix predicate on the "image" field.
+func ImageHasSuffix(v string) predicate.Deploy {
+	return predicate.Deploy(sql.FieldHasSuffix(FieldImage, v))
+}
+
+// ImageIsNil applies the IsNil predicate on the "image" field.
+func ImageIsNil() predicate.Deploy {
+	return predicate.Deploy(sql.FieldIsNull(FieldImage))
+}
+
+// ImageNotNil applies the NotNil predicate on the "image" field.
+func ImageNotNil() predicate.Deploy {
+	return predicate.Deploy(sql.FieldNotNull(FieldImage))
+}
+
+// ImageEqualFold applies the EqualFold predicate on the "image" field.
+func ImageEqualFold(v string) predicate.Deploy {
+	return predicate.Deploy(sql.FieldEqualFold(FieldImage, v))
+}
+
+// ImageContainsFold applies the ContainsFold predicate on the "image" field.
+func ImageContainsFold(v string) predicate.Deploy {
+	return predicate.Deploy(sql.FieldContainsFold(FieldImage, v))
 }
 
 // HasApp applies the HasEdge predicate on the "app" edge.

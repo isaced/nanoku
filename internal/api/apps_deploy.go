@@ -58,6 +58,7 @@ func (h *Handlers) DeployApp(w http.ResponseWriter, r *http.Request) {
 		SetTrigger("manual").
 		SetStatus("running").
 		SetStartedAt(time.Now().UTC()).
+		SetImage(appImage(a)).
 		Save(r.Context())
 	if err != nil {
 		h.DeployLock.Release(a.ID)

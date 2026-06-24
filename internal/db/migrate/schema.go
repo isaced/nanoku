@@ -86,11 +86,12 @@ var (
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "commit_sha", Type: field.TypeString, Nullable: true},
 		{Name: "commit_message", Type: field.TypeString, Nullable: true},
-		{Name: "trigger", Type: field.TypeEnum, Enums: []string{"manual", "trigger"}, Default: "manual"},
+		{Name: "trigger", Type: field.TypeEnum, Enums: []string{"manual", "trigger", "rollback"}, Default: "manual"},
 		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "running", "success", "failed", "rolled_back"}, Default: "pending"},
 		{Name: "error", Type: field.TypeString, Nullable: true},
 		{Name: "started_at", Type: field.TypeTime, Nullable: true},
 		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
+		{Name: "image", Type: field.TypeString, Nullable: true},
 		{Name: "app_deploys", Type: field.TypeInt, Nullable: true},
 	}
 	// DeploysTable holds the schema information for the "deploys" table.
@@ -101,7 +102,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "deploys_apps_deploys",
-				Columns:    []*schema.Column{DeploysColumns[10]},
+				Columns:    []*schema.Column{DeploysColumns[11]},
 				RefColumns: []*schema.Column{AppsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},

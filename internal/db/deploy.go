@@ -37,6 +37,8 @@ type Deploy struct {
 	StartedAt *time.Time `json:"started_at,omitempty"`
 	// FinishedAt holds the value of the "finished_at" field.
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	// Image reference actually deployed (e.g. nginx:1.27 or ghcr.io/me/app@sha256:...). Snapshot kept so rollback can re-pull the same image.
+	Image *string `json:"image,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the DeployQuery when eager-loading is set.
 	Edges        DeployEdges `json:"edges"`
@@ -84,7 +86,7 @@ func (*Deploy) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case deploy.FieldID:
 			values[i] = new(sql.NullInt64)
-		case deploy.FieldCommitSha, deploy.FieldCommitMessage, deploy.FieldTrigger, deploy.FieldStatus, deploy.FieldError:
+		case deploy.FieldCommitSha, deploy.FieldCommitMessage, deploy.FieldTrigger, deploy.FieldStatus, deploy.FieldError, deploy.FieldImage:
 			values[i] = new(sql.NullString)
 		case deploy.FieldCreatedAt, deploy.FieldUpdatedAt, deploy.FieldStartedAt, deploy.FieldFinishedAt:
 			values[i] = new(sql.NullTime)
@@ -169,6 +171,13 @@ func (_m *Deploy) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.FinishedAt = new(time.Time)
 				*_m.FinishedAt = value.Time
+			}
+		case deploy.FieldImage:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field image", values[i])
+			} else if value.Valid {
+				_m.Image = new(string)
+				*_m.Image = value.String
 			}
 		case deploy.ForeignKeys[0]:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -258,6 +267,11 @@ func (_m *Deploy) String() string {
 	if v := _m.FinishedAt; v != nil {
 		builder.WriteString("finished_at=")
 		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.Image; v != nil {
+		builder.WriteString("image=")
+		builder.WriteString(*v)
 	}
 	builder.WriteByte(')')
 	return builder.String()

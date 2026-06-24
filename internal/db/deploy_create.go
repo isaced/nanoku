@@ -148,6 +148,20 @@ func (_c *DeployCreate) SetNillableFinishedAt(v *time.Time) *DeployCreate {
 	return _c
 }
 
+// SetImage sets the "image" field.
+func (_c *DeployCreate) SetImage(v string) *DeployCreate {
+	_c.mutation.SetImage(v)
+	return _c
+}
+
+// SetNillableImage sets the "image" field if the given value is not nil.
+func (_c *DeployCreate) SetNillableImage(v *string) *DeployCreate {
+	if v != nil {
+		_c.SetImage(*v)
+	}
+	return _c
+}
+
 // SetAppID sets the "app" edge to the App entity by ID.
 func (_c *DeployCreate) SetAppID(id int) *DeployCreate {
 	_c.mutation.SetAppID(id)
@@ -324,6 +338,10 @@ func (_c *DeployCreate) createSpec() (*Deploy, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FinishedAt(); ok {
 		_spec.SetField(deploy.FieldFinishedAt, field.TypeTime, value)
 		_node.FinishedAt = &value
+	}
+	if value, ok := _c.mutation.Image(); ok {
+		_spec.SetField(deploy.FieldImage, field.TypeString, value)
+		_node.Image = &value
 	}
 	if nodes := _c.mutation.AppIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

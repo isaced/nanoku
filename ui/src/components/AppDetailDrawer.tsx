@@ -9,6 +9,7 @@ import {
   useSuspenseAppEnv,
   useSuspenseAppVolumes,
   useAppLogs,
+  useRollbackApp,
 } from '../lib/hooks'
 import { queryKeys } from '../lib/queryKeys'
 import { useQueryClient } from '@tanstack/react-query'
@@ -174,7 +175,7 @@ function AppDetailContent({
                 )}
               </span>
             ),
-            children: <DeploysTab deploys={deploys} />,
+            children: <DeploysTab deploys={deploys} appId={appId} />,
           },
           {
             key: 'logs',
@@ -321,8 +322,9 @@ function OverviewTab({
   )
 }
 
-function DeploysTab({ deploys }: { deploys: Deploy[] }) {
+function DeploysTab({ deploys, appId }: { deploys: Deploy[]; appId: number }) {
   const { t } = useTranslation('apps')
+  const rollback = useRollbackApp()
   if (deploys.length === 0) {
     return (
       <div className="py-8 text-center text-[var(--fg-muted)] text-sm">
@@ -332,51 +334,72 @@ function DeploysTab({ deploys }: { deploys: Deploy[] }) {
   }
   return (
     <div className="space-y-2">
-      {deploys.map((d) => (
-        <div
-          key={d.id}
-          className="border border-[var(--border)] rounded-md p-3 bg-[var(--bg-input)] text-sm"
-        >
-          <div className="flex items-center justify-between mb-1">
-            <span className="mono text-xs">
-              #{d.id} · {d.trigger}
-              {d.commitSha && (
-                <span className="ml-2 text-[var(--fg-muted)]">{d.commitSha.slice(0, 7)}</span>
-              )}
-            </span>
-            <Tag
-              color={
-                d.status === 'success'
-                  ? 'green'
-                  : d.status === 'failed'
-                    ? 'red'
-                    : 'default'
-              }
-            >
-              {d.status}
-            </Tag>
+      {deploys.map((d) => {
+        const canRollback = d.status === 'success'
+        return (
+          <div
+            key={d.id}
+            className="border border-[var(--border)] rounded-md p-3 bg-[var(--bg-input)] text-sm"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="mono text-xs">
+                #{d.id} · {d.trigger}
+                {d.commitSha && (
+                  <span className="ml-2 text-[var(--fg-muted)]">{d.commitSha.slice(0, 7)}</span>
+                )}
+              </span>
+              <div className="flex items-center gap-2">
+                <Tag
+                  color={
+                    d.status === 'success'
+                      ? 'green'
+                      : d.status === 'failed'
+                        ? 'red'
+                        : d.status === 'rolled_back'
+                          ? 'orange'
+                          : 'default'
+                  }
+                >
+                  {d.status}
+                </Tag>
+                {canRollback && (
+                  <Popconfirm
+                    title={t('detail.rollbackConfirmTitle')}
+                    description={t('detail.rollbackConfirmDesc', { id: d.id })}
+                    okText={t('detail.rollback')}
+                    cancelText={t('common.cancel')}
+                    onConfirm={() => rollback.mutate({ appId, deployId: d.id })}
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button size="small" type="text" loading={rollback.isPending}>
+                      {t('detail.rollback')}
+                    </Button>
+                  </Popconfirm>
+                )}
+              </div>
+            </div>
+            {d.commitMessage && (
+              <div className="text-xs mt-1 line-clamp-2">
+                {d.commitMessage.split('\n')[0]}
+              </div>
+            )}
+            {d.containerName && (
+              <div className="mono text-xs text-[var(--fg-muted)] mt-1">
+                {t('detail.containerLabel')}: {d.containerName}
+              </div>
+            )}
+            {d.error && (
+              <div className="text-xs text-[var(--danger)] mt-1">
+                {d.error}
+              </div>
+            )}
+            <div className="text-xs text-[var(--fg-muted)] mt-1">
+              {d.startedAt ?? d.createdAt}
+              {d.finishedAt ? ` → ${d.finishedAt}` : ''}
+            </div>
           </div>
-          {d.commitMessage && (
-            <div className="text-xs mt-1 line-clamp-2">
-              {d.commitMessage.split('\n')[0]}
-            </div>
-          )}
-          {d.containerName && (
-            <div className="mono text-xs text-[var(--fg-muted)] mt-1">
-              {t('detail.containerLabel')}: {d.containerName}
-            </div>
-          )}
-          {d.error && (
-            <div className="text-xs text-[var(--danger)] mt-1">
-              {d.error}
-            </div>
-          )}
-          <div className="text-xs text-[var(--fg-muted)] mt-1">
-            {d.startedAt ?? d.createdAt}
-            {d.finishedAt ? ` → ${d.finishedAt}` : ''}
-          </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

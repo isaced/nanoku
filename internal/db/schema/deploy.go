@@ -21,7 +21,7 @@ func (Deploy) Fields() []ent.Field {
 		field.String("commit_message").
 			Optional().Nillable(),
 		field.Enum("trigger").
-			Values("manual", "trigger").
+			Values("manual", "trigger", "rollback").
 			Default("manual"),
 		field.Enum("status").
 			Values("pending", "running", "success", "failed", "rolled_back").
@@ -33,6 +33,9 @@ func (Deploy) Fields() []ent.Field {
 			Optional().Nillable(),
 		field.Time("finished_at").
 			Optional().Nillable(),
+		field.String("image").
+			Optional().Nillable().
+			Comment("Image reference actually deployed (e.g. nginx:1.27 or ghcr.io/me/app@sha256:...). Snapshot kept so rollback can re-pull the same image."),
 	}
 }
 

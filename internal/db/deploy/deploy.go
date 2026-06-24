@@ -33,6 +33,8 @@ const (
 	FieldStartedAt = "started_at"
 	// FieldFinishedAt holds the string denoting the finished_at field in the database.
 	FieldFinishedAt = "finished_at"
+	// FieldImage holds the string denoting the image field in the database.
+	FieldImage = "image"
 	// EdgeApp holds the string denoting the app edge name in mutations.
 	EdgeApp = "app"
 	// EdgeContainer holds the string denoting the container edge name in mutations.
@@ -67,6 +69,7 @@ var Columns = []string{
 	FieldError,
 	FieldStartedAt,
 	FieldFinishedAt,
+	FieldImage,
 }
 
 // ForeignKeys holds the SQL foreign-keys that are owned by the "deploys"
@@ -107,8 +110,9 @@ const DefaultTrigger = TriggerManual
 
 // Trigger values.
 const (
-	TriggerManual  Trigger = "manual"
-	TriggerTrigger Trigger = "trigger"
+	TriggerManual   Trigger = "manual"
+	TriggerTrigger  Trigger = "trigger"
+	TriggerRollback Trigger = "rollback"
 )
 
 func (t Trigger) String() string {
@@ -118,7 +122,7 @@ func (t Trigger) String() string {
 // TriggerValidator is a validator for the "trigger" field enum values. It is called by the builders before save.
 func TriggerValidator(t Trigger) error {
 	switch t {
-	case TriggerManual, TriggerTrigger:
+	case TriggerManual, TriggerTrigger, TriggerRollback:
 		return nil
 	default:
 		return fmt.Errorf("deploy: invalid enum value for trigger field: %q", t)
@@ -205,6 +209,11 @@ func ByStartedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByFinishedAt orders the results by the finished_at field.
 func ByFinishedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFinishedAt, opts...).ToFunc()
+}
+
+// ByImage orders the results by the image field.
+func ByImage(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImage, opts...).ToFunc()
 }
 
 // ByAppField orders the results by app field.

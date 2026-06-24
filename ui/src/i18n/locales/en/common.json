@@ -36,7 +36,8 @@
     "enabled": "enabled",
     "cpu": "CPU",
     "memory": "Memory",
-    "updated": "updated"
+    "updated": "updated",
+    "cancel": "Cancel"
   },
   "error": {
     "loadFailed": "Failed to load",

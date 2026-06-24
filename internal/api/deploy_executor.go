@@ -180,14 +180,18 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 		Save(ctx)
 
 	// Best-effort retire of the old container *after* the new one is
-	// live and routed. If this step fails, the deploy still reports
-	// success and the old container just keeps running as a stranded
-	// process — preferable to having taken it down before the new one
-	// was ready.
+	// live and routed. The Docker container is stopped + removed; the DB
+	// row is kept (marked exited) so a later rollback can find the image
+	// snapshot on the original Deploy record. If retire fails the deploy
+	// still reports success — the stray old container is preferable to
+	// having taken it down before the new one was ready.
 	if oldContainerID != 0 && oldContainerName != "" && oldContainerName != containerName {
 		_ = h.Docker.StopContainer(context.Background(), oldContainerName)
 		_ = h.Docker.RemoveContainer(context.Background(), oldContainerName)
-		_ = h.DB.Container.DeleteOneID(oldContainerID).Exec(context.Background())
+		_, _ = h.DB.Container.UpdateOneID(oldContainerID).
+			SetStatus("exited").
+			SetStoppedAt(time.Now().UTC()).
+			Save(context.Background())
 	}
 }
 
