@@ -31,6 +31,34 @@ builds:
       - goos: windows
         goarch: arm64
 
+dockers:
+  - id: nanoku-ghcr
+    use: buildx
+    goos: linux
+    goarch: [amd64, arm64]
+    dockerfile: Dockerfile
+    image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/nanoku:{{ .Version }}"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/nanoku:latest"
+    build_args:
+      VERSION: "{{ .Version }}"
+      COMMIT: "{{ .ShortCommit }}"
+      DATE: "{{ .Date }}"
+    skip_push: auto
+  - id: nanoku-dockerhub
+    use: buildx
+    goos: linux
+    goarch: [amd64, arm64]
+    dockerfile: Dockerfile
+    image_templates:
+      - "isaced/nanoku:{{ .Version }}"
+      - "isaced/nanoku:latest"
+    build_args:
+      VERSION: "{{ .Version }}"
+      COMMIT: "{{ .ShortCommit }}"
+      DATE: "{{ .Date }}"
+    skip_push: auto
+
 archives:
   - id: default
     formats: [tar.gz]
@@ -85,3 +113,19 @@ release:
     name: nanoku
   draft: false
   prerelease: auto
+  header: |
+    ## Docker
+
+    Multi-arch images (`linux/amd64`, `linux/arm64`) are pushed to both registries.
+
+    **GHCR**
+    ```sh
+    docker pull ghcr.io/isaced/nanoku:{{ .Version }}
+    ```
+
+    **Docker Hub**
+    ```sh
+    docker pull isaced/nanoku:{{ .Version }}
+    ```
+
+    GHCR is private by default — make the package public or run `docker login ghcr.io` first.
