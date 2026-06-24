@@ -8,6 +8,7 @@ const GITHUB_URL = 'https://github.com/isaced/nanoku'
 const RELEASES_URL = `${GITHUB_URL}/releases/latest`
 const LATEST_RELEASE_API = 'https://api.github.com/repos/isaced/nanoku/releases/latest'
 const DEV_COMMIT = 'none'
+const UPDATE_CHECK_TTL_MS = 60 * 60 * 1000
 
 type UpdateState =
   | { status: 'idle' }
@@ -15,6 +16,16 @@ type UpdateState =
   | { status: 'available'; latest: string }
   | { status: 'uptodate' }
   | { status: 'error' }
+
+type CacheEntry =
+  | { kind: 'fresh'; checkedAt: number; result: UpdateState }
+  | { kind: 'inflight'; promise: Promise<UpdateState> }
+
+let updateCache: CacheEntry | null = null
+
+export function resetUpdateCache(): void {
+  updateCache = null
+}
 
 function compareSemver(a: string, b: string): number {
   const pa = a.replace(/^v/, '').split('.').map((n) => Number.parseInt(n, 10) || 0)
@@ -26,6 +37,40 @@ function compareSemver(a: string, b: string): number {
     if (da !== db) return da - db
   }
   return 0
+}
+
+async function checkForUpdate(version: string): Promise<UpdateState> {
+  if (
+    updateCache?.kind === 'fresh' &&
+    Date.now() - updateCache.checkedAt < UPDATE_CHECK_TTL_MS
+  ) {
+    return updateCache.result
+  }
+  if (updateCache?.kind === 'inflight') {
+    return updateCache.promise
+  }
+
+  const promise = (async (): Promise<UpdateState> => {
+    try {
+      const res = await fetch(LATEST_RELEASE_API, {
+        headers: { Accept: 'application/vnd.github+json' },
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = (await res.json()) as { tag_name?: string }
+      const latest = data.tag_name?.replace(/^v/, '') ?? ''
+      if (!latest) throw new Error('empty tag_name')
+      return compareSemver(latest, version) > 0
+        ? { status: 'available', latest }
+        : { status: 'uptodate' }
+    } catch {
+      return { status: 'error' }
+    }
+  })()
+
+  updateCache = { kind: 'inflight', promise }
+  const result = await promise
+  updateCache = { kind: 'fresh', checkedAt: Date.now(), result }
+  return result
 }
 
 export function Footer({
@@ -45,24 +90,9 @@ export function Footer({
     if (!systemStatus || isDev) return
     let cancelled = false
     setUpdate({ status: 'loading' })
-    fetch(LATEST_RELEASE_API, { headers: { Accept: 'application/vnd.github+json' } })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((data: { tag_name?: string }) => {
-        if (cancelled) return
-        const latest = data.tag_name?.replace(/^v/, '') ?? ''
-        if (!latest) {
-          setUpdate({ status: 'error' })
-          return
-        }
-        setUpdate(
-          compareSemver(latest, version) > 0
-            ? { status: 'available', latest }
-            : { status: 'uptodate' },
-        )
-      })
-      .catch(() => {
-        if (!cancelled) setUpdate({ status: 'error' })
-      })
+    checkForUpdate(version).then((result) => {
+      if (!cancelled) setUpdate(result)
+    })
     return () => {
       cancelled = true
     }

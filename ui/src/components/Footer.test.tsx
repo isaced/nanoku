@@ -10,12 +10,13 @@ import {
 import { ConfigProvider } from 'antd'
 import enUS from 'antd/locale/en_US'
 import '../i18n'
-import { Footer } from './Footer'
+import { Footer, resetUpdateCache } from './Footer'
 import type { SystemStatus } from '../lib/types'
 
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  resetUpdateCache()
 })
 
 const GITHUB_URL = 'https://github.com/isaced/nanoku'
@@ -181,6 +182,77 @@ describe('Footer', () => {
       })
       expect(screen.queryByTestId('footer-update-available')).toBeNull()
       expect(screen.getByText('v0.1.0')).toBeTruthy()
+    })
+
+    it('coalesces concurrent mounts into a single fetch', async () => {
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+        new Response(JSON.stringify({ tag_name: 'v0.2.0' }), { status: 200 }),
+      )
+      renderWithProviders(
+        <>
+          <Footer systemStatus={makeSystemStatus()} />
+          <Footer systemStatus={makeSystemStatus()} />
+        </>,
+      )
+      await waitFor(() => {
+        expect(screen.getAllByTestId('footer-update-available')).toHaveLength(2)
+      })
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('reuses the cached result on subsequent mounts within the TTL', async () => {
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+        new Response(JSON.stringify({ tag_name: 'v0.2.0' }), { status: 200 }),
+      )
+      const { unmount } = renderWithProviders(
+        <Footer systemStatus={makeSystemStatus()} />,
+      )
+      await waitFor(() => {
+        expect(screen.getByTestId('footer-update-available')).toBeTruthy()
+      })
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+      unmount()
+      renderWithProviders(<Footer systemStatus={makeSystemStatus()} />)
+      await waitFor(() => {
+        expect(screen.getByTestId('footer-update-available')).toBeTruthy()
+      })
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('refetches after the TTL expires', async () => {
+      vi.mocked(globalThis.fetch).mockResolvedValue(
+        new Response(JSON.stringify({ tag_name: 'v0.2.0' }), { status: 200 }),
+      )
+      const baseTime = Date.now()
+      vi.setSystemTime(baseTime)
+      renderWithProviders(<Footer systemStatus={makeSystemStatus()} />)
+      await waitFor(() => {
+        expect(screen.getByTestId('footer-update-available')).toBeTruthy()
+      })
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+      resetUpdateCache()
+      vi.setSystemTime(baseTime + 60 * 60 * 1000 + 1)
+      renderWithProviders(<Footer systemStatus={makeSystemStatus()} />)
+      await waitFor(() => {
+        expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+      })
+      vi.useRealTimers()
+    })
+
+    it('caches error results so re-mounts do not refetch', async () => {
+      vi.mocked(globalThis.fetch).mockRejectedValueOnce(new Error('offline'))
+      const { unmount } = renderWithProviders(
+        <Footer systemStatus={makeSystemStatus()} />,
+      )
+      await waitFor(() => {
+        expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+      })
+      unmount()
+      renderWithProviders(<Footer systemStatus={makeSystemStatus()} />)
+      await waitFor(() => {
+        expect(screen.getByTestId('footer-version')).toBeTruthy()
+      })
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1)
     })
   })
 })
