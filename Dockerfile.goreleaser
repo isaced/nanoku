@@ -1,0 +1,32 @@
+# =============================================================================
+# Dockerfile used by GoReleaser to publish Docker images.
+# =============================================================================
+# This Dockerfile is only used to package the pre-built binary produced by
+# GoReleaser's `builds` section — no go build, no UI build. It bakes in
+# `docker-cli` (so nanoku can manage sibling containers at runtime) and
+# runs as the distroless `nonroot` user.
+#
+# Use `Dockerfile` (in repo root) for local dev / `docker-compose build`.
+# =============================================================================
+
+ARG DOCKER_VERSION=27
+
+FROM docker:${DOCKER_VERSION}-cli AS docker-cli
+
+FROM gcr.io/distroless/static-debian12:nonroot
+
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+COPY nanoku /usr/local/bin/nanoku
+
+ENV NANOKU_LISTEN=:8080 \
+    NANOKU_DB=/data/nanoku.db \
+    NANOKU_CADDYFILE=/data/Caddyfile \
+    NANOKU_COMPOSE_DIR=/data/composes
+
+USER nonroot
+WORKDIR /data
+VOLUME /data
+
+EXPOSE 8080
+
+ENTRYPOINT ["/usr/local/bin/nanoku"]

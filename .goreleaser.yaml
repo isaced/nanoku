@@ -31,33 +31,94 @@ builds:
       - goos: windows
         goarch: arm64
 
+# One entry per (registry × arch). Each builds a single-arch image; the
+# `docker_manifests` block below stitches them into multi-arch tags
+# (`:{{ .Version }}`, `:latest`) so users get the right arch automatically.
 dockers:
-  - id: nanoku-ghcr
+  - id: dockerhub-amd64
     use: buildx
     goos: linux
-    goarch: [amd64, arm64]
-    dockerfile: Dockerfile
+    goarch: amd64
+    dockerfile: Dockerfile.goreleaser
     image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/nanoku:{{ .Version }}"
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/nanoku:latest"
-    build_args:
-      VERSION: "{{ .Version }}"
-      COMMIT: "{{ .ShortCommit }}"
-      DATE: "{{ .Date }}"
-    skip_push: auto
-  - id: nanoku-dockerhub
+      - "{{ .Env.DOCKERHUB_USERNAME }}/nanoku:{{ .Version }}-amd64"
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .ShortCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.source=https://github.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }}"
+    skip_push: '{{ if eq .Env.DOCKERHUB_USERNAME "skip" }}true{{ else }}false{{ end }}'
+
+  - id: dockerhub-arm64
     use: buildx
     goos: linux
-    goarch: [amd64, arm64]
-    dockerfile: Dockerfile
+    goarch: arm64
+    dockerfile: Dockerfile.goreleaser
     image_templates:
-      - "isaced/nanoku:{{ .Version }}"
-      - "isaced/nanoku:latest"
-    build_args:
-      VERSION: "{{ .Version }}"
-      COMMIT: "{{ .ShortCommit }}"
-      DATE: "{{ .Date }}"
+      - "{{ .Env.DOCKERHUB_USERNAME }}/nanoku:{{ .Version }}-arm64"
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .ShortCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.source=https://github.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }}"
+    skip_push: '{{ if eq .Env.DOCKERHUB_USERNAME "skip" }}true{{ else }}false{{ end }}'
+
+  - id: ghcr-amd64
+    use: buildx
+    goos: linux
+    goarch: amd64
+    dockerfile: Dockerfile.goreleaser
+    image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/nanoku:{{ .Version }}-amd64"
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .ShortCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.source=https://github.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }}"
     skip_push: auto
+
+  - id: ghcr-arm64
+    use: buildx
+    goos: linux
+    goarch: arm64
+    dockerfile: Dockerfile.goreleaser
+    image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/nanoku:{{ .Version }}-arm64"
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .ShortCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.source=https://github.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }}"
+    skip_push: auto
+
+# `docker_manifests` is deprecated in goreleaser v2 but still the only way to
+# build multi-arch images without per-platform Dockerfile tricks. Bump when
+# goreleaser ships a non-deprecated replacement.
+docker_manifests:
+  - name_template: "{{ .Env.DOCKERHUB_USERNAME }}/nanoku:{{ .Version }}"
+    skip_push: '{{ if eq .Env.DOCKERHUB_USERNAME "skip" }}true{{ else }}false{{ end }}'
+    image_templates:
+      - "{{ .Env.DOCKERHUB_USERNAME }}/nanoku:{{ .Version }}-amd64"
+      - "{{ .Env.DOCKERHUB_USERNAME }}/nanoku:{{ .Version }}-arm64"
+  - name_template: "{{ .Env.DOCKERHUB_USERNAME }}/nanoku:latest"
+    skip_push: '{{ if eq .Env.DOCKERHUB_USERNAME "skip" }}true{{ else }}false{{ end }}'
+    image_templates:
+      - "{{ .Env.DOCKERHUB_USERNAME }}/nanoku:{{ .Version }}-amd64"
+      - "{{ .Env.DOCKERHUB_USERNAME }}/nanoku:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/nanoku:{{ .Version }}"
+    skip_push: auto
+    image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/nanoku:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/nanoku:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/nanoku:latest"
+    skip_push: auto
+    image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/nanoku:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/nanoku:{{ .Version }}-arm64"
 
 archives:
   - id: default
@@ -78,7 +139,7 @@ archives:
       {{- .Arch }}
     files:
       - README.md
-    overrides:
+    format_overrides:
       - goos: windows
 
 checksum:
@@ -109,8 +170,8 @@ changelog:
 
 release:
   github:
-    owner: isaced
-    name: nanoku
+    owner: "{{ .Env.GITHUB_REPO_OWNER }}"
+    name: "{{ .Env.GITHUB_REPO_NAME }}"
   draft: false
   prerelease: auto
   header: |
@@ -118,14 +179,16 @@ release:
 
     Multi-arch images (`linux/amd64`, `linux/arm64`) are pushed to both registries.
 
-    **GHCR**
-    ```sh
-    docker pull ghcr.io/isaced/nanoku:{{ .Version }}
-    ```
-
+    {{ if ne .Env.DOCKERHUB_USERNAME "skip" -}}
     **Docker Hub**
     ```sh
-    docker pull isaced/nanoku:{{ .Version }}
+    docker pull {{ .Env.DOCKERHUB_USERNAME }}/nanoku:{{ .Version }}
+    ```
+
+    {{ end -}}
+    **GHCR**
+    ```sh
+    docker pull ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/nanoku:{{ .Version }}
     ```
 
     GHCR is private by default — make the package public or run `docker login ghcr.io` first.
