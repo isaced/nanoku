@@ -9,9 +9,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/isaced/nanoku/internal/db"
-	"github.com/isaced/nanoku/internal/db/enttest"
 )
 
 // newManualDeployHandlers builds a Handlers with one app seeded and no Docker
@@ -20,8 +17,8 @@ import (
 // async executor finishes).
 func newManualDeployHandlers(t *testing.T) *Handlers {
 	t.Helper()
-	client := enttest.Open(t, "sqlite3", "file:deployapp_test?mode=memory&_fk=1&_pragma=foreign_keys(1)")
-	_, err := client.App.Create().
+	d := newTestDB(t)
+	_, err := d.App.Create().
 		SetName("myapp").
 		SetImage("nginx:1.27").
 		SetPort(80).
@@ -30,7 +27,7 @@ func newManualDeployHandlers(t *testing.T) *Handlers {
 		t.Fatalf("seed app: %v", err)
 	}
 	return &Handlers{
-		DB:            &db.DB{Client: client},
+		DB:            d,
 		DeployLock:    NewDeployLock(),
 		CaddyfilePath: t.TempDir() + "/Caddyfile",
 	}

@@ -6,13 +6,11 @@ import (
 	"testing"
 
 	"github.com/isaced/nanoku/internal/db"
-	"github.com/isaced/nanoku/internal/db/enttest"
 )
 
 func newUsersDB(t *testing.T) *db.DB {
 	t.Helper()
-	c := enttest.Open(t, "sqlite3", "file:users_test?mode=memory&_fk=1&_pragma=foreign_keys(1)")
-	return &db.DB{Client: c}
+	return newTestDB(t)
 }
 
 // TestSeedFirstAdmin_FreshDBMissingCreds is the regression guard: a fresh DB

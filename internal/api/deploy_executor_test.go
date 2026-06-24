@@ -7,18 +7,18 @@ import (
 	"time"
 
 	"github.com/isaced/nanoku/internal/db"
-	"github.com/isaced/nanoku/internal/db/enttest"
 )
 
-// newExecutorHandlers builds a Handlers wired to a fresh in-memory DB with
-// one app seeded (image=nginx:1.27). Docker is intentionally nil so the
-// executor takes the "docker unavailable" failure path — these tests cover
-// the wiring around the docker call, not docker itself (which needs a real
-// daemon and is covered by integration tests).
+// newExecutorHandlers builds a Handlers wired to a fresh DB (temp file so all
+// pooled connections share one backing store) with one app seeded
+// (image=nginx:1.27). Docker is intentionally nil so the executor takes the
+// "docker unavailable" failure path — these tests cover the wiring around the
+// docker call, not docker itself (which needs a real daemon and is covered by
+// integration tests).
 func newExecutorHandlers(t *testing.T) (*Handlers, *db.App) {
 	t.Helper()
-	client := enttest.Open(t, "sqlite3", "file:deploy_executor_test?mode=memory&_fk=1&_pragma=foreign_keys(1)")
-	a, err := client.App.Create().
+	d := newTestDB(t)
+	a, err := d.App.Create().
 		SetName("exec-app").
 		SetImage("nginx:1.27").
 		SetPort(80).
@@ -27,7 +27,7 @@ func newExecutorHandlers(t *testing.T) (*Handlers, *db.App) {
 		t.Fatalf("seed app: %v", err)
 	}
 	return &Handlers{
-		DB:            &db.DB{Client: client},
+		DB:            d,
 		DeployLock:    NewDeployLock(),
 		CaddyfilePath: t.TempDir() + "/Caddyfile",
 	}, a
@@ -121,8 +121,8 @@ func TestExecuteDeploy_AppNotFound(t *testing.T) {
 // (no image stored). Manual deploy (imageOverride=="") must report a
 // clean "no image" error rather than crashing.
 func TestExecuteDeploy_EmptyImageOverrideAndApp(t *testing.T) {
-	client := enttest.Open(t, "sqlite3", "file:deploy_executor_empty?mode=memory&_fk=1&_pragma=foreign_keys(1)")
-	a, err := client.App.Create().
+	d := newTestDB(t)
+	a, err := d.App.Create().
 		SetName("no-image-app").
 		SetPort(80).
 		Save(context.Background())
@@ -130,11 +130,11 @@ func TestExecuteDeploy_EmptyImageOverrideAndApp(t *testing.T) {
 		t.Fatalf("seed app: %v", err)
 	}
 	// Create doesn't accept ClearImage — drop the field via UpdateOne.
-	if _, err := client.App.UpdateOneID(a.ID).ClearImage().Save(context.Background()); err != nil {
+	if _, err := d.App.UpdateOneID(a.ID).ClearImage().Save(context.Background()); err != nil {
 		t.Fatalf("clear image: %v", err)
 	}
 	h := &Handlers{
-		DB:            &db.DB{Client: client},
+		DB:            d,
 		DeployLock:    NewDeployLock(),
 		CaddyfilePath: t.TempDir() + "/Caddyfile",
 	}
@@ -159,20 +159,20 @@ func TestExecuteDeploy_EmptyImageOverrideAndApp(t *testing.T) {
 // with a non-empty override should pass the image check and reach the
 // "docker unavailable" failure instead.
 func TestExecuteDeploy_ImageOverrideUsedForTrigger(t *testing.T) {
-	client := enttest.Open(t, "sqlite3", "file:deploy_executor_override?mode=memory&_fk=1&_pragma=foreign_keys(1)")
+	d := newTestDB(t)
 	// App has no image stored.
-	a, err := client.App.Create().
+	a, err := d.App.Create().
 		SetName("override-app").
 		SetPort(80).
 		Save(context.Background())
 	if err != nil {
 		t.Fatalf("seed app: %v", err)
 	}
-	if _, err := client.App.UpdateOneID(a.ID).ClearImage().Save(context.Background()); err != nil {
+	if _, err := d.App.UpdateOneID(a.ID).ClearImage().Save(context.Background()); err != nil {
 		t.Fatalf("clear image: %v", err)
 	}
 	h := &Handlers{
-		DB:            &db.DB{Client: client},
+		DB:            d,
 		DeployLock:    NewDeployLock(),
 		CaddyfilePath: t.TempDir() + "/Caddyfile",
 	}

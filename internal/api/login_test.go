@@ -6,32 +6,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/isaced/nanoku/internal/db"
 	"github.com/isaced/nanoku/internal/db/user"
 )
-
-// newTestDB returns a real SQLite DB on disk (TempDir, removed by the
-// runtime) with all migrations applied. Using a temp file instead of
-// ":memory:" so all connections share the same backing store.
-func newTestDB(t *testing.T) *db.DB {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "test.db")
-	d, err := db.OpenDB(path)
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() { _ = d.Close() })
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := d.Migrate(ctx); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	return d
-}
 
 func seedUser(t *testing.T, d *db.DB, username, password string) *db.User {
 	t.Helper()

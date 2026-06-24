@@ -3,32 +3,17 @@ package api
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
-	"modernc.org/sqlite"
-
 	"github.com/isaced/nanoku/internal/db"
 	"github.com/isaced/nanoku/internal/db/app"
-	"github.com/isaced/nanoku/internal/db/enttest"
 )
-
-var registerOnce sync.Once
-
-func TestMain(m *testing.M) {
-	registerOnce.Do(func() {
-		sql.Register("sqlite3", &sqlite.Driver{})
-	})
-	os.Exit(m.Run())
-}
 
 const (
 	testAppName    = "myapp"
@@ -39,14 +24,14 @@ const (
 
 func newTestHandlers(t *testing.T, withToken bool) (*Handlers, *db.App) {
 	t.Helper()
-	client := enttest.Open(t, "sqlite3", "file:trigger_test?mode=memory&_fk=1&_pragma=foreign_keys(1)")
+	d := newTestDB(t)
 	ctx := context.Background()
 
 	tok := ""
 	if withToken {
 		tok = testToken
 	}
-	a, err := client.App.Create().
+	a, err := d.App.Create().
 		SetName(testAppName).
 		SetImage(testImage + ":latest").
 		SetPort(8080).
@@ -57,7 +42,7 @@ func newTestHandlers(t *testing.T, withToken bool) (*Handlers, *db.App) {
 	}
 
 	return &Handlers{
-		DB:            &db.DB{Client: client},
+		DB:            d,
 		DeployLock:    NewDeployLock(),
 		CaddyfilePath: filepath.Join(t.TempDir(), "Caddyfile"),
 	}, a
@@ -385,10 +370,9 @@ func TestVerifyToken(t *testing.T) {
 	}
 }
 
-// newDBClient returns a fresh in-memory DB handle for resolveTriggerImage
-// tests, which need to set Image directly on a fresh entity.
+// newDBClient returns a fresh DB handle for resolveTriggerImage tests, which
+// need to set Image directly on a fresh entity.
 func newDBClient(t *testing.T) *db.DB {
 	t.Helper()
-	c := enttest.Open(t, "sqlite3", "file:image_resolve?mode=memory&_fk=1&_pragma=foreign_keys(1)")
-	return &db.DB{Client: c}
+	return newTestDB(t)
 }
