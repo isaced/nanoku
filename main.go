@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -121,6 +122,7 @@ func main() {
 		}
 	}()
 
+	var deployWG sync.WaitGroup
 	handlers := &api.Handlers{
 		DB:              database,
 		Docker:          dm,
@@ -137,6 +139,7 @@ func main() {
 		Date:            date,
 		BuildType:       buildType,
 		TrustProxy:      cfg.TrustProxy,
+		ShutdownWG:      &deployWG,
 	}
 
 	// Reconcile DB ↔ Docker state on every boot. A deploy that was killed
@@ -241,6 +244,13 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("shutdown: %v", err)
 	}
+
+	// HTTP listener is closed; give in-flight deploys a longer window to
+	// finish (they may still be pulling images, recreating containers,
+	// regenerating the Caddyfile) before forcibly failing any stragglers.
+	drainCtx, cancelDrain := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelDrain()
+	handlers.DrainInflight(drainCtx, 30*time.Second)
 }
 
 // healthWrap layers /healthz in front of the rest of the handler so the

@@ -28,6 +28,22 @@ import (
 // (success / failed) before returning. A panic is recovered and converted to
 // a failed Deploy row.
 func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int, imageOverride string) {
+	if h.ShutdownWG != nil {
+		h.ShutdownWG.Add(1)
+		defer h.ShutdownWG.Done()
+	}
+	h.inflightMu.Lock()
+	if h.inflight == nil {
+		h.inflight = make(map[int]int)
+	}
+	h.inflight[deployID] = appID
+	h.inflightMu.Unlock()
+	defer func() {
+		h.inflightMu.Lock()
+		delete(h.inflight, deployID)
+		h.inflightMu.Unlock()
+	}()
+
 	defer h.DeployLock.Release(appID)
 	defer func() {
 		if r := recover(); r != nil {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/isaced/nanoku/internal/caddy"
@@ -33,6 +34,18 @@ type Handlers struct {
 	Date            string
 	BuildType       string
 	TrustProxy      bool
+
+	// ShutdownWG is incremented by executeDeploy on entry and decremented
+	// on return, so main.go can Wait on it after srv.Shutdown to drain
+	// in-flight deploy goroutines spawned by DeployApp / Trigger /
+	// RollbackApp. Nil in unit tests that don't exercise shutdown.
+	ShutdownWG *sync.WaitGroup
+
+	// inflightMu guards inflight. Populated by executeDeploy so the
+	// shutdown path can mark stragglers failed when the WaitGroup times
+	// out. Keys are Deploy rows; values are their appID.
+	inflightMu sync.Mutex
+	inflight   map[int]int
 }
 
 type SiteDTO struct {
