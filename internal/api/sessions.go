@@ -98,13 +98,20 @@ func (s *SessionStore) Lookup(ctx context.Context, raw string) (*db.User, error)
 	if u == nil {
 		return nil, db.ErrNotFound
 	}
-	// sliding renewal: extend expires_at and last_seen
-	newExp := now.Add(sessionTTL)
-	if _, err := s.DB.Session.UpdateOneID(sess.ID).
-		SetExpiresAt(newExp).
-		SetLastSeen(now).
-		Save(ctx); err != nil {
-		return nil, err
+	// Sliding renewal — but only when the session is past the halfway mark.
+	// High-frequency polling (e.g. an SPA that re-validates the session on
+	// every route entry) would otherwise issue one UPDATE per request, each
+	// of which serializes on the SQLite writer. Skipping the update for
+	// the first half of the TTL bounds the write rate to 2 per session
+	// lifetime while keeping the user-visible expiry roughly the same.
+	if sess.ExpiresAt.Sub(now) <= sessionTTL/2 {
+		newExp := now.Add(sessionTTL)
+		if _, err := s.DB.Session.UpdateOneID(sess.ID).
+			SetExpiresAt(newExp).
+			SetLastSeen(now).
+			Save(ctx); err != nil {
+			return nil, err
+		}
 	}
 	return u, nil
 }
@@ -137,7 +144,10 @@ func (s *SessionStore) AllowLogin(ip string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	log := s.attempts[ip]
-	kept := log[:0]
+	// Note: must NOT use `kept := log[:0]` here. That aliases the original
+	// slice's backing array, so the in-place append below clobbers entries
+	// we haven't read yet, dropping recent timestamps during the loop.
+	kept := make([]time.Time, 0, len(log))
 	for _, t := range log {
 		if t.After(cutoff) {
 			kept = append(kept, t)
@@ -150,4 +160,26 @@ func (s *SessionStore) AllowLogin(ip string) bool {
 	kept = append(kept, time.Now())
 	s.attempts[ip] = kept
 	return true
+}
+
+// PurgeStaleAttempts drops any per-IP attempt log that has zero entries
+// inside the sliding window. Without this, an attacker that walks a wide
+// range of source IPs leaves one empty (or near-empty) entry per IP in the
+// map indefinitely. Call periodically from a background goroutine.
+func (s *SessionStore) PurgeStaleAttempts() {
+	cutoff := time.Now().Add(-time.Minute)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for ip, log := range s.attempts {
+		hasRecent := false
+		for _, t := range log {
+			if t.After(cutoff) {
+				hasRecent = true
+				break
+			}
+		}
+		if !hasRecent {
+			delete(s.attempts, ip)
+		}
+	}
 }

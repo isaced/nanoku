@@ -195,6 +195,32 @@ func (m *Manager) ReloadCaddy(ctx context.Context) error {
 	if status != "running" {
 		return fmt.Errorf("caddy container not running (status=%s)", status)
 	}
+	// Actually reload. The old implementation only checked container
+	// status and relied on caddy's `--watch` flag, which has two real
+	// problems: it polls (seconds of delay) and silently swallows
+	// config-syntax errors. We exec `caddy reload` in the container,
+	// which talks to caddy's admin API on localhost:2019, validates
+	// the config, and applies it atomically — surfacing errors as a
+	// non-zero exit that we propagate.
+	exec, err := m.cli.ContainerExecCreate(ctx, m.containerName, container.ExecOptions{
+		Cmd:          []string{"caddy", "reload", "--config", "/etc/caddy/Caddyfile", "--force"},
+		AttachStdout: true,
+		AttachStderr: true,
+	})
+	if err != nil {
+		return fmt.Errorf("caddy reload exec create: %w", err)
+	}
+	if err := m.cli.ContainerExecStart(ctx, exec.ID, container.ExecStartOptions{}); err != nil {
+		return fmt.Errorf("caddy reload exec start: %w", err)
+	}
+	// Inspect the exit code so syntax errors don't go unnoticed.
+	inspect, err := m.cli.ContainerExecInspect(ctx, exec.ID)
+	if err != nil {
+		return fmt.Errorf("caddy reload exec inspect: %w", err)
+	}
+	if inspect.ExitCode != 0 {
+		return fmt.Errorf("caddy reload exited with code %d", inspect.ExitCode)
+	}
 	return nil
 }
 
@@ -204,6 +230,27 @@ func (m *Manager) CaddyContainerStatus(ctx context.Context) (string, error) {
 
 func (m *Manager) ContainerStatus(ctx context.Context, name string) (string, error) {
 	return m.containerStatus(ctx, name)
+}
+
+// ListNanokuContainerStatuses returns a single map of every container whose
+// name starts with "nanoku-" (including the caddy container) to its current
+// docker state. One ContainerList call replaces the N+1 pattern of calling
+// ContainerStatus once per app.
+func (m *Manager) ListNanokuContainerStatuses(ctx context.Context) (map[string]string, error) {
+	args := filters.NewArgs()
+	args.Add("name", "nanoku-")
+	list, err := m.cli.ContainerList(ctx, container.ListOptions{All: true, Filters: args})
+	if err != nil {
+		return nil, fmt.Errorf("container list: %w", err)
+	}
+	out := make(map[string]string, len(list))
+	for _, c := range list {
+		for _, n := range c.Names {
+			name := strings.TrimPrefix(n, "/")
+			out[name] = c.State
+		}
+	}
+	return out, nil
 }
 
 func (m *Manager) containerStatus(ctx context.Context, name string) (string, error) {

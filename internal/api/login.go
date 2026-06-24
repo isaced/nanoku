@@ -24,7 +24,7 @@ type LoginResponse struct {
 }
 
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
-	ip := clientIP(r)
+	ip := clientIP(r, h.TrustProxy)
 	if !h.Sessions.AllowLogin(ip) {
 		writeErr(w, http.StatusTooManyRequests, errors.New("too many login attempts, slow down"))
 		return
@@ -128,17 +128,21 @@ func (h *Handlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// clientIP returns the best-effort client IP. Honors X-Forwarded-For first
-// hop when present (nanoku typically sits behind Caddy); falls back to
-// RemoteAddr host.
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		for i := 0; i < len(xff); i++ {
-			if xff[i] == ',' {
-				return trimSpace(xff[:i])
+// clientIP returns the best-effort client IP. Honors X-Forwarded-For leftmost
+// hop only when trustProxy is true (set NANOKU_TRUST_PROXY=1 when sitting
+// behind a reverse proxy that sanitizes the header). Falls back to RemoteAddr
+// otherwise — otherwise any client could forge the header to bypass the
+// /api/login rate limit.
+func clientIP(r *http.Request, trustProxy bool) string {
+	if trustProxy {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			for i := 0; i < len(xff); i++ {
+				if xff[i] == ',' {
+					return trimSpace(xff[:i])
+				}
 			}
+			return trimSpace(xff)
 		}
-		return trimSpace(xff)
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

@@ -136,6 +136,57 @@ func TestSessionStore_RateLimit(t *testing.T) {
 	}
 }
 
+// TestSessionStore_RateLimit_NoAliasing is a regression guard for the
+// `kept := log[:0]` bug. The earlier implementation reused the input slice's
+// backing array, so the in-place append silently overwrote entries while the
+// loop was still reading — aliasing damage accumulated across calls and the
+// limit triggered one call earlier than it should have. We pre-seed 2 recent
+// + 3 expired entries and expect exactly 3 allowed calls before rejection.
+func TestSessionStore_RateLimit_NoAliasing(t *testing.T) {
+	d := newTestDB(t)
+	store := NewSessionStore(d)
+	store.mu.Lock()
+	old := time.Now().Add(-2 * time.Minute)
+	recent := time.Now().Add(-10 * time.Second)
+	store.attempts["9.9.9.9"] = []time.Time{old, recent, old, recent, old}
+	store.mu.Unlock()
+
+	// 2 recents survive the cutoff. After call 1, stored=3; call 2, stored=4;
+	// call 3, stored=5; call 4 has 5 recents inside the window → reject.
+	for i := 1; i <= 3; i++ {
+		if !store.AllowLogin("9.9.9.9") {
+			t.Fatalf("call %d should be allowed", i)
+		}
+	}
+	if store.AllowLogin("9.9.9.9") {
+		t.Fatal("4th call should be blocked (5 recents within window)")
+	}
+}
+
+// TestSessionStore_PurgeStaleAttempts verifies that an IP whose attempt
+// log has fully expired (no entries within the last minute) is removed
+// from the attempts map, so an attacker walking source IPs can't
+// accumulate unbounded map entries.
+func TestSessionStore_PurgeStaleAttempts(t *testing.T) {
+	d := newTestDB(t)
+	store := NewSessionStore(d)
+	store.mu.Lock()
+	store.attempts["stale.ip"] = []time.Time{time.Now().Add(-5 * time.Minute)}
+	store.attempts["fresh.ip"] = []time.Time{time.Now()}
+	store.mu.Unlock()
+
+	store.PurgeStaleAttempts()
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if _, ok := store.attempts["stale.ip"]; ok {
+		t.Error("stale.ip should have been purged")
+	}
+	if _, ok := store.attempts["fresh.ip"]; !ok {
+		t.Error("fresh.ip should still be present")
+	}
+}
+
 // doJSON performs an HTTP request through the supplied handler and returns
 // the response recorder.
 func doJSON(h http.Handler, method, path string, body any, cookie *http.Cookie) *httptest.ResponseRecorder {

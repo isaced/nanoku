@@ -2,6 +2,7 @@ package api
 
 import (
 	"embed"
+	"errors"
 	"io"
 	"io/fs"
 	"mime"
@@ -12,6 +13,27 @@ import (
 
 //go:embed all:dist
 var uiFS embed.FS
+
+// errUIMissing is the sentinel returned by CheckUIBundled when the embed
+// doesn't contain a dist/ directory with an index.html — the symptom of
+// building the Go binary without `npm run build` first. Callers should
+// treat this as fatal in release builds and a warning during local dev.
+var errUIMissing = errors.New("ui bundle is empty: build the UI first (cd ui && npm run build)")
+
+// CheckUIBundled returns nil when the embedded UI contains a usable
+// dist/index.html, or errUIMissing otherwise. go:embed of a missing
+// directory compiles cleanly, so a binary built against an empty dist
+// would otherwise boot, log nothing, and serve 404s to every route.
+func CheckUIBundled() error {
+	sub, err := fs.Sub(uiFS, "dist")
+	if err != nil {
+		return errUIMissing
+	}
+	if _, err := fs.Stat(sub, "index.html"); err != nil {
+		return errUIMissing
+	}
+	return nil
+}
 
 func UIHandler() http.Handler {
 	sub, err := fs.Sub(uiFS, "dist")

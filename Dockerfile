@@ -20,8 +20,10 @@ COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go mod download
-COPY --from=ui /src/internal/api/dist ./internal/api/dist
 COPY . .
+# ui-stage dist must be the last write to internal/api/dist — `COPY . .` above
+# would otherwise clobber it with the on-disk empty dir.
+COPY --from=ui /src/internal/api/dist ./internal/api/dist
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 \

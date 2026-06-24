@@ -42,6 +42,19 @@ func main() {
 	}
 	cancelMig()
 
+	// Refuse to boot a release binary with an empty UI embed — the
+	// symptom of forgetting `npm run build` (or a broken Dockerfile
+	// layer order) is otherwise a silent, blank admin page with no
+	// error in the log. In dev (`buildType=source`), warn instead of
+	// dying so the backend can be exercised on its own.
+	if err := api.CheckUIBundled(); err != nil {
+		if buildType == "source" {
+			log.Printf("WARN: %v (the admin UI will return 404s)", err)
+		} else {
+			log.Fatalf("%v", err)
+		}
+	}
+
 	var dm *docker.Manager
 	if !cfg.SkipCaddyReload {
 		dm, err = docker.NewManager(docker.Config{
@@ -77,6 +90,17 @@ func main() {
 	if _, err := sessions.PurgeExpired(context.Background()); err != nil {
 		log.Printf("purge expired sessions: %v", err)
 	}
+	// Drop login-attempt entries that have aged out of the 1-minute
+	// window. Otherwise IPs that tried once and never returned stay in
+	// the map forever, and an attacker can walk a wide source range to
+	// grow it without bound.
+	go func() {
+		t := time.NewTicker(5 * time.Minute)
+		defer t.Stop()
+		for range t.C {
+			sessions.PurgeStaleAttempts()
+		}
+	}()
 
 	handlers := &api.Handlers{
 		DB:              database,
@@ -92,6 +116,7 @@ func main() {
 		Commit:          commit,
 		Date:            date,
 		BuildType:       buildType,
+		TrustProxy:      cfg.TrustProxy,
 	}
 
 	mux := http.NewServeMux()

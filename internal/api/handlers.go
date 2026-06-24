@@ -30,6 +30,7 @@ type Handlers struct {
 	Commit          string
 	Date            string
 	BuildType       string
+	TrustProxy      bool
 }
 
 type SiteDTO struct {
@@ -322,17 +323,19 @@ func (h *Handlers) resolveSiteUpstreamsCtx(ctx context.Context) ([]*db.Site, err
 	if err != nil {
 		return nil, err
 	}
+	// Copy each site into a new value so mutating Upstream here doesn't
+	// affect the ent-loaded entity in the caller's context. (ent's
+	// generated structs are plain in-memory values — no surprise write
+	// back to the DB — but mutating shared entities is still a footgun.)
+	resolved := make([]*db.Site, 0, len(sites))
 	for _, s := range sites {
-		if s.Edges.App == nil {
-			continue
+		cp := *s
+		if s.Edges.App != nil && s.Edges.App.Edges.CurrentContainer != nil {
+			cp.Upstream = s.Edges.App.Edges.CurrentContainer.Name + ":" + strconv.Itoa(s.Edges.App.Port)
 		}
-		cur, err := s.Edges.App.QueryCurrentContainer().Only(ctx)
-		if err != nil || cur == nil {
-			continue
-		}
-		s.Upstream = cur.Name + ":" + strconv.Itoa(s.Edges.App.Port)
+		resolved = append(resolved, &cp)
 	}
-	return sites, nil
+	return resolved, nil
 }
 
 func (h *Handlers) regenerateAndReload(r *http.Request) error {

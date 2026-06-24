@@ -75,7 +75,7 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	apps, err := h.DB.App.Query().Order(app.ByName()).All(ctx)
+	apps, err := h.DB.App.Query().WithCurrentContainer().Order(app.ByName()).All(ctx)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
@@ -103,6 +103,14 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 
 	appDTOs := make([]DashboardAppDTO, 0, len(apps))
 	running := 0
+	// One ContainerList call backs every per-app status lookup below;
+	// resolving status lazily per app would re-hit the daemon once per row.
+	statuses := map[string]string{}
+	if h.Docker != nil {
+		if s, err := h.Docker.ListNanokuContainerStatuses(ctx); err == nil {
+			statuses = s
+		}
+	}
 	for _, a := range apps {
 		dto := DashboardAppDTO{
 			ID:           a.ID,
@@ -117,17 +125,15 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 				dto.SiteDomains = append(dto.SiteDomains, s.Domain)
 			}
 		}
-		if h.Docker != nil {
-			if cur, qerr := a.QueryCurrentContainer().Only(ctx); qerr == nil && cur != nil {
-				if status, serr := h.Docker.ContainerStatus(ctx, cur.Name); serr == nil && status != "not_found" {
-					cur.Status = container.Status(status)
-				}
-				if string(cur.Status) == "running" {
-					running++
-				}
-				c := toContainerDTO(cur)
-				dto.Container = &c
+		if cur := a.Edges.CurrentContainer; cur != nil {
+			if status, ok := statuses[cur.Name]; ok && status != "not_found" {
+				cur.Status = container.Status(status)
 			}
+			if string(cur.Status) == "running" {
+				running++
+			}
+			c := toContainerDTO(cur)
+			dto.Container = &c
 		}
 		appDTOs = append(appDTOs, dto)
 	}

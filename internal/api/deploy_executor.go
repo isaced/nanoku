@@ -64,11 +64,15 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 
 	regURL, regUser, regPass := registryCreds(a)
 
-	// Tear down the prior primary container (best-effort; missing = nothing to do).
+	// Stash the old container's identity so we can retire it *after* the
+	// new one is fully wired up. Tearing the old one down first would
+	// mean a transient pull or create failure leaves the app completely
+	// offline — a 30-minute unavailability window on a flapping registry.
+	oldContainerID := 0
+	oldContainerName := ""
 	if cur, err := a.QueryCurrentContainer().Only(ctx); err == nil && cur != nil {
-		_ = h.Docker.StopContainer(ctx, cur.Name)
-		_ = h.Docker.RemoveContainer(ctx, cur.Name)
-		_ = h.DB.Container.DeleteOneID(cur.ID).Exec(ctx)
+		oldContainerID = cur.ID
+		oldContainerName = cur.Name
 	}
 
 	envVars, _ := a.QueryEnvVars().All(ctx)
@@ -93,8 +97,6 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 			}
 			filePath = written
 		}
-		// Best-effort take-down of the prior stack so re-deploys start clean.
-		_ = h.Docker.ComposeDown(ctx, project, filePath)
 		if err := h.Docker.WithRegistry(ctx, regURL, regUser, regPass, func() error {
 			return h.Docker.ComposeUp(ctx, project, filePath, true)
 		}); err != nil {
@@ -176,6 +178,17 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 		SetStatus("success").
 		SetFinishedAt(time.Now().UTC()).
 		Save(ctx)
+
+	// Best-effort retire of the old container *after* the new one is
+	// live and routed. If this step fails, the deploy still reports
+	// success and the old container just keeps running as a stranded
+	// process — preferable to having taken it down before the new one
+	// was ready.
+	if oldContainerID != 0 && oldContainerName != "" && oldContainerName != containerName {
+		_ = h.Docker.StopContainer(context.Background(), oldContainerName)
+		_ = h.Docker.RemoveContainer(context.Background(), oldContainerName)
+		_ = h.DB.Container.DeleteOneID(oldContainerID).Exec(context.Background())
+	}
 }
 
 // registryCreds safely dereferences an app's registry credential pointers.
