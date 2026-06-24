@@ -139,6 +139,15 @@ func main() {
 		TrustProxy:      cfg.TrustProxy,
 	}
 
+	// Reconcile DB ↔ Docker state on every boot. A deploy that was killed
+	// mid-flight leaves dangling Container rows or stray docker containers;
+	// this catches and auto-clears the dangerous ones (stale
+	// current_container edges pointing at missing containers) without
+	// deleting user data.
+	bootReconCtx, cancelRecon := context.WithTimeout(context.Background(), 60*time.Second)
+	handlers.RunBootReconcile(bootReconCtx)
+	cancelRecon()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/me", handlers.Me)
 	mux.HandleFunc("POST /api/me/password", handlers.ChangePassword)
@@ -169,6 +178,9 @@ func main() {
 
 	mux.HandleFunc("GET /api/system/status", handlers.SystemStatus)
 	mux.HandleFunc("GET /api/system/logs", handlers.SystemLogs)
+	mux.HandleFunc("GET /api/system/reconcile", handlers.SystemReconcile)
+	mux.HandleFunc("POST /api/system/reconcile", handlers.SystemReconcileApply)
+	mux.HandleFunc("DELETE /api/system/orphans/{name}", handlers.SystemRemoveOrphan)
 
 	mux.HandleFunc("GET /api/dashboard", handlers.Dashboard)
 
