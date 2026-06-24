@@ -209,9 +209,17 @@ func main() {
 
 	root := api.CORS(apiMux)
 
+	// /healthz sits outside the auth + CORS chain so orchestrators (Docker
+	// HEALTHCHECK, k8s readinessProbe, load balancers) can probe it without
+	// a session cookie or CORS negotiation. Built as a tiny dedicated mux
+	// rather than registered on root directly because root is already wrapped
+	// as an http.Handler by CORS.
+	healthMux := http.NewServeMux()
+	healthMux.HandleFunc("GET /healthz", handlers.Healthz)
+
 	srv := &http.Server{
 		Addr:              cfg.Listen,
-		Handler:           root,
+		Handler:           healthWrap(root, healthMux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -233,4 +241,18 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("shutdown: %v", err)
 	}
+}
+
+// healthWrap layers /healthz in front of the rest of the handler so the
+// probe endpoint bypasses CORS + session auth + the UI handler. The order
+// matters: /healthz is matched first when the URL is exactly /healthz,
+// otherwise the request falls through to the primary handler.
+func healthWrap(primary http.Handler, health http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			health.ServeHTTP(w, r)
+			return
+		}
+		primary.ServeHTTP(w, r)
+	})
 }

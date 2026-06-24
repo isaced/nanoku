@@ -50,4 +50,13 @@ func (d *DB) Migrate(ctx context.Context) error {
 	return d.Schema.Create(ctx)
 }
 
+// Conn returns the underlying *sql.DB for callers that need to issue
+// raw SQL outside the ent ORM (health probes, admin tooling). The
+// connection pool's MaxOpenConns is already capped at 1 for SQLite, so
+// callers should treat this as a single-connection handle and not try
+// to fan out concurrent long-lived transactions.
+func (d *DB) Conn() *sql.DB {
+	return d.conn
+}
+
 var ErrNotFound = errors.New("not found")
