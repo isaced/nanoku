@@ -382,7 +382,14 @@ func (h *Handlers) CreateApp(w http.ResponseWriter, r *http.Request) {
 		create.SetRegistryUsername(strings.TrimSpace(*in.RegistryUsername))
 	}
 	if in.RegistryPassword != nil && *in.RegistryPassword != "" {
-		create.SetRegistryPassword(*in.RegistryPassword)
+		enc, _, err := h.Secret.EncryptOptional(*in.RegistryPassword)
+		if err != nil {
+			writeInternalErr(w, fmt.Errorf("encrypt registry password: %w", err))
+			return
+		}
+		if enc != nil {
+			create.SetRegistryPassword(*enc)
+		}
 	}
 
 	// HTTP trigger: when enabled on create, generate a fresh bearer token
@@ -395,7 +402,12 @@ func (h *Handlers) CreateApp(w http.ResponseWriter, r *http.Request) {
 			writeInternalErr(w, fmt.Errorf("generate trigger token: %w", err))
 			return
 		}
-		create.SetTriggerToken(tok)
+		encTok, err := h.Secret.EncryptString(tok)
+		if err != nil {
+			writeInternalErr(w, fmt.Errorf("encrypt trigger token: %w", err))
+			return
+		}
+		create.SetTriggerToken(encTok)
 		generatedToken = tok
 	}
 	if in.DeleteVolumesOnRemove != nil {
@@ -440,7 +452,12 @@ func (h *Handlers) GetApp(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		dto.EnvVars = make([]EnvVarDTO, 0, len(env))
 		for _, e := range env {
-			dto.EnvVars = append(dto.EnvVars, EnvVarDTO{Key: e.Key, Value: e.Value})
+			val, derr := h.Secret.DecryptString(e.Value)
+			if derr != nil {
+				writeInternalErr(w, fmt.Errorf("decrypt env var %s: %w", e.Key, derr))
+				return
+			}
+			dto.EnvVars = append(dto.EnvVars, EnvVarDTO{Key: e.Key, Value: val})
 		}
 	}
 	writeJSON(w, http.StatusOK, dto)
@@ -530,7 +547,14 @@ func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
 		upd.ClearRegistryUsername()
 		upd.ClearRegistryURL()
 	} else if in.RegistryPassword != nil && *in.RegistryPassword != "" {
-		upd.SetRegistryPassword(*in.RegistryPassword)
+		enc, _, err := h.Secret.EncryptOptional(*in.RegistryPassword)
+		if err != nil {
+			writeInternalErr(w, fmt.Errorf("encrypt registry password: %w", err))
+			return
+		}
+		if enc != nil {
+			upd.SetRegistryPassword(*enc)
+		}
 	}
 	if in.DeleteVolumesOnRemove != nil {
 		upd.SetDeleteVolumesOnRemove(*in.DeleteVolumesOnRemove)
@@ -547,7 +571,12 @@ func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
 					writeInternalErr(w, fmt.Errorf("generate trigger token: %w", err))
 					return
 				}
-				upd.SetTriggerToken(tok)
+				encTok, err := h.Secret.EncryptString(tok)
+				if err != nil {
+					writeInternalErr(w, fmt.Errorf("encrypt trigger token: %w", err))
+					return
+				}
+				upd.SetTriggerToken(encTok)
 			}
 		} else {
 			upd.ClearTriggerToken()
@@ -638,7 +667,12 @@ func (h *Handlers) ListAppEnvVars(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]EnvVarDTO, 0, len(env))
 	for _, e := range env {
-		out = append(out, EnvVarDTO{Key: e.Key, Value: e.Value})
+		val, derr := h.Secret.DecryptString(e.Value)
+		if derr != nil {
+			writeInternalErr(w, fmt.Errorf("decrypt env var %s: %w", e.Key, derr))
+			return
+		}
+		out = append(out, EnvVarDTO{Key: e.Key, Value: val})
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -694,10 +728,16 @@ func (h *Handlers) ReplaceAppEnvVars(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, kv := range in {
+		encVal, err := h.Secret.EncryptString(kv.Value)
+		if err != nil {
+			_ = tx.Rollback()
+			writeInternalErr(w, fmt.Errorf("encrypt env var %s: %w", kv.Key, err))
+			return
+		}
 		if _, err := tx.EnvVar.Create().
 			SetAppID(a.ID).
 			SetKey(kv.Key).
-			SetValue(kv.Value).
+			SetValue(encVal).
 			Save(r.Context()); err != nil {
 			_ = tx.Rollback()
 			writeInternalErr(w, err)

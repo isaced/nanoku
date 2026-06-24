@@ -30,6 +30,7 @@ func newExecutorHandlers(t *testing.T) (*Handlers, *db.App) {
 		DB:            d,
 		DeployLock:    NewDeployLock(),
 		CaddyfilePath: t.TempDir() + "/Caddyfile",
+		Secret:        newTestSealer(t),
 	}, a
 }
 
@@ -137,6 +138,7 @@ func TestExecuteDeploy_EmptyImageOverrideAndApp(t *testing.T) {
 		DB:            d,
 		DeployLock:    NewDeployLock(),
 		CaddyfilePath: t.TempDir() + "/Caddyfile",
+		Secret:        newTestSealer(t),
 	}
 	depID := seedRunningDeploy(t, h, a.ID)
 
@@ -175,6 +177,7 @@ func TestExecuteDeploy_ImageOverrideUsedForTrigger(t *testing.T) {
 		DB:            d,
 		DeployLock:    NewDeployLock(),
 		CaddyfilePath: t.TempDir() + "/Caddyfile",
+		Secret:        newTestSealer(t),
 	}
 	depID := seedRunningDeploy(t, h, a.ID)
 

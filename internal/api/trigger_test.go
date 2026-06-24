@@ -45,6 +45,7 @@ func newTestHandlers(t *testing.T, withToken bool) (*Handlers, *db.App) {
 		DB:            d,
 		DeployLock:    NewDeployLock(),
 		CaddyfilePath: filepath.Join(t.TempDir(), "Caddyfile"),
+		Secret:        newTestSealer(t),
 	}, a
 }
 

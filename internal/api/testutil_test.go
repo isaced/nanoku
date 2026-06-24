@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/isaced/nanoku/internal/db"
+	"github.com/isaced/nanoku/internal/secret"
 )
 
 // newTestDB returns a real SQLite DB on disk (TempDir, removed by the
@@ -44,4 +45,17 @@ func newTestDB(t *testing.T) *db.DB {
 		t.Fatalf("migrate: %v", err)
 	}
 	return d
+}
+
+// newTestSealer returns a Sealer keyed off a fixed per-package passphrase.
+// Handlers must always be constructed with a non-nil Secret in tests; the
+// alternative — letting handlers no-op when Secret is nil — would silently
+// mask regressions that bypass encryption in production.
+func newTestSealer(t *testing.T) *secret.Sealer {
+	t.Helper()
+	s, err := secret.NewFromPassphrase("test-passphrase-do-not-use-in-prod-1234567890")
+	if err != nil {
+		t.Fatalf("test sealer: %v", err)
+	}
+	return s
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/isaced/nanoku/internal/config"
 	"github.com/isaced/nanoku/internal/db"
 	"github.com/isaced/nanoku/internal/docker"
+	"github.com/isaced/nanoku/internal/secret"
 )
 
 var (
@@ -41,6 +42,24 @@ func main() {
 		log.Fatalf("db migrate: %v", err)
 	}
 	cancelMig()
+
+	// The secret sealer is mandatory — we encrypt registry_passwords,
+	// trigger tokens, and env var values at rest, and there's no
+	// graceful "fall back to plaintext" mode we want to ship. Refuse to
+	// boot without it so a missing NANOKU_SECRET_KEY fails loudly at
+	// startup instead of silently storing plaintext.
+	sealer, err := secret.LoadFromEnv("NANOKU_SECRET_KEY")
+	if err != nil {
+		log.Fatalf("secret: %v", err)
+	}
+
+	encMigCtx, cancelEncMig := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := (&api.Handlers{DB: database, Secret: sealer}).MigrateEncryption(encMigCtx); err != nil {
+		cancelEncMig()
+		log.Fatalf("encryption migration: %v", err)
+	}
+	cancelEncMig()
+	log.Printf("encryption migration complete")
 
 	// Refuse to boot a release binary with an empty UI embed — the
 	// symptom of forgetting `npm run build` (or a broken Dockerfile
@@ -112,6 +131,7 @@ func main() {
 		ComposeBaseDir:  cfg.ComposeBaseDir,
 		DeployLock:      api.NewDeployLock(),
 		Sessions:        sessions,
+		Secret:          sealer,
 		Version:         version,
 		Commit:          commit,
 		Date:            date,

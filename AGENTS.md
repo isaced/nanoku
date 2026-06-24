@@ -23,6 +23,7 @@ Nanoku is an ultra-lightweight self-hosted deployment hub: a single Go binary th
 - `main.go` — entry point: config load, DB open + migrate, Caddy container ensure, session store + admin seed, HTTP server wiring, graceful shutdown.
 - `internal/api/` — HTTP handlers, routing, session auth, deploy lock, embedded UI.
 - `internal/db/` — ent ORM schema + generated code. Business tables: `app`, `container`, `deploy`, `envvar`, `site`, `user`, `session`, `volume`. (`internal/db/hook/` is the ent lifecycle-hook package, not a table.) `db.go` opens the SQLite DB.
+- `internal/secret/` — AES-256-GCM sealer (`Sealer`, `LoadFromEnv`, `EncryptString`/`DecryptString`). Encrypts `app.registry_password`, `app.trigger_token`, and `envvar.value` at rest; the wire format is `enc:` + base64(nonce || ct || tag). Key is derived from `NANOKU_SECRET_KEY` via SHA-256. `MigrateEncryption` (api package) re-encrypts any legacy plaintext rows on every boot — idempotent.
 - `internal/caddy/` — Caddyfile writer/renderer (`Render`, atomic `WriteAtomic`).
 - `internal/config/` — env-based config loading (`NANOKU_*` env vars; flags for `--listen`/`--db`/`--caddyfile`/`--skip-caddy-reload`).
 - `internal/docker/` — Docker manager: Caddy container lifecycle, image pulls, container stats, log streaming, and `docker compose` / `docker login` via shelling out to the CLI.
@@ -61,9 +62,10 @@ Nanoku is an ultra-lightweight self-hosted deployment hub: a single Go binary th
 
 ## Security notes
 
-- Never commit secrets. `.env` is in `.gitignore`; copy `.env.example` and set `NANOKU_ADMIN_PASSWORD` locally.
+- Never commit secrets. `.env` is in `.gitignore`; copy `.env.example` and set `NANOKU_ADMIN_PASSWORD` + `NANOKU_SECRET_KEY` locally.
 - `NANOKU_ADMIN_USER` / `NANOKU_ADMIN_PASSWORD` seed the first admin **only on a fresh DB**; once any user exists they are ignored (change passwords via the UI: `POST /api/me/password`).
-- Registry credentials (`registry_password`) and trigger tokens are marked `Sensitive()` in the ent schema and never returned on List/Get, but they are stored **plaintext at rest** (schema has a `TODO: encrypt at rest`). Don't assume encryption.
+- `NANOKU_SECRET_KEY` is **required** — nanoku refuses to boot without it. It derives the AES-256-GCM key that encrypts `registry_password`, `trigger_token`, and `envvar.value` at rest. Lost key = permanently lost secrets (rotation is not yet implemented).
+- Registry credentials (`registry_password`), trigger tokens (`trigger_token`), and env var values (`envvar.value`) are marked `Sensitive()` in the ent schema and encrypted at rest via the `secret` package. They are never returned on List/Get, except `trigger_token` which is single-shot returned only on Create/Rotate.
 - `registry_password` is passed to `docker login --password-stdin` (never via argv); the worker logs out after the pull.
 - The Docker manager talks to `/var/run/docker.sock`; treat the host as trusted.
 - CORS allows `Origin: *` (the trigger endpoint needs it for cross-origin CI calls); session cookies are `SameSite=Strict` so they won't ride along cross-site.

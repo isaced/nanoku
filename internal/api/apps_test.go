@@ -30,6 +30,7 @@ func newManualDeployHandlers(t *testing.T) *Handlers {
 		DB:            d,
 		DeployLock:    NewDeployLock(),
 		CaddyfilePath: t.TempDir() + "/Caddyfile",
+		Secret:        newTestSealer(t),
 	}
 }
 

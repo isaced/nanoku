@@ -62,7 +62,7 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 		return
 	}
 
-	regURL, regUser, regPass := registryCreds(a)
+	regURL, regUser, regPass := h.registryCreds(a)
 
 	// Stash the old container's identity so we can retire it *after* the
 	// new one is fully wired up. Tearing the old one down first would
@@ -192,15 +192,22 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 }
 
 // registryCreds safely dereferences an app's registry credential pointers.
-func registryCreds(a *db.App) (url, user, pass string) {
+// The password column is stored encrypted at rest, so it has to be
+// decrypted here before being passed to `docker login`. A decryption failure
+// surfaces as an empty password, which will then fail the docker login
+// call — preferable to panicking, since the calling worker already reports
+// errors as failed Deploy rows.
+func (h *Handlers) registryCreds(a *db.App) (url, user, pass string) {
 	if a.RegistryURL != nil {
 		url = strings.TrimSpace(*a.RegistryURL)
 	}
 	if a.RegistryUsername != nil {
 		user = strings.TrimSpace(*a.RegistryUsername)
 	}
-	if a.RegistryPassword != nil {
-		pass = *a.RegistryPassword
+	if a.RegistryPassword != nil && *a.RegistryPassword != "" {
+		if dec, err := h.Secret.DecryptString(*a.RegistryPassword); err == nil {
+			pass = dec
+		}
 	}
 	return
 }

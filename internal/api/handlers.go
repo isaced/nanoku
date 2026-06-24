@@ -14,6 +14,7 @@ import (
 	"github.com/isaced/nanoku/internal/db/app"
 	sitepkg "github.com/isaced/nanoku/internal/db/site"
 	"github.com/isaced/nanoku/internal/docker"
+	"github.com/isaced/nanoku/internal/secret"
 )
 
 type Handlers struct {
@@ -26,6 +27,7 @@ type Handlers struct {
 	ComposeBaseDir  string
 	DeployLock      *DeployLock
 	Sessions        *SessionStore
+	Secret          *secret.Sealer
 	Version         string
 	Commit          string
 	Date            string

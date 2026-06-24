@@ -50,7 +50,12 @@ func (h *Handlers) RotateTriggerToken(w http.ResponseWriter, r *http.Request) {
 		writeInternalErr(w, fmt.Errorf("generate token: %w", err))
 		return
 	}
-	a, err = h.DB.App.UpdateOneID(id).SetTriggerToken(tok).Save(r.Context())
+	encTok, err := h.Secret.EncryptString(tok)
+	if err != nil {
+		writeInternalErr(w, fmt.Errorf("encrypt token: %w", err))
+		return
+	}
+	a, err = h.DB.App.UpdateOneID(id).SetTriggerToken(encTok).Save(r.Context())
 	if err != nil {
 		writeInternalErr(w, err)
 		return
@@ -72,7 +77,11 @@ func (h *Handlers) ensureAppTriggerToken(a *db.App) error {
 	if err != nil {
 		return fmt.Errorf("generate token: %w", err)
 	}
-	a.TriggerToken = &tok
+	enc, err := h.Secret.EncryptString(tok)
+	if err != nil {
+		return fmt.Errorf("encrypt token: %w", err)
+	}
+	a.TriggerToken = &enc
 	return nil
 }
 

@@ -118,7 +118,7 @@ func TestReplaceAppVolumes_AutoNamesAndPersists(t *testing.T) {
 	r.SetPathValue("id", strconv.Itoa(a.ID))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	(&Handlers{DB: d}).ReplaceAppVolumes(w, r)
+	(&Handlers{DB: d, Secret: newTestSealer(t)}).ReplaceAppVolumes(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
@@ -158,7 +158,7 @@ func TestReplaceAppVolumes_ReplacesAndNotAppends(t *testing.T) {
 		r.SetPathValue("id", strconv.Itoa(a.ID))
 		r.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
-		(&Handlers{DB: d}).ReplaceAppVolumes(w, r)
+		(&Handlers{DB: d, Secret: newTestSealer(t)}).ReplaceAppVolumes(w, r)
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
 		}
@@ -216,7 +216,7 @@ func TestReplaceAppVolumes_RejectsBadInput(t *testing.T) {
 			r.SetPathValue("id", strconv.Itoa(a.ID))
 			r.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
-			(&Handlers{DB: d}).ReplaceAppVolumes(w, r)
+			(&Handlers{DB: d, Secret: newTestSealer(t)}).ReplaceAppVolumes(w, r)
 			if w.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
 			}
@@ -253,7 +253,7 @@ func TestListAppVolumes(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/api/apps/"+strconv.Itoa(a.ID)+"/volumes", nil)
 	r.SetPathValue("id", strconv.Itoa(a.ID))
 	w := httptest.NewRecorder()
-	(&Handlers{DB: d}).ListAppVolumes(w, r)
+	(&Handlers{DB: d, Secret: newTestSealer(t)}).ListAppVolumes(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
 	}

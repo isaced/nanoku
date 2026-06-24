@@ -80,7 +80,13 @@ func (h *Handlers) Trigger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !verifyToken(*a.TriggerToken, r.Header.Get(authHeader)) {
+	decrypted, err := h.Secret.DecryptString(*a.TriggerToken)
+	if err != nil {
+		writeInternalErr(w, fmt.Errorf("decrypt trigger token: %w", err))
+		return
+	}
+
+	if !verifyToken(decrypted, r.Header.Get(authHeader)) {
 		writeErr(w, http.StatusUnauthorized, errors.New("invalid or missing bearer token"))
 		return
 	}

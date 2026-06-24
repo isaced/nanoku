@@ -207,7 +207,7 @@ func TestLoginFlow_HappyPath(t *testing.T) {
 	d := newTestDB(t)
 	seedUser(t, d, "admin", "pass-1234")
 	store := NewSessionStore(d)
-	h := Handlers{DB: d, Sessions: store}
+	h := Handlers{DB: d, Sessions: store, Secret: newTestSealer(t)}
 	login := http.HandlerFunc(h.Login)
 	me := SessionAuth(store)(http.HandlerFunc(h.Me))
 	logout := http.HandlerFunc(h.Logout)
@@ -284,7 +284,7 @@ func TestChangePassword(t *testing.T) {
 	d := newTestDB(t)
 	seedUser(t, d, "admin", "oldpass-1234")
 	store := NewSessionStore(d)
-	h := Handlers{DB: d, Sessions: store}
+	h := Handlers{DB: d, Sessions: store, Secret: newTestSealer(t)}
 	login := http.HandlerFunc(h.Login)
 	changePw := SessionAuth(store)(http.HandlerFunc(h.ChangePassword))
 
