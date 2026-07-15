@@ -175,7 +175,7 @@ export function Footer({
             target="_blank"
             rel="noopener noreferrer"
             aria-label={t('viewOnGithub')}
-            className="inline-flex items-center justify-center size-7 rounded-full border border-[var(--border)] bg-white text-[var(--fg-muted)] hover:text-[var(--fg)] hover:border-[var(--border-strong)] transition-colors"
+            className="inline-flex items-center justify-center size-7 rounded-full border border-[var(--border)] bg-white text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--bg-elevated)] hover:border-[var(--border-strong)] transition-colors"
           >
             <GithubMark size={14} />
           </a>
