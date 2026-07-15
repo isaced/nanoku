@@ -482,7 +482,10 @@ function DeploysTab({ deploys, appId }: { deploys: Deploy[]; appId: number }) {
                 </div>
               )}
               {d.error && (
-                <div className="text-xs text-[var(--danger)] mt-1">
+                <div
+                  className="text-xs text-[var(--danger)] mt-1 line-clamp-2"
+                  title={d.error}
+                >
                   {d.error}
                 </div>
               )}
