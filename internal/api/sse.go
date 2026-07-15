@@ -30,17 +30,36 @@ const defaultKeepalive = 15 * time.Second
 // Flush produces a single small TCP write. Without buffering, the
 // per-line WriteString + Flush pair would emit a separate write per
 // line; with it, all lines in a tick are coalesced into one packet.
+//
+// The outer http.ResponseWriter (from net/http) buffers writes in its
+// own ~2KB chunked-encoding buffer and only pushes bytes to the socket
+// when that buffer fills, the handler returns, OR http.Flusher.Flush()
+// is called. For a live tail on a quiet container none of the first
+// two ever happen, so without driving http.Flusher the client sees no
+// bytes at all - not even the status line. We therefore resolve the
+// http.Flusher at construction time and call it on every Flush().
 type sseWriter struct {
-	bw *bufio.Writer
-	w  http.ResponseWriter
+	bw      *bufio.Writer
+	flusher http.Flusher // nil if the underlying writer can't flush
 }
 
 func newSSEWriter(w http.ResponseWriter) *sseWriter {
-	return &sseWriter{bw: bufio.NewWriterSize(w, 4096), w: w}
+	f, _ := w.(http.Flusher)
+	return &sseWriter{bw: bufio.NewWriterSize(w, 4096), flusher: f}
 }
 
 func (s *sseWriter) Flush() error {
-	return s.bw.Flush()
+	if err := s.bw.Flush(); err != nil {
+		return err
+	}
+	// Push the bytes net/http is holding all the way to the socket.
+	// This is what makes a quiet follow-stream actually deliver its
+	// initial tail (and the status line) to the browser immediately
+	// instead of sitting in the server's chunk buffer forever.
+	if s.flusher != nil {
+		s.flusher.Flush()
+	}
+	return nil
 }
 
 // sseEvent writes a single named event. data may contain newlines;

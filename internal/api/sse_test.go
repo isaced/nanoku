@@ -180,6 +180,61 @@ type fakeError struct{ msg string }
 
 func (e *fakeError) Error() string { return e.msg }
 
+// flushingRecorder is an http.ResponseWriter that records how many
+// times http.Flusher.Flush() was called. httptest.NewRecorder
+// implements http.Flusher but its Flush is a no-op on an in-memory
+// buffer, so it cannot detect the bug where sseWriter flushes its own
+// bufio.Writer but never drives http.Flusher - the exact regression
+// that made live container-log streams deliver zero bytes to the
+// browser (the server's chunk buffer held everything until the
+// connection closed). This recorder makes that contract explicit.
+type flushingRecorder struct {
+	httptest.ResponseRecorder
+	flushes atomic.Int32
+}
+
+func newFlushingRecorder() *flushingRecorder {
+	return &flushingRecorder{ResponseRecorder: *httptest.NewRecorder()}
+}
+
+func (f *flushingRecorder) Flush() { f.flushes.Add(1) }
+
+// TestSSEWriter_FlushDrivesHTTPFlusher is the regression test for the
+// "connecting forever, no logs" bug. sseWriter.Flush must call
+// http.Flusher.Flush so bytes reach the socket on a quiet follow-stream;
+// flushing only the inner bufio.Writer leaves data stranded in
+// net/http's chunk buffer and the browser never sees a byte (not even
+// the status line). We assert at least one http-level flush happens per
+// sseEvent.
+func TestSSEWriter_FlushDrivesHTTPFlusher(t *testing.T) {
+	w := newFlushingRecorder()
+	sw := newSSEWriter(w)
+	if err := sw.sseEvent("line", "hello"); err != nil {
+		t.Fatalf("sseEvent: %v", err)
+	}
+	if got := w.flushes.Load(); got < 1 {
+		t.Errorf("http.Flusher.Flush called %d times, want >= 1 (bytes would never reach the socket)", got)
+	}
+}
+
+// TestSSEWriter_FlusherOptionalOnNonFlushingWriter pins the graceful
+// fallback: when the underlying ResponseWriter doesn't implement
+// http.Flusher (rare, but some test/middleware wrappers don't),
+// sseWriter must still function rather than panic - it just won't push
+// bytes early, same as the pre-fix behavior.
+func TestSSEWriter_FlusherOptionalOnNonFlushingWriter(t *testing.T) {
+	sw := newSSEWriter(nonFlushingWriter{})
+	if err := sw.sseEvent("line", "ok"); err != nil {
+		t.Fatalf("sseEvent on non-flushing writer: %v", err)
+	}
+}
+
+type nonFlushingWriter struct{}
+
+func (nonFlushingWriter) Header() http.Header       { return http.Header{} }
+func (nonFlushingWriter) Write(p []byte) (int, error) { return len(p), nil }
+func (nonFlushingWriter) WriteHeader(int)            {}
+
 // TestStreamToSSE_SetsStatus200 verifies the contract that the helper
 // expects the caller to have already written headers (it doesn't call
 // WriteHeader itself). We assert the headers it sets stay intact.
