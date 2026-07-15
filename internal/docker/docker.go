@@ -98,6 +98,65 @@ func (m *Manager) Ping(ctx context.Context) error {
 func (m *Manager) CaddyContainerName() string { return m.containerName }
 func (m *Manager) NetworkName() string         { return m.networkName }
 
+// AttachComposeProjectToNetwork walks every container that belongs to
+// the given compose project and connects it to nanoku's managed
+// network. Compose creates a per-project default network (named
+// `<project>_default`) and stops there — without this hook, the
+// Caddy container (which only lives on `nanoku-net`) cannot resolve
+// the stack's containers by name, so every `reverse_proxy
+// <container>:port` block in the Caddyfile returns 502 even though
+// the compose stack itself is healthy.
+//
+// We list the project's containers via the
+// `com.docker.compose.project=<project>` label that compose sets
+// automatically, then NetworkConnect each one. The check against
+// `c.NetworkSettings.Networks[m.networkName]` makes the call
+// idempotent — a stack that already has the wiring is a no-op, so
+// repeated deploys don't error out. Connect failures are returned
+// to the caller as a hard error: a partial attach (some containers
+// on the network, others not) is preferable to silently dropping
+// the affected services, since the next deploy's idempotency pass
+// picks up the survivors and re-tries the stragglers.
+//
+// Called from the deploy executor right after `docker compose up`
+// returns success, before the Caddyfile is regenerated. At that
+// point the containers exist and have settled their names, so a
+// single label-based list is enough — no need to parse the
+// compose YAML again.
+func (m *Manager) AttachComposeProjectToNetwork(ctx context.Context, project string) error {
+	if project == "" {
+		return errors.New("compose project name is required")
+	}
+	args := filters.NewArgs()
+	args.Add("label", fmt.Sprintf("com.docker.compose.project=%s", project))
+	containers, err := m.cli.ContainerList(ctx, container.ListOptions{
+		All:     true,
+		Filters: args,
+	})
+	if err != nil {
+		return fmt.Errorf("list compose project %q containers: %w", project, err)
+	}
+	for _, c := range containers {
+		// c.NetworkSettings is nil for a freshly-created container
+		// whose inspect response hasn't been read; the map dereference
+		// would panic. Default to "not yet attached" in that case.
+		if c.NetworkSettings != nil {
+			if _, ok := c.NetworkSettings.Networks[m.networkName]; ok {
+				continue
+			}
+		}
+		if err := m.cli.NetworkConnect(ctx, m.networkName, c.ID, nil); err != nil {
+			name := strings.TrimPrefix(strings.Join(c.Names, ","), "/")
+			id := c.ID
+			if len(id) > 12 {
+				id = id[:12]
+			}
+			return fmt.Errorf("connect container %s (id=%s) to %s: %w", name, id, m.networkName, err)
+		}
+	}
+	return nil
+}
+
 func (m *Manager) EnsureNetwork(ctx context.Context) error {
 	args := filters.NewArgs()
 	args.Add("name", m.networkName)

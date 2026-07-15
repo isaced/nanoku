@@ -1650,3 +1650,187 @@ func TestStatsResponseToStats_OpVariants(t *testing.T) {
 		t.Errorf("blkio = r=%d w=%d, want 40/60", s.BlockRead, s.BlockWrite)
 	}
 }
+
+// AttachComposeProjectToNetwork — covers the deploy-time hook that
+// connects a freshly-`compose up`'d stack to nanoku-net so Caddy
+// can resolve the project containers by name. The pattern is:
+// the manager calls ContainerList filtered by the
+// `com.docker.compose.project=<project>` label, then NetworkConnect
+// each container that isn't already on the target network.
+
+// Empty project name: the manager rejects the call before talking
+// to Docker. A missing-name call would otherwise fall through to
+// the ContainerList filter and either match everything in the
+// daemon (catastrophic) or nothing (silently broken); the explicit
+// error is the safer failure mode.
+func TestAttachComposeProjectToNetwork_RejectsEmptyProject(t *testing.T) {
+	fd := newFakeDaemon()
+	defer fd.Close()
+	fd.dispatch = func(w http.ResponseWriter, r *http.Request, _ string) {
+		// Any Docker call here would be a bug — the manager must
+		// short-circuit on the empty project name.
+		t.Errorf("unexpected Docker call: %s %s", r.Method, r.URL.Path)
+		http.Error(w, "should not be called", http.StatusInternalServerError)
+	}
+	m := newTestManager(t, fd, Config{NetworkName: "nanoku-net"})
+	if err := m.AttachComposeProjectToNetwork(context.Background(), ""); err == nil {
+		t.Fatal("expected error for empty project name, got nil")
+	}
+}
+
+// No containers in the project: ComposeList returns an empty array,
+// the manager returns nil without calling NetworkConnect. This is
+// the no-op success path that protects the call from
+// `docker compose up` failures that leave a project label
+// dangling.
+func TestAttachComposeProjectToNetwork_NoContainers(t *testing.T) {
+	fd := newFakeDaemon()
+	defer fd.Close()
+	fd.dispatch = func(w http.ResponseWriter, r *http.Request, _ string) {
+		if r.URL.Path == "/containers/json" && r.Method == http.MethodGet {
+			_ = json.NewEncoder(w).Encode([]container.Summary{})
+			return
+		}
+		t.Errorf("unexpected Docker call: %s %s", r.Method, r.URL.Path)
+		http.Error(w, "should not be called", http.StatusInternalServerError)
+	}
+	m := newTestManager(t, fd, Config{NetworkName: "nanoku-net"})
+	if err := m.AttachComposeProjectToNetwork(context.Background(), "nanoku-ddd"); err != nil {
+		t.Fatalf("AttachComposeProjectToNetwork: %v", err)
+	}
+	if got := fd.callsOf("/networks/nanoku-net/connect"); len(got) != 0 {
+		t.Errorf("expected 0 network connect calls, got %d", len(got))
+	}
+}
+
+// Two containers in the project, neither on nanoku-net: the manager
+// must call NetworkConnect for each. This is the production
+// "first deploy after a fresh stack" path — without these calls,
+// Caddy would 502 every request to the stack.
+func TestAttachComposeProjectToNetwork_ConnectsAllUnattached(t *testing.T) {
+	fd := newFakeDaemon()
+	defer fd.Close()
+	connected := map[string]bool{}
+	fd.dispatch = func(w http.ResponseWriter, r *http.Request, _ string) {
+		switch {
+		case r.URL.Path == "/containers/json" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode([]container.Summary{
+				{ID: "id-web-1234567890ab", Names: []string{"/nanoku-ddd-web-1"}},
+				{ID: "id-worker-1234567890", Names: []string{"/nanoku-ddd-worker-1"}},
+			})
+		case strings.HasPrefix(r.URL.Path, "/networks/") && strings.HasSuffix(r.URL.Path, "/connect") && r.Method == http.MethodPost:
+			var body struct {
+				Container string `json:"Container"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, "bad json", http.StatusBadRequest)
+				return
+			}
+			connected[body.Container] = true
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected Docker call: %s %s", r.Method, r.URL.Path)
+			http.Error(w, "should not be called", http.StatusInternalServerError)
+		}
+	}
+	m := newTestManager(t, fd, Config{NetworkName: "nanoku-net"})
+	if err := m.AttachComposeProjectToNetwork(context.Background(), "nanoku-ddd"); err != nil {
+		t.Fatalf("AttachComposeProjectToNetwork: %v", err)
+	}
+	if !connected["id-web-1234567890ab"] {
+		t.Errorf("web container was not connected")
+	}
+	if !connected["id-worker-1234567890"] {
+		t.Errorf("worker container was not connected")
+	}
+}
+
+// One container already on the network (returned by ContainerList
+// with the network in its NetworkSettings.Networks map): the
+// manager must skip it. A second container still needs the
+// connect. This is the "redeploy of a stack the previous run
+// already wired" case — idempotency is the whole point of the
+// pre-check, otherwise a re-deploy would 403 the
+// already-connected container and fail the deploy.
+func TestAttachComposeProjectToNetwork_SkipsAlreadyAttached(t *testing.T) {
+	fd := newFakeDaemon()
+	defer fd.Close()
+	connected := map[string]bool{}
+	fd.dispatch = func(w http.ResponseWriter, r *http.Request, _ string) {
+		switch {
+		case r.URL.Path == "/containers/json" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode([]container.Summary{
+				{
+					ID:    "id-already-1234567890",
+					Names: []string{"/nanoku-ddd-web-1"},
+					NetworkSettings: &container.NetworkSettingsSummary{
+						Networks: map[string]*network.EndpointSettings{
+							"nanoku-net": {},
+						},
+					},
+				},
+				{
+					ID:    "id-new-1234567890ab",
+					Names: []string{"/nanoku-ddd-worker-1"},
+				},
+			})
+		case strings.HasPrefix(r.URL.Path, "/networks/") && strings.HasSuffix(r.URL.Path, "/connect") && r.Method == http.MethodPost:
+			var body struct {
+				Container string `json:"Container"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, "bad json", http.StatusBadRequest)
+				return
+			}
+			connected[body.Container] = true
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected Docker call: %s %s", r.Method, r.URL.Path)
+			http.Error(w, "should not be called", http.StatusInternalServerError)
+		}
+	}
+	m := newTestManager(t, fd, Config{NetworkName: "nanoku-net"})
+	if err := m.AttachComposeProjectToNetwork(context.Background(), "nanoku-ddd"); err != nil {
+		t.Fatalf("AttachComposeProjectToNetwork: %v", err)
+	}
+	if connected["id-already-1234567890"] {
+		t.Errorf("already-attached container should not be re-connected")
+	}
+	if !connected["id-new-1234567890ab"] {
+		t.Errorf("new container was not connected")
+	}
+	if got := fd.callsOf("/networks/nanoku-net/connect"); len(got) != 1 {
+		t.Errorf("expected 1 connect call (skip + connect), got %d", len(got))
+	}
+}
+
+// NetworkConnect returns a 5xx: the manager must surface the
+// failure as an error naming the offending container so the
+// operator can see which service is blocking the attach.
+func TestAttachComposeProjectToNetwork_PropagatesConnectError(t *testing.T) {
+	fd := newFakeDaemon()
+	defer fd.Close()
+	fd.dispatch = func(w http.ResponseWriter, r *http.Request, _ string) {
+		switch {
+		case r.URL.Path == "/containers/json" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode([]container.Summary{
+				{ID: "id-fail-1234567890ab", Names: []string{"/nanoku-ddd-bad-1"}},
+			})
+		case strings.HasSuffix(r.URL.Path, "/connect"):
+			http.Error(w, `{"message":"forbidden"}`, http.StatusForbidden)
+		default:
+			http.NotFound(w, r)
+		}
+	}
+	m := newTestManager(t, fd, Config{NetworkName: "nanoku-net"})
+	err := m.AttachComposeProjectToNetwork(context.Background(), "nanoku-ddd")
+	if err == nil {
+		t.Fatal("expected error from connect failure, got nil")
+	}
+	if !strings.Contains(err.Error(), "nanoku-ddd-bad-1") {
+		t.Errorf("error %q should name the offending container", err)
+	}
+	if !strings.Contains(err.Error(), "nanoku-net") {
+		t.Errorf("error %q should name the target network", err)
+	}
+}

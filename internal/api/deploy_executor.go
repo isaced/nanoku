@@ -239,6 +239,19 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 			h.markDeployFailed(ctx, deployID, err)
 			return
 		}
+		// Attach the just-spun-up stack to nanoku's managed network so
+		// Caddy can resolve the project containers by name. Without this
+		// step the Caddyfile reverse_proxy entries return 502: Caddy is
+		// only on `nanoku-net`, but `docker compose up` parks the stack
+		// on its own `<project>_default` network. The attach is
+		// idempotent (containers already on the network are skipped), so
+		// re-deploys are a no-op. We do it before ComposePSNames so the
+		// follow-up exposed_ports validation sees the same container set
+		// the Caddyfile will.
+		if err := h.Docker.AttachComposeProjectToNetwork(ctx, project); err != nil {
+			h.markDeployFailed(ctx, deployID, fmt.Errorf("attach compose project to nanoku network: %w", err))
+			return
+		}
 		names, _ := h.Docker.ComposePSNames(ctx, project, "")
 		if len(names) > 0 {
 			containerName = names[0]
