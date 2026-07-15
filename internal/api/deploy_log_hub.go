@@ -10,9 +10,16 @@ import (
 
 // deployLogLine is one captured line from a running deploy. Stored as a
 // value type so the hub can copy under lock without a separate alloc.
+//
+// Key is the in-place replacement key used by structured progress (compose
+// --progress json). When non-empty, this line replaces the previous line
+// with the same Key in the history buffer and on the wire (SSE
+// `line-replace` event) rather than appending - so a layer download tick
+// updates a single row instead of scrolling. Empty Key = ordinary append.
 type deployLogLine struct {
 	at  time.Time
 	msg string
+	key string
 }
 
 // deployLogHub is a per-process pub/sub for in-flight deploy logs.
@@ -94,12 +101,77 @@ func (h *deployLogHub) publish(deployID int, msg string) {
 	// Slice may be mutated by unsubscribe; snapshot under lock.
 	subs := make([]chan deployLogLine, len(live))
 	copy(subs, live)
+		for _, ch := range subs {
+			select {
+			case ch <- line:
+			default:
+				// Slow consumer - drop. They'll reconnect; the replay
+				// buffer is bounded but recent, so the gap is small.
+			}
+		}
+}
+
+// publishReplace updates the last history line with the given key in-place
+// (preserving its position) and notifies subscribers with a keyed line so
+// the SSE layer emits a `line-replace` event instead of `line`. If no
+// prior line has this key, it degrades to an append (same as publish with
+// a key) so the first occurrence of a key still shows up.
+//
+// This is what makes compose download progress update a single row: each
+// "Downloading NkB" tick for layer <sha> calls publishReplace with
+// key=<sha>, so the operator sees one row that changes value rather than
+// dozens of scrolling lines. History replay is correct too: the buffer
+// holds the latest msg for each key at its original position.
+func (h *deployLogHub) publishReplace(deployID int, key, msg string) {
+	if key == "" {
+		// No key => ordinary append. Delegate to publish for the
+		// append + fan-out path (avoids duplicating it here).
+		h.publish(deployID, msg)
+		return
+	}
+	h.mu.Lock()
+	s, ok := h.streams[deployID]
+	if !ok {
+		s = &deployLogStream{done: make(chan struct{})}
+		h.streams[deployID] = s
+	}
+	h.mu.Unlock()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.terminal {
+		return
+	}
+	line := deployLogLine{at: time.Now().UTC(), msg: msg, key: key}
+	// Scan backwards for an existing line with this key. Backwards is
+	// correct: a key is most recently appended, and we want the latest
+	// position (a key could in principle repeat after being evicted by
+	// the ring buffer, but that's degenerate).
+	found := false
+	for i := len(s.history) - 1; i >= 0; i-- {
+		if s.history[i].key == key {
+			s.history[i].msg = msg
+			s.history[i].at = line.at
+			found = true
+			break
+		}
+	}
+	if !found {
+		// First occurrence: append like a normal line (carrying the key
+		// so future replaces can find it).
+		if len(s.history) < deployLogBufferMax {
+			s.history = append(s.history, line)
+		} else {
+			s.history = append(s.history[1:], line)
+		}
+	}
+	live := s.subs
+	subs := make([]chan deployLogLine, len(live))
+	copy(subs, live)
 	for _, ch := range subs {
 		select {
 		case ch <- line:
 		default:
-			// Slow consumer — drop. They'll reconnect; the replay
-			// buffer is bounded but recent, so the gap is small.
 		}
 	}
 }

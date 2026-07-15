@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { LogLine } from '../lib/useLogStream'
 
 /**
  * LogScroller is the autoscroll + jump-to-bottom primitive that
  * LogViewer uses. It is intentionally decoupled from useLogStream so
  * the scroll behavior can be unit-tested in isolation and reused with
  * any line source (the current implementation expects an array of
- * strings; future callers may pass a ReadableStream or a virtualized
- * list).
+ * LogLine rows; future callers may pass a ReadableStream or a
+ * virtualized list).
  *
  * Design notes:
  *   - `stuckToBottom` is a state variable (not a ref+counter hack) so
@@ -15,15 +16,19 @@ import { useTranslation } from 'react-i18next'
  *     consistent value. The "jitter" concern (state changes inside
  *     the post-render scroll effect resetting the scroll) doesn't
  *     apply: we only call setStuckToBottom from `onScroll` (user
- *     input) and `jumpToBottom` (button click) — never from the
+ *     input) and `jumpToBottom` (button click) - never from the
  *     effect that responds to `lines`. So state updates here always
  *     correlate with intent, not with new data.
  *   - The post-render scroll uses requestAnimationFrame so the
  *     browser has applied the new content height before we read
  *     scrollHeight (otherwise we'd scroll to the old bottom).
- *   - "Stuck" is defined as "within 8px of the bottom" — chosen to
+ *   - "Stuck" is defined as "within 8px of the bottom" - chosen to
  *     tolerate sub-pixel rounding and antialiased scrollbar
  *     thimbles that some browsers leave near the bottom.
+ *   - Rows with a `key` use it as the React key so an in-place
+ *     progress update (same key, new text) reuses the same DOM node
+ *     and only re-renders its text - no reflow of the surrounding
+ *     list. Keyless rows fall back to the array index.
  */
 export function LogScroller({
   lines,
@@ -32,7 +37,7 @@ export function LogScroller({
   placeholder,
   emptyHint,
 }: {
-  lines: string[]
+  lines: LogLine[]
   wordWrap?: boolean
   heightClass?: string
   placeholder?: React.ReactNode
@@ -84,7 +89,9 @@ export function LogScroller({
         {displayPlaceholder ? (
           <div className="text-xs">{displayPlaceholder}</div>
         ) : (
-          lines.map((line, i) => <div key={i}>{line}</div>)
+          lines.map((line, i) => (
+            <div key={line.key ?? i}>{line.text}</div>
+          ))
         )}
       </div>
       {showJump && (

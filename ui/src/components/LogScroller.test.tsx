@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, act, cleanup } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import '../i18n'
 import { LogScroller } from './LogScroller'
+import type { LogLine } from '../lib/useLogStream'
 
 afterEach(() => {
   cleanup()
@@ -14,7 +15,7 @@ afterEach(() => {
 // (rather than holding its own state), so the simplest harness is a
 // small wrapper that lets us swap the lines array between renders.
 
-function Harness({ initial = [] as string[] }: { initial?: string[] }) {
+function Harness({ initial = [] as LogLine[] }: { initial?: LogLine[] }) {
   // We don't need real interactivity for the scroll geometry; a
   // minimal holder is enough.
   return <LogScroller lines={initial} />
@@ -37,28 +38,28 @@ describe('LogScroller', () => {
   })
 
   it('hides the empty placeholder once lines are present', () => {
-    render(<Harness initial={['one']} />)
+    render(<Harness initial={[{ text: 'one' }]} />)
     expect(screen.queryByText(/waiting for logs|等待日志/)).toBeNull()
     expect(screen.getByText('one')).toBeTruthy()
   })
 
   it('applies word-wrap class by default and the no-wrap class when wordWrap=false', () => {
-    const { container, rerender } = render(<LogScroller lines={['x']} />)
+    const { container, rerender } = render(<LogScroller lines={[{ text: 'x' }]} />)
     const scroller = container.querySelector('[data-testid="log-scroller"]') as HTMLDivElement
     expect(scroller.className).toMatch(/whitespace-pre-wrap/)
-    rerender(<LogScroller lines={['x']} wordWrap={false} />)
+    rerender(<LogScroller lines={[{ text: 'x' }]} wordWrap={false} />)
     const scroller2 = container.querySelector('[data-testid="log-scroller"]') as HTMLDivElement
     expect(scroller2.className).toMatch(/whitespace-pre\b/)
     expect(scroller2.className).not.toMatch(/whitespace-pre-wrap/)
   })
 
   it('does not show a jump-to-bottom button when the user is at the bottom', () => {
-    render(<Harness initial={['a', 'b']} />)
+    render(<Harness initial={[{ text: 'a' }, { text: 'b' }]} />)
     expect(screen.queryByTestId('log-jump-to-bottom')).toBeNull()
   })
 
   it('shows a jump-to-bottom button when the user scrolls away from the bottom', async () => {
-    render(<Harness initial={['a', 'b', 'c']} />)
+    render(<Harness initial={[{ text: 'a' }, { text: 'b' }, { text: 'c' }]} />)
     const scroller = screen.getByTestId('log-scroller') as HTMLDivElement
     await act(async () => {
       Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 1000 })
@@ -71,7 +72,7 @@ describe('LogScroller', () => {
   })
 
   it('clicking jump-to-bottom scrolls the scroller to the end and hides the button', async () => {
-    render(<Harness initial={['a', 'b', 'c']} />)
+    render(<Harness initial={[{ text: 'a' }, { text: 'b' }, { text: 'c' }]} />)
     const scroller = screen.getByTestId('log-scroller') as HTMLDivElement
     await act(async () => {
       Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 1000 })
@@ -90,18 +91,46 @@ describe('LogScroller', () => {
   })
 
   it('auto-scrolls to the bottom on new lines while stuck to the bottom', async () => {
-    function Live({ lines }: { lines: string[] }) {
+    function Live({ lines }: { lines: LogLine[] }) {
       return <LogScroller lines={lines} />
     }
-    const { rerender } = render(<Live lines={['a']} />)
+    const { rerender } = render(<Live lines={[{ text: 'a' }]} />)
     const scroller = screen.getByTestId('log-scroller') as HTMLDivElement
     Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 1000 })
     Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 200 })
     scroller.scrollTop = 1000
     await act(async () => {
-      rerender(<Live lines={['a', 'b', 'c']} />)
+      rerender(<Live lines={[{ text: 'a' }, { text: 'b' }, { text: 'c' }]} />)
       await new Promise((r) => requestAnimationFrame(() => r(null)))
     })
     expect(scroller.scrollTop).toBe(1000)
+  })
+
+  it('updates a keyed row in place without growing the list when its text changes', () => {
+    // A keyed progress row (e.g. a compose download tick) should
+    // reuse the same DOM node: re-rendering with a new text for the
+    // same key must NOT add a new row, only update the existing one.
+    const { rerender } = render(
+      <LogScroller
+        lines={[
+          { text: 'Image alpine Pulling' },
+          { text: '2dd7 Downloading 48.5kB [1%]', key: '2dd7' },
+        ]}
+      />,
+    )
+    expect(screen.getByText('2dd7 Downloading 48.5kB [1%]')).toBeTruthy()
+    rerender(
+      <LogScroller
+        lines={[
+          { text: 'Image alpine Pulling' },
+          { text: '2dd7 Downloading 3.9MB [98%]', key: '2dd7' },
+        ]}
+      />,
+    )
+    // The updated text is present, the old one is gone, and no extra
+    // row was added.
+    expect(screen.getByText('2dd7 Downloading 3.9MB [98%]')).toBeTruthy()
+    expect(screen.queryByText('2dd7 Downloading 48.5kB [1%]')).toBeNull()
+    expect(screen.queryByText('Image alpine Pulling')).toBeTruthy()
   })
 })

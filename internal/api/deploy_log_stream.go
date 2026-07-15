@@ -117,7 +117,7 @@ func streamDeployLog(
 	preDrained := drainPre()
 	all := append(append([]deployLogLine{}, history...), preDrained...)
 	for _, l := range all {
-		if err := sw.sseEvent("line", l.msg); err != nil {
+		if err := writeLogLine(sw, l); err != nil {
 			return
 		}
 	}
@@ -127,12 +127,12 @@ func streamDeployLog(
 		// queued into the live channel (it may have flushed lines
 		// between subscribe and the terminal-mark), then emit a real
 		// `end` event and close the connection so the browser's
-		// EventSource doesn't auto-reconnect — reconnecting would just
+		// EventSource doesn't auto-reconnect - reconnecting would just
 		// replay the same history forever, since the deploy is no
 		// longer producing new lines. The matching `es.close()` is in
 		// the frontend (useLogStream's `end` handler).
-		drainClosed(live, func(s string) bool {
-			return sw.sseEvent("line", s) == nil
+		drainClosed(live, func(l deployLogLine) bool {
+			return writeLogLine(sw, l) == nil
 		})
 		_ = sw.sseEvent("end", "nanoku deploy log stream end")
 		return
@@ -155,7 +155,7 @@ func streamDeployLog(
 				_ = sw.sseEvent("end", "nanoku deploy log stream end")
 				return
 			}
-			if err := sw.sseEvent("line", l.msg); err != nil {
+			if err := writeLogLine(sw, l); err != nil {
 				return
 			}
 		case <-done:
@@ -163,8 +163,8 @@ func streamDeployLog(
 			// (the publisher is still allowed to flush a few final
 			// lines before closing it), then emit the `end` sentinel
 			// so the browser closes the EventSource.
-			drainClosed(live, func(s string) bool {
-				return sw.sseEvent("line", s) == nil
+			drainClosed(live, func(l deployLogLine) bool {
+				return writeLogLine(sw, l) == nil
 			})
 			_ = sw.sseEvent("end", "nanoku deploy log stream end")
 			return
@@ -176,16 +176,28 @@ func streamDeployLog(
 	}
 }
 
+// writeLogLine emits one deploy log line as the correct SSE event:
+// `line-replace` (data = "key\tmsg") when the line carries a replacement
+// key, or plain `line` (data = msg) when it doesn't. The frontend's
+// `line-replace` handler splits on the first tab to recover (key, msg) and
+// updates the matching row in place.
+func writeLogLine(sw *sseWriter, l deployLogLine) error {
+	if l.key != "" {
+		return sw.sseEvent("line-replace", l.key+"\t"+l.msg)
+	}
+	return sw.sseEvent("line", l.msg)
+}
+
 // drainClosed reads from ch until it closes, calling write for each
 // value. Stops early if write returns false (consumer gone).
-func drainClosed(ch <-chan deployLogLine, write func(string) bool) {
+func drainClosed(ch <-chan deployLogLine, write func(deployLogLine) bool) {
 	for {
 		select {
 		case l, ok := <-ch:
 			if !ok {
 				return
 			}
-			if !write(l.msg) {
+			if !write(l) {
 				return
 			}
 		default:

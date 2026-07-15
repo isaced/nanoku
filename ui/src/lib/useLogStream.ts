@@ -25,9 +25,25 @@ import { useEffect, useMemo, useRef, useState } from 'react'
  *     back to false (at which point the backlog is flushed). This
  *     mirrors "tail -f" behavior: pausing on the consumer side
  *     doesn't drop anything, it just defers the render.
+ *
+ * In-place progress (`line-replace` events):
+ *   - The deploy stream emits `line-replace` (data = "key\tmsg") for
+ *     structured progress (compose download ticks). A line with the
+ *     same key updates the existing row in place rather than
+ *     appending, so a layer download shows one row that changes
+ *     value instead of dozens of scrolling lines. Plain `line` events
+ *     always append.
  */
 
 export type LogStreamStatus = 'connecting' | 'live' | 'reconnecting' | 'closed' | 'error'
+
+/** LogLine is one row in the log buffer. `key`, when present, marks the
+ * row as replaceable: a later `line-replace` event with the same key
+ * overwrites `text` in place (same position) instead of appending. */
+export type LogLine = {
+  text: string
+  key?: string
+}
 
 export type UseLogStreamOptions = {
   /** When false, the hook closes any open connection and does not
@@ -44,7 +60,7 @@ export type UseLogStreamOptions = {
 }
 
 export type UseLogStreamResult = {
-  lines: string[]
+  lines: LogLine[]
   status: LogStreamStatus
   error: string | null
   /** Flip the paused flag. The hook owns the state so the call site
@@ -60,6 +76,16 @@ export type UseLogStreamResult = {
 
 const MAX_LINES = 5000
 
+/** One pending event from the SSE stream, awaiting batch flush. */
+type PendingEvent =
+  | { op: 'append'; text: string }
+  | { op: 'replace'; text: string; key: string }
+
+/** Convert raw seed strings into LogLine rows (no keys). */
+function seedToLines(seed: string[]): LogLine[] {
+  return seed.map((text) => ({ text }))
+}
+
 export function useLogStream(
   url: string | null,
   options: UseLogStreamOptions = {},
@@ -68,19 +94,19 @@ export function useLogStream(
   // initialLines is consumed once on first mount; subsequent updates
   // are ignored (the user has already started tailing).
   const seedRef = useRef<string[] | undefined>(initialLines)
-  const [lines, setLines] = useState<string[]>(() => {
+  const [lines, setLines] = useState<LogLine[]>(() => {
     if (seedRef.current && seedRef.current.length > 0) {
       // Honor the seed but cap at MAX_LINES so a stale `tail=9999`
       // doesn't blow up the page.
-      return seedRef.current.slice(-MAX_LINES)
+      return seedToLines(seedRef.current.slice(-MAX_LINES))
     }
     return []
   })
   const [status, setStatus] = useState<LogStreamStatus>('closed')
   const [error, setError] = useState<string | null>(null)
   const [paused, setPaused] = useState<boolean>(initialPaused)
-  // Backlog of lines that arrived while paused. Drained on resume.
-  const backlogRef = useRef<string[]>([])
+  // Backlog of events that arrived while paused. Drained on resume.
+  const backlogRef = useRef<PendingEvent[]>([])
   // Refs to the latest values for use inside the EventSource handlers,
   // so we don't have to re-subscribe when paused flips.
   const pausedRef = useRef(paused)
@@ -105,7 +131,7 @@ export function useLogStream(
     if (openedUrlRef.current === url) {
       return
     }
-    // New URL — open a fresh stream.
+    // New URL - open a fresh stream.
     openedUrlRef.current = url
     setStatus('connecting')
     setError(null)
@@ -121,52 +147,68 @@ export function useLogStream(
       setStatus('live')
       setError(null)
     })
-    // Batch `line` events into one setState per microtask tick.
-    // A chatty container (nginx access log, bash loop, etc.) can
-    // emit hundreds of lines per second; without batching we'd
-    // re-render the entire 5000-line buffer that many times per
-    // second, pegging a CPU core. A microtask runs before the
-    // browser yields (paint, layout, etc.), so any lines that
-    // arrive in the same dispatch loop are coalesced into one
-    // React render. We use microtask over rAF for two reasons:
-    // (1) rAF waits up to 16ms; if the browser is idle that's
-    // wasted latency on a tail; (2) tests can flush microtasks
-    // deterministically with `await Promise.resolve()`.
-    const pendingRef: { current: string[] } = { current: [] }
+    // Batch `line` / `line-replace` events into one setState per
+    // microtask tick. A chatty container (nginx access log, bash
+    // loop, etc.) can emit hundreds of lines per second; without
+    // batching we'd re-render the entire 5000-line buffer that many
+    // times per second, pegging a CPU core. A microtask runs before
+    // the browser yields (paint, layout, etc.), so any events that
+    // arrive in the same dispatch loop are coalesced into one React
+    // render. We use microtask over rAF for two reasons: (1) rAF
+    // waits up to 16ms; if the browser is idle that's wasted latency
+    // on a tail; (2) tests can flush microtasks deterministically
+    // with `await Promise.resolve()`.
+    const pendingRef: { current: PendingEvent[] } = { current: [] }
     const scheduledRef: { current: boolean } = { current: false }
     const flush = () => {
       scheduledRef.current = false
       if (pendingRef.current.length === 0) return
       const batch = pendingRef.current
       pendingRef.current = []
-      setLines((prev) => appendLines(prev, batch))
+      setLines((prev) => applyEvents(prev, batch))
     }
-    es.addEventListener('line', (ev: MessageEvent) => {
-      const text = ev.data as string
+    const enqueue = (ev: PendingEvent) => {
       if (pausedRef.current) {
-        backlogRef.current.push(text)
+        backlogRef.current.push(ev)
         // Bound the backlog so a long pause doesn't OOM the page.
         if (backlogRef.current.length > MAX_LINES) {
           backlogRef.current.splice(0, backlogRef.current.length - MAX_LINES)
         }
         return
       }
-      pendingRef.current.push(text)
+      pendingRef.current.push(ev)
       if (!scheduledRef.current) {
         scheduledRef.current = true
         queueMicrotask(flush)
       }
+    }
+    es.addEventListener('line', (ev: MessageEvent) => {
+      enqueue({ op: 'append', text: ev.data as string })
+    })
+    es.addEventListener('line-replace', (ev: MessageEvent) => {
+      // data format: "key\tmsg". Split on the FIRST tab so a message
+      // containing tabs is preserved. The server guarantees a key is
+      // present (it only emits line-replace for keyed lines).
+      const data = ev.data as string
+      const tabIdx = data.indexOf('\t')
+      if (tabIdx < 0) {
+        // Malformed (no key) - treat as a plain append so the text
+        // isn't lost.
+        enqueue({ op: 'append', text: data })
+        return
+      }
+      enqueue({ op: 'replace', key: data.slice(0, tabIdx), text: data.slice(tabIdx + 1) })
     })
     es.addEventListener('error', () => {
       // EventSource auto-reconnects after the server's `retry: N`
-      // directive. While in that gap we surface "reconnecting" so
-      // the UI can dim the indicator; a permanent failure (e.g. 503
-      // on first connect) will keep the status as "reconnecting" or
+      // directive. While in that gap we surface "reconnecting" so the
+      // UI can dim the indicator; a permanent failure (e.g. 503 on
+      // first connect) will keep the status as "reconnecting" or
       // "error" depending on readyState.
       setStatus(es.readyState === EventSource.CLOSED ? 'error' : 'reconnecting')
     })
     es.addEventListener('log-error', (ev: MessageEvent) => {
-      // Server-sent `event: log-error` from the SSE helper — we
+      // Server-sent `event: log-error` from the SSE helper - we
       // treat this as a soft error (the line is informational, the
       // stream may still recover). We deliberately don't use the
       // event name `error` here because EventSource already has a
@@ -180,11 +222,11 @@ export function useLogStream(
       // replay. Without this handler the browser's EventSource
       // auto-reconnects on close (per the `retry: 2000` directive
       // the server emits) and the next connect just replays the
-      // same history again — an infinite loop visible to the
+      // same history again - an infinite loop visible to the
       // operator as the same three lines cycling forever.
       //
       // Container log streams (Logs tab, system page) don't send
-      // `end`, so this handler is a no-op for them — only the
+      // `end`, so this handler is a no-op for them - only the
       // deploy stream opts in by emitting the event before
       // closing.
       es.close()
@@ -202,7 +244,7 @@ export function useLogStream(
     if (paused) return
     if (backlogRef.current.length === 0) return
     const drained = backlogRef.current.splice(0)
-    setLines((prev) => mergeLines(prev, drained))
+    setLines((prev) => applyEvents(prev, drained))
   }, [paused])
 
   const disconnect = () => {
@@ -225,43 +267,40 @@ export function useLogStream(
   )
 }
 
-function appendLine(prev: string[], text: string): string[] {
-  const next = prev.length >= MAX_LINES ? prev.slice(prev.length - MAX_LINES + 1) : prev.slice()
-  next.push(text)
-  return next
-}
-
-// appendLines is the batch variant of appendLine used by the rAF
-// flusher. We append all queued lines in a single immutable update
-// so React runs one render per animation frame, not one per line.
-function appendLines(prev: string[], batch: string[]): string[] {
+/** applyEvents applies a batch of append/replace events to the line
+ * buffer in one immutable pass, capping the result at MAX_LINES.
+ *
+ * - `append`: push a new {text} row.
+ * - `replace`: find the last row with the same key (scan backwards) and
+ *   overwrite its `text` in place; if none exists, fall back to append
+ *   (carrying the key so future replaces can find it).
+ *
+ * Replace never grows the buffer length, so a chatty download-progress
+ * stream that only emits replaces for a fixed set of layer keys stays
+ * at a constant row count. Only appends (and the first occurrence of a
+ * new key) can grow the buffer toward the MAX_LINES cap. */
+function applyEvents(prev: LogLine[], batch: PendingEvent[]): LogLine[] {
   if (batch.length === 0) return prev
-  const total = prev.length + batch.length
-  if (total <= MAX_LINES) {
-    // Common case: everything fits. One allocation, no slicing.
-    const next = prev.slice()
-    for (const l of batch) next.push(l)
-    return next
-  }
-  // Over the cap: keep the last MAX_LINES of the merged buffer.
-  // Concat first, then trim from the head with splice so we don't
-  // lose lines at the boundary (e.g. cap=5000, prev=0, batch=5100
-  // should keep the last 5000 of the batch, not slice(100) of an
-  // empty array).
-  const merged = prev.concat(batch)
-  if (merged.length > MAX_LINES) {
-    merged.splice(0, merged.length - MAX_LINES)
-  }
-  return merged
-}
-
-function mergeLines(prev: string[], drained: string[]): string[] {
-  if (drained.length === 0) return prev
+  // Start from a mutable copy; replace ops mutate in place (no length
+  // change), appends push. We rebuild once at the end for the cap.
   const next = prev.slice()
-  for (const l of drained) {
-    next.push(l)
+  for (const ev of batch) {
+    if (ev.op === 'append') {
+      next.push({ text: ev.text })
+    } else {
+      let found = false
+      for (let i = next.length - 1; i >= 0; i--) {
+        if (next[i].key === ev.key) {
+          next[i] = { ...next[i], text: ev.text }
+          found = true
+          break
+        }
+      }
+      if (!found) {
+        next.push({ text: ev.text, key: ev.key })
+      }
+    }
   }
-  // Bound the resulting array.
   if (next.length > MAX_LINES) {
     next.splice(0, next.length - MAX_LINES)
   }

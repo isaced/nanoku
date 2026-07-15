@@ -90,10 +90,14 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 	// updating the Deploy row to success/failed, so a subscriber polling
 	// the row sees "success" only after the terminal log line has been
 	// published. (markDeployFailed is the corresponding path for the
-	// error case — see below.)
+	// error case - see below.)
 	logSink := &lineWriterToHub{hub: h.DeployLogs, deployID: deployID}
 	if h.DeployLogs != nil {
-		logSink.hub.publish(deployID, fmt.Sprintf("→ deploy started (image=%s)", image))
+		if image != "" {
+			logSink.hub.publish(deployID, fmt.Sprintf("-> deploy started (image=%s)", image))
+		} else {
+			logSink.hub.publish(deployID, fmt.Sprintf("-> deploy started (compose, project=%s)", composeProjectName(a.Name)))
+		}
 	}
 	defer func() {
 		if h.DeployLogs != nil {
@@ -194,10 +198,27 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 			filePath = written
 		}
 		if h.DeployLogs != nil {
-			h.DeployLogs.publish(deployID, fmt.Sprintf("→ compose up: project=%s", project))
+			h.DeployLogs.publish(deployID, fmt.Sprintf("-> compose up: project=%s", project))
+		}
+		// Structured compose progress: --progress json events are decoded
+		// into (msg, key) pairs. A non-empty key means "replace the
+		// same-key row in-place" so each layer's download ticks update a
+		// single line instead of scrolling. We wire the callback straight
+		// to the hub (bypassing lineWriterToHub, which only does text
+		// append) so the replace semantics propagate through history
+		// replay and SSE.
+		progressEmit := func(msg, key string) {
+			if h.DeployLogs == nil {
+				return
+			}
+			if key != "" {
+				h.DeployLogs.publishReplace(deployID, key, msg)
+			} else {
+				h.DeployLogs.publish(deployID, msg)
+			}
 		}
 		if err := h.Docker.WithRegistry(ctx, regURL, regUser, regPass, func() error {
-			return h.Docker.ComposeUp(ctx, project, filePath, true, docker.WithComposeStream(logSink))
+			return h.Docker.ComposeUp(ctx, project, filePath, true, docker.WithComposeProgress(progressEmit))
 		}); err != nil {
 			h.markDeployFailed(ctx, deployID, err)
 			return

@@ -90,6 +90,10 @@ async function fireAndFlush(
   })
 }
 
+// texts extracts the plain-text array from a LogLine[] for ergonomic
+// assertion against the string values callers care about.
+const texts = (lines: { text: string }[]) => lines.map((l) => l.text)
+
 beforeEach(() => {
   FakeEventSource.instances.length = 0
   // jsdom's EventSource is a no-op class on this Node version, so
@@ -122,7 +126,7 @@ describe('useLogStream', () => {
     expect(result.current.status).toBe('live')
 
     await fireAndFlush(es, ['line', 'first line'], ['line', 'second line'])
-    expect(result.current.lines).toEqual(['first line', 'second line'])
+    expect(texts(result.current.lines)).toEqual(['first line', 'second line'])
   })
 
   it('seeds with initialLines and appends new events on top', async () => {
@@ -131,14 +135,14 @@ describe('useLogStream', () => {
         initialLines: ['seed-1', 'seed-2'],
       }),
     )
-    expect(result.current.lines).toEqual(['seed-1', 'seed-2'])
+    expect(texts(result.current.lines)).toEqual(['seed-1', 'seed-2'])
     const es = FakeEventSource.instances[0]
     await act(async () => {
       es.__fire('open')
       await flushMicrotasks()
     })
     await fireAndFlush(es, ['line', 'live-1'])
-    expect(result.current.lines).toEqual(['seed-1', 'seed-2', 'live-1'])
+    expect(texts(result.current.lines)).toEqual(['seed-1', 'seed-2', 'live-1'])
   })
 
   it('does not open a connection when url is null', () => {
@@ -163,11 +167,11 @@ describe('useLogStream', () => {
       es.__fire('line', 'paused-2')
     })
     // Lines should NOT have advanced while paused.
-    expect(result.current.lines).toEqual([])
+    expect(texts(result.current.lines)).toEqual([])
     act(() => result.current.setPaused(false))
     // Drain effect runs after render; assert the new state.
     await flushMicrotasks()
-    expect(result.current.lines).toEqual(['paused-1', 'paused-2'])
+    expect(texts(result.current.lines)).toEqual(['paused-1', 'paused-2'])
   })
 
   it('clear() empties the line buffer and the paused backlog', async () => {
@@ -175,7 +179,7 @@ describe('useLogStream', () => {
     const es = FakeEventSource.instances[0]
     act(() => es.__fire('open'))
     await fireAndFlush(es, ['line', 'a'], ['line', 'b'])
-    expect(result.current.lines).toEqual(['a', 'b'])
+    expect(texts(result.current.lines)).toEqual(['a', 'b'])
     act(() => result.current.clear())
     expect(result.current.lines).toEqual([])
   })
@@ -258,8 +262,8 @@ describe('useLogStream', () => {
       await flushMicrotasks()
     })
     expect(result.current.lines.length).toBe(5000)
-    expect(result.current.lines[0]).toBe('line-100')
-    expect(result.current.lines[4999]).toBe('line-5099')
+    expect(result.current.lines[0].text).toBe('line-100')
+    expect(result.current.lines[4999].text).toBe('line-5099')
   })
 
   it('caps the paused backlog at MAX_LINES so a long pause cannot OOM the page', async () => {
@@ -274,8 +278,8 @@ describe('useLogStream', () => {
     act(() => result.current.setPaused(false))
     await flushMicrotasks()
     expect(result.current.lines.length).toBe(5000)
-    expect(result.current.lines[0]).toBe('p-100')
-    expect(result.current.lines[4999]).toBe('p-5099')
+    expect(result.current.lines[0].text).toBe('p-100')
+    expect(result.current.lines[4999].text).toBe('p-5099')
   })
 
   it('clear() also drops the paused backlog so a paused-and-cleared resume starts empty', async () => {
@@ -353,5 +357,70 @@ describe('useLogStream', () => {
     act(() => es.__fire('end', 'nanoku deploy log stream end'))
     expect(es.closed).toBe(true)
     expect(result.current.status).toBe('closed')
+  })
+
+  // `line-replace` events (data = "key\tmsg") drive in-place progress:
+  // a compose download tick with the same layer key updates the
+  // existing row's text instead of appending a new row, so a 50 MB
+  // layer download shows one updating line rather than dozens of
+  // scrolling ones. The first occurrence of a key appends (there's
+  // nothing to replace yet); subsequent ones update in place.
+  it('updates a keyed row in place on `line-replace` events', async () => {
+    const { result } = renderHook(() => useLogStream('/api/test/stream'))
+    const es = FakeEventSource.instances[0]
+    act(() => es.__fire('open'))
+    // First occurrence of key "abc" -> appends a row carrying the key.
+    await fireAndFlush(es, ['line-replace', 'abc\tDownloading 48.5kB [1%]'])
+    expect(texts(result.current.lines)).toEqual(['Downloading 48.5kB [1%]'])
+    expect(result.current.lines[0].key).toBe('abc')
+    // Second tick, same key -> updates the SAME row, no new row.
+    await fireAndFlush(es, ['line-replace', 'abc\tDownloading 3.9MB [98%]'])
+    expect(result.current.lines.length).toBe(1)
+    expect(texts(result.current.lines)).toEqual(['Downloading 3.9MB [98%]'])
+    expect(result.current.lines[0].key).toBe('abc')
+  })
+
+  it('appends a keyed row when no prior key matches, and replaces only the matching key', async () => {
+    const { result } = renderHook(() => useLogStream('/api/test/stream'))
+    const es = FakeEventSource.instances[0]
+    act(() => es.__fire('open'))
+    // Two different layer keys -> two rows, each with its own key.
+    await fireAndFlush(
+      es,
+      ['line-replace', 'aaa\tDownloading 1kB [1%]'],
+      ['line-replace', 'bbb\tDownloading 2kB [1%]'],
+    )
+    expect(texts(result.current.lines)).toEqual([
+      'Downloading 1kB [1%]',
+      'Downloading 2kB [1%]',
+    ])
+    // Update only "aaa" -> "bbb" row stays put.
+    await fireAndFlush(es, ['line-replace', 'aaa\tDownloading 9kB [90%]'])
+    expect(texts(result.current.lines)).toEqual([
+      'Downloading 9kB [90%]',
+      'Downloading 2kB [1%]',
+    ])
+  })
+
+  it('mixes plain `line` appends with `line-replace` updates preserving order', async () => {
+    const { result } = renderHook(() => useLogStream('/api/test/stream'))
+    const es = FakeEventSource.instances[0]
+    act(() => es.__fire('open'))
+    await fireAndFlush(
+      es,
+      ['line', '-> compose up: project=app'],
+      ['line-replace', 'img1\tImage alpine Pulling'],
+      ['line-replace', 'img1\tImage alpine Pulled'],
+      ['line', '-> done'],
+    )
+    expect(texts(result.current.lines)).toEqual([
+      '-> compose up: project=app',
+      'Image alpine Pulled',
+      '-> done',
+    ])
+    // The middle row carried key img1; the two plain lines have none.
+    expect(result.current.lines[0].key).toBeUndefined()
+    expect(result.current.lines[1].key).toBe('img1')
+    expect(result.current.lines[2].key).toBeUndefined()
   })
 })

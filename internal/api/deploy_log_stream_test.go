@@ -312,3 +312,48 @@ func TestStreamDeployLog_LineWriterToHubFlushPartial(t *testing.T) {
 		// Expected: no second copy.
 	}
 }
+
+// TestStreamDeployLog_KeyedLineEmitsLineReplaceEvent verifies the SSE
+// protocol extension: a history line carrying a replacement key is
+// emitted as `event: line-replace` with data "key\tmsg", while a
+// keyless line is still emitted as `event: line`. This is what lets the
+// frontend update a compose download row in place.
+func TestStreamDeployLog_KeyedLineEmitsLineReplaceEvent(t *testing.T) {
+	hub := newDeployLogHub()
+	// One keyless line, one keyed line (e.g. a compose pull milestone).
+	hub.publish(1, "compose up started")
+	hub.publishReplace(1, "layer-abc", "abc Pull complete")
+
+	hist, live, done, unsub, _ := hub.subscribe(context.Background(), 1)
+	defer unsub()
+
+	// Elapse the pre-drain window.
+	time.Sleep(20 * time.Millisecond)
+
+	w := httptest.NewRecorder()
+	streamDone := make(chan struct{})
+	go func() {
+		streamDeployLog(context.Background(), w, hist, live, done, "success")
+		close(streamDone)
+	}()
+
+	select {
+	case <-streamDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("streamDeployLog did not return")
+	}
+
+	body := w.Body.String()
+	// Keyless line: ordinary `line` event.
+	if !strings.Contains(body, "event: line\ndata: compose up started") {
+		t.Errorf("body missing keyless `line` event:\n%s", body)
+	}
+	// Keyed line: `line-replace` event with "key\tmsg" data.
+	if !strings.Contains(body, "event: line-replace\ndata: layer-abc\tabc Pull complete") {
+		t.Errorf("body missing keyed `line-replace` event:\n%s", body)
+	}
+	// The terminal `end` event must still fire.
+	if !strings.Contains(body, "event: end") {
+		t.Errorf("body missing `end` event:\n%s", body)
+	}
+}

@@ -11,8 +11,14 @@ import (
 
 // composeArgs builds the argv for a `docker compose` subcommand.
 // filePath="" means: use the file in the current working dir.
-func composeArgs(project, filePath, subcmd string, extra ...string) []string {
+// When jsonProgress is true, the global `--progress json` flag is injected
+// (before -p/-f/subcmd) so compose emits one JSON object per progress event
+// on stderr instead of plain text.
+func composeArgs(project, filePath, subcmd string, jsonProgress bool, extra ...string) []string {
 	args := []string{"compose"}
+	if jsonProgress {
+		args = append(args, "--progress", "json")
+	}
 	if project != "" {
 		args = append(args, "-p", project)
 	}
@@ -29,15 +35,38 @@ func composeArgs(project, filePath, subcmd string, extra ...string) []string {
 type ComposeOption func(*composeConfig)
 
 type composeConfig struct {
-	stream io.Writer // nil = fold stdout into return value (legacy behavior)
+	// stream is the legacy raw-text tee (stdout+stderr into w). Mutually
+	// exclusive with progress: if progress is set, stream is ignored.
+	stream io.Writer
+	// progress is the structured-progress callback. When set, ComposeUp
+	// runs `docker compose --progress json up` and decodes the JSON event
+	// stream into (msg, key) pairs: a non-empty key means "replace the
+	// previous line with this key in-place" (per-layer download ticks),
+	// an empty key means "append". This gives the operator a single
+	// updating row per layer instead of dozens of scrolling lines.
+	progress func(msg, key string)
 }
 
-// WithComposeStream tees the raw `docker compose` stdout (and stderr on
-// failure) into w as the command runs. Used by the deploy SSE handler to
-// surface compose progress (Pulling / Creating / Starting lines) to the
-// operator in real time.
+// WithComposeStream tees the raw `docker compose` stdout AND stderr into w
+// as the command runs. Compose writes all of its non-TTY progress
+// (Pulling / Creating / Starting) to stderr, so both streams must be teed
+// or the operator sees nothing during a long pull.
+//
+// Prefer WithComposeProgress for the deploy path: it parses the structured
+// `--progress json` stream so download progress updates in-place rather
+// than scrolling. WithComposeStream is retained for callers that want raw
+// text (e.g. a future plain log dump).
 func WithComposeStream(w io.Writer) ComposeOption {
 	return func(c *composeConfig) { c.stream = w }
+}
+
+// WithComposeProgress routes compose progress through the structured
+// `--progress json` stream. Each decoded event is handed to emit as
+// (msg, key): when key != "" the caller should replace the last line with
+// that key in-place (per-layer download/extraction progress); when
+// key == "" the line appends (fatal errors, non-progress text).
+func WithComposeProgress(emit func(msg, key string)) ComposeOption {
+	return func(c *composeConfig) { c.progress = emit }
 }
 
 func (m *Manager) ComposeUp(ctx context.Context, project, filePath string, pull bool, opts ...ComposeOption) error {
@@ -49,17 +78,38 @@ func (m *Manager) ComposeUp(ctx context.Context, project, filePath string, pull 
 	if pull {
 		extra = append([]string{"--pull", "always"}, extra...)
 	}
+	if cfg.progress != nil {
+		// Structured progress: run with `--progress json` and decode the
+		// JSON event stream (emitted on stderr) through
+		// composeProgressWriter, which translates each event into a
+		// (msg, key) pair. A non-empty key means "replace the same-key
+		// row in-place" so a 50 MB layer download updates one row
+		// instead of scrolling dozens of lines. stdout is discarded
+		// (compose writes nothing meaningful there in json mode); a
+		// trailing copy of stderr is kept for the failure diagnostic.
+		pw := newComposeProgressWriter(func(cl composeLine) {
+			cfg.progress(cl.Msg, cl.Key)
+		})
+		var stderr bytes.Buffer
+		args := composeArgs(project, filePath, "up", true, extra...)
+		cmd := exec.CommandContext(ctx, m.composeBinary, args...)
+		cmd.Stdout = io.Discard
+		cmd.Stderr = io.MultiWriter(pw, &stderr)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("compose up: %w: %s", err, strings.TrimSpace(stderr.String()))
+		}
+		return nil
+	}
 	if cfg.stream != nil {
-		// Stream the raw subprocess output; we still capture stdout for
-		// the error-on-failure path so we can surface the trailing
-		// diagnostic, but it goes to a discardable sink on success.
-		_, err := m.runCLIStream(ctx, cfg.stream, composeArgs(project, filePath, "up", extra...)...)
+		// Legacy raw-text tee (stdout + stderr into w). Kept for callers
+		// that don't opt into structured progress.
+		_, err := m.runCLIStream(ctx, cfg.stream, composeArgs(project, filePath, "up", false, extra...)...)
 		if err != nil {
 			return fmt.Errorf("compose up: %w", err)
 		}
 		return nil
 	}
-	out, err := m.runCLI(ctx, composeArgs(project, filePath, "up", extra...)...)
+	out, err := m.runCLI(ctx, composeArgs(project, filePath, "up", false, extra...)...)
 	if err != nil {
 		return fmt.Errorf("compose up: %w: %s", err, strings.TrimSpace(out))
 	}
@@ -67,7 +117,7 @@ func (m *Manager) ComposeUp(ctx context.Context, project, filePath string, pull 
 }
 
 func (m *Manager) ComposeStop(ctx context.Context, project, filePath string) error {
-	out, err := m.runCLI(ctx, composeArgs(project, filePath, "stop")...)
+	out, err := m.runCLI(ctx, composeArgs(project, filePath, "stop", false)...)
 	if err != nil {
 		return fmt.Errorf("compose stop: %w: %s", err, strings.TrimSpace(out))
 	}
@@ -75,7 +125,7 @@ func (m *Manager) ComposeStop(ctx context.Context, project, filePath string) err
 }
 
 func (m *Manager) ComposeStart(ctx context.Context, project, filePath string) error {
-	out, err := m.runCLI(ctx, composeArgs(project, filePath, "start")...)
+	out, err := m.runCLI(ctx, composeArgs(project, filePath, "start", false)...)
 	if err != nil {
 		return fmt.Errorf("compose start: %w: %s", err, strings.TrimSpace(out))
 	}
@@ -83,7 +133,7 @@ func (m *Manager) ComposeStart(ctx context.Context, project, filePath string) er
 }
 
 func (m *Manager) ComposeRestart(ctx context.Context, project, filePath string) error {
-	out, err := m.runCLI(ctx, composeArgs(project, filePath, "restart")...)
+	out, err := m.runCLI(ctx, composeArgs(project, filePath, "restart", false)...)
 	if err != nil {
 		return fmt.Errorf("compose restart: %w: %s", err, strings.TrimSpace(out))
 	}
@@ -91,7 +141,7 @@ func (m *Manager) ComposeRestart(ctx context.Context, project, filePath string) 
 }
 
 func (m *Manager) ComposeDown(ctx context.Context, project, filePath string) error {
-	out, err := m.runCLI(ctx, composeArgs(project, filePath, "down")...)
+	out, err := m.runCLI(ctx, composeArgs(project, filePath, "down", false)...)
 	if err != nil {
 		return fmt.Errorf("compose down: %w: %s", err, strings.TrimSpace(out))
 	}
@@ -99,7 +149,7 @@ func (m *Manager) ComposeDown(ctx context.Context, project, filePath string) err
 }
 
 func (m *Manager) ComposePSNames(ctx context.Context, project, filePath string) ([]string, error) {
-	out, err := m.runCLI(ctx, composeArgs(project, filePath, "ps", "--format", "{{.Name}}")...)
+	out, err := m.runCLI(ctx, composeArgs(project, filePath, "ps", false, "--format", "{{.Name}}")...)
 	if err != nil {
 		return nil, fmt.Errorf("compose ps: %w: %s", err, strings.TrimSpace(out))
 	}

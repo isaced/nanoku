@@ -342,3 +342,84 @@ func TestDeployLogHub_MultipleDeploysIndependent(t *testing.T) {
 		t.Errorf("deploy 2 history = %v, want [deploy-2-only]", historyMessages(hist2))
 	}
 }
+
+// --- publishReplace (in-place keyed progress) ---------------------------
+
+// TestDeployLogHub_ReplaceByKey updates an existing keyed line in place:
+// a second publishReplace with the same key overwrites the msg of the
+// first without growing the history length or changing its position.
+// This is what makes a compose download tick update one row instead of
+// scrolling a new line per tick.
+func TestDeployLogHub_ReplaceByKey(t *testing.T) {
+	hub := newDeployLogHub()
+	hub.publishReplace(1, "abc", "Downloading 48.5kB")
+	hub.publish(1, "Image pulled milestone")
+	hub.publishReplace(1, "abc", "Downloading 3.9MB")
+
+	hist, _, _, unsub, _ := hub.subscribe(context.Background(), 1)
+	defer unsub()
+	if len(hist) != 2 {
+		t.Fatalf("history len = %d, want 2 (replace must not grow)", len(hist))
+	}
+	// The keyed row keeps its position (index 0) but its msg updated.
+	if hist[0].key != "abc" || hist[0].msg != "Downloading 3.9MB" {
+		t.Errorf("hist[0] = {key:%q msg:%q}, want key abc / Downloading 3.9MB", hist[0].key, hist[0].msg)
+	}
+	// The interleaved append is untouched.
+	if hist[1].key != "" || hist[1].msg != "Image pulled milestone" {
+		t.Errorf("hist[1] = {key:%q msg:%q}, want no key / Image pulled milestone", hist[1].key, hist[1].msg)
+	}
+}
+
+// TestDeployLogHub_ReplaceByKey_FirstOccurrenceAppends covers the first
+// event for a key: there's nothing to replace, so it appends carrying
+// the key so future replaces can find it.
+func TestDeployLogHub_ReplaceByKey_FirstOccurrenceAppends(t *testing.T) {
+	hub := newDeployLogHub()
+	hub.publishReplace(1, "layer1", "Pulling fs layer")
+	hist, _, _, unsub, _ := hub.subscribe(context.Background(), 1)
+	defer unsub()
+	if len(hist) != 1 {
+		t.Fatalf("history len = %d, want 1", len(hist))
+	}
+	if hist[0].key != "layer1" || hist[0].msg != "Pulling fs layer" {
+		t.Errorf("hist[0] = {key:%q msg:%q}, want layer1 / Pulling fs layer", hist[0].key, hist[0].msg)
+	}
+}
+
+// TestDeployLogHub_ReplaceByKey_EmptyKeyDelegatesToPublish: calling
+// publishReplace with an empty key must behave like a normal append
+// (keyless line), not panic or drop the line.
+func TestDeployLogHub_ReplaceByKey_EmptyKeyDelegatesToPublish(t *testing.T) {
+	hub := newDeployLogHub()
+	hub.publishReplace(1, "", "just a line")
+	hist, _, _, unsub, _ := hub.subscribe(context.Background(), 1)
+	defer unsub()
+	if len(hist) != 1 || hist[0].msg != "just a line" || hist[0].key != "" {
+		t.Errorf("hist = %+v, want one keyless line 'just a line'", hist)
+	}
+}
+
+// TestDeployLogHub_ReplaceByKey_LiveSubscriberGetsKey: a live
+// subscriber must receive the keyed line (with key populated) so the
+// SSE layer can emit a `line-replace` event instead of `line`.
+func TestDeployLogHub_ReplaceByKey_LiveSubscriberGetsKey(t *testing.T) {
+	hub := newDeployLogHub()
+	_, live, _, unsub, _ := hub.subscribe(context.Background(), 1)
+	defer unsub()
+	// Drain the pre-buffer window so the replace isn't swallowed.
+	time.Sleep(20 * time.Millisecond)
+
+	hub.publishReplace(1, "abc", "Downloading 3.9MB")
+	select {
+	case l := <-live:
+		if l.key != "abc" {
+			t.Errorf("live line key = %q, want abc", l.key)
+		}
+		if l.msg != "Downloading 3.9MB" {
+			t.Errorf("live line msg = %q, want Downloading 3.9MB", l.msg)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("keyed live line never arrived")
+	}
+}
