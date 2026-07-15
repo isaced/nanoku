@@ -2,12 +2,14 @@ package api
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/isaced/nanoku/internal/db"
 	"github.com/isaced/nanoku/internal/secret"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // newTestDB returns a real SQLite DB on disk (TempDir, removed by the
@@ -58,4 +60,23 @@ func newTestSealer(t *testing.T) *secret.Sealer {
 		t.Fatalf("test sealer: %v", err)
 	}
 	return s
+}
+
+// TestMain lowers bcryptCost for the whole test binary. Production callers
+// in users.go run at cost 12; under -race each bcrypt op at cost 12 takes
+// ~4s of instrumentation, and a single login flow can run a handful of
+// them. MinCost keeps the same code paths (real bcrypt format, real
+// CompareHashAndPassword, real hash storage) at a cost that takes ms
+// instead of seconds, so the suite drops from ~90s to ~13s with race
+// detection. The dummy hash in users.go tracks bcryptCost via
+// sync.OnceValue, so it stays in sync with whatever cost is active here.
+//
+// Honor NANOKU_KEEP_BCRYPT_COST=1 to opt out and run at production cost —
+// useful if you're investigating a regression that might depend on the
+// cost factor itself.
+func TestMain(m *testing.M) {
+	if os.Getenv("NANOKU_KEEP_BCRYPT_COST") != "1" {
+		bcryptCost = bcrypt.MinCost
+	}
+	os.Exit(m.Run())
 }

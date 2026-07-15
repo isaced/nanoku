@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/isaced/nanoku/internal/db"
@@ -10,7 +11,13 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const bcryptCost = 12
+// bcryptCost is the work factor for password hashes. It's a var (not a
+// const) so tests in this package can lower it via TestMain; production
+// callers should not touch it. The default is 12 (matching the value this
+// file shipped with for years and the lower end of current OWASP guidance),
+// not bcrypt.DefaultCost which is only 10 — we don't want a silent
+// downgrade from a refactor. See testutil_test.go for the rationale.
+var bcryptCost = 12
 
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
@@ -22,6 +29,20 @@ func HashPassword(plain string) (string, error) {
 	}
 	return string(b), nil
 }
+
+// dummyHash returns a bcrypt-format string whose embedded cost matches
+// the current bcryptCost. The hash bytes are junk — Authenticate ignores
+// the result; only the work factor matters for timing-attack mitigation.
+// We resolve it lazily via sync.OnceValue so a test that lowers bcryptCost
+// in TestMain gets a fast dummy on first use, and production callers
+// inherit the default cost automatically.
+var dummyHash = sync.OnceValue(func() string {
+	h, err := bcrypt.GenerateFromPassword([]byte("nanoku-dummy"), bcryptCost)
+	if err != nil {
+		panic(err) // bcrypt only fails on cost out of range; init-time invariant
+	}
+	return string(h)
+})
 
 // UserByUsername fetches a user row. Returns db.ErrNotFound if not present.
 func UserByUsername(ctx context.Context, d *db.DB, username string) (*db.User, error) {
@@ -43,10 +64,7 @@ func Authenticate(ctx context.Context, d *db.DB, username, password string) (*db
 	u, err := UserByUsername(ctx, d, username)
 	if err != nil {
 		// still run a dummy bcrypt to keep timing similar for known/unknown users
-		_ = bcrypt.CompareHashAndPassword(
-			[]byte("$2a$12$abcdefghijklmnopqrstuvCqXcQqJZP9Vf3QvFnq6YhkQ3W2oYT6He"),
-			[]byte(password),
-		)
+		_ = bcrypt.CompareHashAndPassword([]byte(dummyHash()), []byte(password))
 		return nil, ErrInvalidCredentials
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
