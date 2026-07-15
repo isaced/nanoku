@@ -48,5 +48,8 @@ internal/api/dist/
 # Generated compose files (created at deploy time)
 composes/
 
+# Auto-generated Caddyfile (regenerated on every Site change)
+Caddyfile
+
 # Bind-mounted data dir for the docker-compose stack
 data/
