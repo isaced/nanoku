@@ -53,3 +53,4 @@ Caddyfile
 
 # Bind-mounted data dir for the docker-compose stack
 data/
+.DS_Store
