@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -1099,6 +1100,86 @@ func TestEnsureCaddyContainer_CreatesNewContainer(t *testing.T) {
 	}
 	if !started {
 		t.Error("expected container start")
+	}
+}
+
+// TestEnsureCaddyContainer_ResolvesRelativeCaddyfilePath covers the bug
+// where a relative Caddyfile path (the default, "./Caddyfile") makes the
+// Docker engine reject the bind mount with "mount path must be absolute".
+// The manager must resolve the path to an absolute one before constructing
+// the mount, while the in-process caddy.WriteAtomic caller keeps using the
+// original string.
+func TestEnsureCaddyContainer_ResolvesRelativeCaddyfilePath(t *testing.T) {
+	fd := newFakeDaemon()
+	defer fd.Close()
+
+	var createBody string
+	fd.dispatch = func(w http.ResponseWriter, r *http.Request, _ string) {
+		switch {
+		case r.URL.Path == "/networks" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode([]network.Summary{{Name: "nanoku-net"}})
+		case r.URL.Path == "/volumes" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(volume.ListResponse{Volumes: []*volume.Volume{{Name: "nanoku-data"}}})
+		case r.URL.Path == "/containers/json" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode([]container.Summary{})
+		case strings.HasPrefix(r.URL.Path, "/images/create") && r.Method == http.MethodPost:
+			_, _ = w.Write([]byte(`{"status":"Pulling"}` + "\n"))
+		case r.URL.Path == "/containers/create" && r.Method == http.MethodPost:
+			var buf bytes.Buffer
+			_, _ = buf.ReadFrom(r.Body)
+			createBody = buf.String()
+			_ = json.NewEncoder(w).Encode(container.CreateResponse{ID: "caddyid"})
+			w.WriteHeader(http.StatusCreated)
+		case strings.HasSuffix(r.URL.Path, "/start") && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}
+	m := newTestManager(t, fd, Config{
+		ContainerName: "nanoku-caddy",
+		Image:         "caddy:2",
+		NetworkName:   "nanoku-net",
+		VolumeName:    "nanoku-data",
+	})
+
+	// Run from a temp cwd so "./Caddyfile" doesn't accidentally resolve
+	// to something inside the repo, and so the resolved absolute path is
+	// something we can match against.
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	if err := m.EnsureCaddyContainer(context.Background(), "./Caddyfile"); err != nil {
+		t.Fatalf("EnsureCaddyContainer with relative path: %v", err)
+	}
+	if createBody == "" {
+		t.Fatal("expected /containers/create to be called")
+	}
+
+	var parsed struct {
+		HostConfig struct {
+			Mounts []struct {
+				Source string `json:"Source"`
+				Target string `json:"Target"`
+			} `json:"Mounts"`
+		} `json:"HostConfig"`
+	}
+	if err := json.Unmarshal([]byte(createBody), &parsed); err != nil {
+		t.Fatalf("decode create body: %v\nbody=%s", err, createBody)
+	}
+	if len(parsed.HostConfig.Mounts) == 0 {
+		t.Fatalf("expected at least one mount in create body, got %s", createBody)
+	}
+	got := parsed.HostConfig.Mounts[0]
+	if got.Target != "/etc/caddy/Caddyfile" {
+		t.Errorf("mount target = %q, want /etc/caddy/Caddyfile", got.Target)
+	}
+	if !filepath.IsAbs(got.Source) {
+		t.Errorf("mount source %q is not absolute — relative path was passed through unchanged", got.Source)
+	}
+	wantSource := filepath.Join(dir, "Caddyfile")
+	if got.Source != wantSource {
+		t.Errorf("mount source = %q, want %q (relative path must resolve against cwd)", got.Source, wantSource)
 	}
 }
 
