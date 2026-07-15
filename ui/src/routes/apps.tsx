@@ -17,6 +17,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { ensureAuth, isAuthenticated } from '../lib/auth'
 import {
+  appLifecycle,
   useDeleteApp,
   useDeployApp,
   useRestartApp,
@@ -265,47 +266,69 @@ function AppsPageContent() {
                         />
                       </Tooltip>
                     )}
-                    {row.container?.status === 'running' && (
-                      <>
-                        <Tooltip title={t('table.actions.stop')}>
-                          <Button
-                            type="text"
-                            size="small"
-                            loading={stopApp.isPending && stopApp.variables === row.id}
-                            icon={<Square size={14} />}
-                            onClick={() =>
-                              runAction(row, 'stopped', () => stopApp.mutateAsync(row.id))
-                            }
-                          />
-                        </Tooltip>
-                        <Tooltip title={t('table.actions.restart')}>
-                          <Button
-                            type="text"
-                            size="small"
-                            loading={restartApp.isPending && restartApp.variables === row.id}
-                            icon={<RefreshCw size={14} />}
-                            onClick={() =>
-                              runAction(row, 'restarted', () =>
-                                restartApp.mutateAsync(row.id),
-                              )
-                            }
-                          />
-                        </Tooltip>
-                      </>
-                    )}
-                    {row.container && row.container.status !== 'running' && (
-                      <Tooltip title={t('table.actions.start')}>
-                        <Button
-                          type="text"
-                          size="small"
-                          loading={startApp.isPending && startApp.variables === row.id}
-                          icon={<Play size={14} />}
-                          onClick={() =>
-                            runAction(row, 'started', () => startApp.mutateAsync(row.id))
-                          }
-                        />
-                      </Tooltip>
-                    )}
+                    {/* Lifecycle rules live in appLifecycle() so the
+                        list and the detail drawer don't drift. */}
+                    {(() => {
+                      const lc = appLifecycle(row.container)
+                      return (
+                        <>
+                          {lc.isLive && (
+                            <>
+                              <Tooltip title={t('table.actions.stop')}>
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  loading={
+                                    stopApp.isPending && stopApp.variables === row.id
+                                  }
+                                  icon={<Square size={14} />}
+                                  onClick={() =>
+                                    runAction(row, 'stopped', () =>
+                                      stopApp.mutateAsync(row.id),
+                                    )
+                                  }
+                                />
+                              </Tooltip>
+                              {!lc.isRestarting && (
+                                <Tooltip title={t('table.actions.restart')}>
+                                  <Button
+                                    type="text"
+                                    size="small"
+                                    loading={
+                                      restartApp.isPending &&
+                                      restartApp.variables === row.id
+                                    }
+                                    icon={<RefreshCw size={14} />}
+                                    onClick={() =>
+                                      runAction(row, 'restarted', () =>
+                                        restartApp.mutateAsync(row.id),
+                                      )
+                                    }
+                                  />
+                                </Tooltip>
+                              )}
+                            </>
+                          )}
+                          {lc.isStopped && (
+                            <Tooltip title={t('table.actions.start')}>
+                              <Button
+                                type="text"
+                                size="small"
+                                loading={
+                                  startApp.isPending && startApp.variables === row.id
+                                }
+                                icon={<Play size={14} />}
+                                onClick={() =>
+                                  runAction(row, 'started', () =>
+                                    startApp.mutateAsync(row.id),
+                                  )
+                                }
+                              />
+                            </Tooltip>
+                          )}
+                        </>
+                      )
+                    })()}
                     {row.container && (
                       <Tooltip title={t('table.actions.redeploy')}>
                         <Button
@@ -367,11 +390,6 @@ function AppsPageContent() {
             setDetailInitialTab('overview')
           }}
           onChanged={() => reload()}
-          onEditRequested={(a) => {
-            setDetailAppId(null)
-            setDetailInitialTab('overview')
-            openEdit(a)
-          }}
         />
       )}
     </div>

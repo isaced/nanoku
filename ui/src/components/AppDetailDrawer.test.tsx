@@ -116,7 +116,6 @@ describe('AppDetailDrawer', () => {
           appId={1}
           onClose={() => {}}
           onChanged={() => {}}
-          onEditRequested={() => {}}
         />
       </Providers>,
     )
@@ -138,7 +137,6 @@ describe('AppDetailDrawer', () => {
           initialTab="deploys"
           onClose={() => {}}
           onChanged={() => {}}
-          onEditRequested={() => {}}
         />
       </Providers>,
     )
@@ -161,7 +159,6 @@ describe('AppDetailDrawer', () => {
           initialTab="deploys"
           onClose={() => {}}
           onChanged={() => {}}
-          onEditRequested={() => {}}
         />
       </Providers>,
     )

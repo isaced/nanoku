@@ -111,6 +111,63 @@ export function useRestartApp(): UseMutationResult<App, Error, number> {
   })
 }
 
+/**
+ * Container lifecycle actions share the same set of UI rules:
+ * which buttons to show in which state. Centralising the rules here
+ * keeps the apps list and the app detail drawer in sync — without
+ * this, one of them inevitably drifts (e.g. the list shows Stop
+ * only for `running`, the drawer shows it for `running |
+ * restarting`).
+ */
+export type AppLifecycle = {
+  /** The container exists AND docker considers it live. */
+  isLive: boolean
+  /** A container row exists, regardless of state. */
+  hasContainer: boolean
+  /** The container is actively re-spawning (short-lived image on
+   * `unless-stopped` is the common case). Restart is a no-op here;
+   * Stop is the only escape. */
+  isRestarting: boolean
+  /** The container is running. */
+  isRunning: boolean
+  /** The container is stopped / exited / not yet started. */
+  isStopped: boolean
+}
+
+export function appLifecycle(container?: { status: string } | null): AppLifecycle {
+  const status = container?.status
+  const isRunning = status === 'running'
+  const isRestarting = status === 'restarting'
+  const isPaused = status === 'paused'
+  const isStopped =
+    !container ||
+    status === 'exited' ||
+    status === 'dead' ||
+    status === 'created' ||
+    status === 'removing'
+  return {
+    isLive: isRunning || isRestarting || isPaused,
+    hasContainer: !!container,
+    isRestarting,
+    isRunning,
+    isStopped,
+  }
+}
+
+export type AppActions = {
+  start: UseMutationResult<App, Error, number>
+  stop: UseMutationResult<App, Error, number>
+  restart: UseMutationResult<App, Error, number>
+}
+
+export function useAppActions(): AppActions {
+  return {
+    start: useStartApp(),
+    stop: useStopApp(),
+    restart: useRestartApp(),
+  }
+}
+
 export function useRotateTriggerToken(): UseMutationResult<App, Error, number> {
   const qc = useQueryClient()
   return useMutation({

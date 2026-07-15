@@ -159,6 +159,14 @@
     "noVolumes": "尚未设置持久化。",
     "deleteVolumesOnRemove": "删除应用时清理自动命名的 volume",
     "editInEditor": "在编辑应用中修改",
+    "actions": {
+      "start": "启动",
+      "stop": "停止",
+      "restart": "重启",
+      "started": "应用已启动",
+      "stopped": "应用已停止",
+      "restarted": "应用已重启"
+    },
     "type": "类型",
     "typeVolume": "命名 volume",
     "typeBind": "Bind mount",

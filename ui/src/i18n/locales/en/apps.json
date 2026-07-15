@@ -159,6 +159,14 @@
     "noVolumes": "No persistent storage configured.",
     "deleteVolumesOnRemove": "Clean up auto-named volumes on app removal",
     "editInEditor": "Edit in app editor",
+    "actions": {
+      "start": "Start",
+      "stop": "Stop",
+      "restart": "Restart",
+      "started": "App started",
+      "stopped": "App stopped",
+      "restarted": "App restarted"
+    },
     "type": "Type",
     "typeVolume": "Named volume",
     "typeBind": "Bind mount",

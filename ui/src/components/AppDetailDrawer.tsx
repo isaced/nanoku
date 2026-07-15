@@ -1,6 +1,17 @@
-import { Suspense, useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { App, Button, Drawer, Popconfirm, Tabs, Tag } from 'antd'
-import { Bell, Pencil, RefreshCw } from 'lucide-react'
+import {
+  Bell,
+  Box,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Container as ContainerIcon,
+  Network,
+  Play,
+  RefreshCw,
+  ScrollText,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../lib/api'
 import {
@@ -15,23 +26,42 @@ import { queryKeys } from '../lib/queryKeys'
 import { useQueryClient } from '@tanstack/react-query'
 import type { App as AppType, Deploy, EnvVar, Volume } from '../lib/types'
 import { RouteFallback } from './RouteFallback'
+import { LogViewer } from './LogViewer'
 
 const DEPLOY_POLL_INTERVAL_MS = 3000
 
 type TabKey = 'overview' | 'deploys' | 'logs'
+
+// Map a Docker container status string to an antd Tag color. Used
+// both in the drawer title and the apps list status cell — keeping
+// the same palette everywhere so the eye learns the mapping.
+function statusColor(status: string): string {
+  switch (status) {
+    case 'running':
+      return 'green'
+    case 'restarting':
+      return 'blue'
+    case 'paused':
+      return 'orange'
+    case 'dead':
+      return 'red'
+    case 'exited':
+    case 'created':
+    default:
+      return 'default'
+  }
+}
 
 export function AppDetail({
   appId,
   initialTab,
   onClose,
   onChanged,
-  onEditRequested,
 }: {
   appId: number
   initialTab?: TabKey
   onClose: () => void
   onChanged: () => void
-  onEditRequested: (app: AppType) => void
 }) {
   // The Drawer is rendered OUTSIDE the Suspense boundary so it mounts
   // once and stays in the DOM while the body suspends. Earlier the
@@ -53,7 +83,7 @@ export function AppDetail({
             <div className="h-6 w-40 bg-[var(--bg-input)] rounded animate-pulse" />
           }
         >
-          <AppDetailTitle appId={appId} onEditRequested={onEditRequested} />
+          <AppDetailTitle appId={appId} />
         </Suspense>
       }
     >
@@ -70,27 +100,25 @@ export function AppDetail({
 
 function AppDetailTitle({
   appId,
-  onEditRequested,
 }: {
   appId: number
-  onEditRequested: (app: AppType) => void
 }) {
-  const { t } = useTranslation('apps')
   const appQuery = useSuspenseApp(appId)
   const app = appQuery.data
+  // Action buttons live on the apps list row, not on the drawer
+  // header — the drawer is for inspection (logs / deploys / env /
+  // volumes / config), not control. Keeping it that way means we
+  // never have to reconcile two action surfaces; the list is
+  // canonical.
   return (
     <div className="flex items-center gap-3">
+      <ContainerIcon size={16} className="text-[var(--fg-muted)]" />
       <span className="mono text-base">{app.name}</span>
-      {app.container && <Tag className="!m-0">{app.container.status}</Tag>}
-      <Button
-        size="small"
-        type="text"
-        icon={<Pencil size={13} />}
-        className="!ml-auto"
-        onClick={() => onEditRequested(app)}
-      >
-        {t('detail.editInEditor')}
-      </Button>
+      {app.container && (
+        <Tag className="!m-0" color={statusColor(app.container.status)}>
+          {app.container.status}
+        </Tag>
+      )}
     </div>
   )
 }
@@ -216,16 +244,37 @@ function OverviewTab({
   return (
     <div className="space-y-4 text-sm">
       <div className="space-y-3">
-        <Field label={t('detail.image')} value={app.image} mono />
-        <Field label={t('detail.internalPort')} value={String(app.port)} mono />
-        <Field label={t('detail.created')} value={app.createdAt} mono />
+        <Field
+          label={t('detail.image')}
+          value={app.image}
+          mono
+          icon={<Box size={14} />}
+        />
+        <Field
+          label={t('detail.internalPort')}
+          value={String(app.port)}
+          mono
+          icon={<Network size={14} />}
+        />
+        <Field
+          label={t('detail.created')}
+          value={app.createdAt}
+          mono
+          icon={<Clock size={14} />}
+        />
         {app.container && (
           <>
-            <Field label={t('detail.container')} value={app.container.name} mono />
+            <Field
+              label={t('detail.container')}
+              value={app.container.name}
+              mono
+              icon={<ContainerIcon size={14} />}
+            />
             <Field
               label={t('detail.started')}
               value={app.container.startedAt ?? '—'}
               mono
+              icon={<Play size={14} />}
             />
           </>
         )}
@@ -338,6 +387,14 @@ function OverviewTab({
 function DeploysTab({ deploys, appId }: { deploys: Deploy[]; appId: number }) {
   const { t } = useTranslation('apps')
   const rollback = useRollbackApp()
+  // Local state for which deploy's log panel is open. By default we
+  // auto-open the panel for any in-flight deploy so the operator
+  // doesn't have to click to see what's happening — Coolify does
+  // the same.
+  const [openLogs, setOpenLogs] = useState<Set<number>>(() => {
+    const inFlight = deploys.find((d) => d.status === 'running')
+    return new Set(inFlight ? [inFlight.id] : [])
+  })
   if (deploys.length === 0) {
     return (
       <div className="py-8 text-center text-[var(--fg-muted)] text-sm">
@@ -349,67 +406,99 @@ function DeploysTab({ deploys, appId }: { deploys: Deploy[]; appId: number }) {
     <div className="space-y-2">
       {deploys.map((d) => {
         const canRollback = d.status === 'success'
+        const isOpen = openLogs.has(d.id)
         return (
           <div
             key={d.id}
-            className="border border-[var(--border)] rounded-md p-3 bg-[var(--bg-input)] text-sm"
+            className="border border-[var(--border)] rounded-md bg-[var(--bg-input)] text-sm"
           >
-            <div className="flex items-center justify-between mb-1">
-              <span className="mono text-xs">
-                #{d.id} · {d.trigger}
-                {d.commitSha && (
-                  <span className="ml-2 text-[var(--fg-muted)]">{d.commitSha.slice(0, 7)}</span>
-                )}
-              </span>
-              <div className="flex items-center gap-2">
-                <Tag
-                  color={
-                    d.status === 'success'
-                      ? 'green'
-                      : d.status === 'failed'
-                        ? 'red'
-                        : d.status === 'rolled_back'
-                          ? 'orange'
-                          : 'default'
-                  }
-                >
-                  {d.status}
-                </Tag>
-                {canRollback && (
-                  <Popconfirm
-                    title={t('detail.rollbackConfirmTitle')}
-                    description={t('detail.rollbackConfirmDesc', { id: d.id })}
-                    okText={t('detail.rollback')}
-                    cancelText={t('common.cancel')}
-                    onConfirm={() => rollback.mutate({ appId, deployId: d.id })}
-                    okButtonProps={{ danger: true }}
+            <div className="p-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="mono text-xs">
+                  #{d.id} · {d.trigger}
+                  {d.commitSha && (
+                    <span className="ml-2 text-[var(--fg-muted)]">{d.commitSha.slice(0, 7)}</span>
+                  )}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Tag
+                    color={
+                      d.status === 'success'
+                        ? 'green'
+                        : d.status === 'failed'
+                          ? 'red'
+                          : d.status === 'rolled_back'
+                            ? 'orange'
+                            : d.status === 'running'
+                              ? 'blue'
+                              : 'default'
+                    }
                   >
-                    <Button size="small" type="text" loading={rollback.isPending}>
-                      {t('detail.rollback')}
-                    </Button>
-                  </Popconfirm>
-                )}
+                    {d.status}
+                  </Tag>
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                    onClick={() => {
+                      setOpenLogs((prev) => {
+                        const next = new Set(prev)
+                        if (next.has(d.id)) {
+                          next.delete(d.id)
+                        } else {
+                          next.add(d.id)
+                        }
+                        return next
+                      })
+                    }}
+                  >
+                    <ScrollText size={12} className="inline-block mr-1" />
+                    {t('detail.logs')}
+                  </Button>
+                  {canRollback && (
+                    <Popconfirm
+                      title={t('detail.rollbackConfirmTitle')}
+                      description={t('detail.rollbackConfirmDesc', { id: d.id })}
+                      okText={t('detail.rollback')}
+                      cancelText={t('common.cancel')}
+                      onConfirm={() => rollback.mutate({ appId, deployId: d.id })}
+                      okButtonProps={{ danger: true }}
+                    >
+                      <Button size="small" type="text" loading={rollback.isPending}>
+                        {t('detail.rollback')}
+                      </Button>
+                    </Popconfirm>
+                  )}
+                </div>
+              </div>
+              {d.commitMessage && (
+                <div className="text-xs mt-1 line-clamp-2">
+                  {d.commitMessage.split('\n')[0]}
+                </div>
+              )}
+              {d.containerName && (
+                <div className="mono text-xs text-[var(--fg-muted)] mt-1">
+                  {t('detail.containerLabel')}: {d.containerName}
+                </div>
+              )}
+              {d.error && (
+                <div className="text-xs text-[var(--danger)] mt-1">
+                  {d.error}
+                </div>
+              )}
+              <div className="text-xs text-[var(--fg-muted)] mt-1">
+                {d.startedAt ?? d.createdAt}
+                {d.finishedAt ? ` → ${d.finishedAt}` : ''}
               </div>
             </div>
-            {d.commitMessage && (
-              <div className="text-xs mt-1 line-clamp-2">
-                {d.commitMessage.split('\n')[0]}
+            {isOpen && (
+              <div className="px-3 pb-3">
+                <LogViewer
+                  url={`/api/apps/${appId}/deployments/${d.id}/logs/stream`}
+                  heightClass="h-64"
+                />
               </div>
             )}
-            {d.containerName && (
-              <div className="mono text-xs text-[var(--fg-muted)] mt-1">
-                {t('detail.containerLabel')}: {d.containerName}
-              </div>
-            )}
-            {d.error && (
-              <div className="text-xs text-[var(--danger)] mt-1">
-                {d.error}
-              </div>
-            )}
-            <div className="text-xs text-[var(--fg-muted)] mt-1">
-              {d.startedAt ?? d.createdAt}
-              {d.finishedAt ? ` → ${d.finishedAt}` : ''}
-            </div>
           </div>
         )
       })}
@@ -420,30 +509,27 @@ function DeploysTab({ deploys, appId }: { deploys: Deploy[]; appId: number }) {
 function LogsTab({ appId, hasContainer }: { appId: number; hasContainer: boolean }) {
   const { t } = useTranslation('apps')
   const logsQuery = useAppLogs(appId, 300, { enabled: hasContainer })
-  const [loaded, setLoaded] = useState(false)
-
-  const logs = logsQuery.data ?? ''
-  const placeholder = !hasContainer ? t('detail.noContainer') : t('detail.loadLogsHint')
-  const display = loaded ? logs : placeholder
-
+  // Seed the SSE stream with the last 300 lines from the one-shot
+  // GET, so the user sees history the moment the tab opens. While
+  // the GET is in flight the stream is already open at "now" and
+  // the panel shows a connecting indicator — when the GET resolves
+  // the seed lands and live lines append on top of it.
+  const initialLines = useMemo(() => {
+    if (!logsQuery.data) return undefined
+    return logsQuery.data.split('\n')
+  }, [logsQuery.data])
+  if (!hasContainer) {
+    return (
+      <div className="mono text-xs text-[var(--fg-muted)] py-6 text-center">
+        {t('detail.noContainer')}
+      </div>
+    )
+  }
   return (
-    <div className="space-y-2">
-      <Button
-        size="small"
-        icon={<RefreshCw size={13} />}
-        onClick={() => {
-          setLoaded(true)
-          void logsQuery.refetch()
-        }}
-        loading={logsQuery.isFetching}
-        disabled={!hasContainer}
-      >
-        {t('detail.loadLogs')}
-      </Button>
-      <pre className="mono text-xs leading-relaxed bg-[var(--bg-input)] border border-[var(--border)] rounded-lg p-3 overflow-auto max-h-96 whitespace-pre-wrap break-all text-[var(--fg-muted)]">
-        {display}
-      </pre>
-    </div>
+    <LogViewer
+      url={`/api/apps/${appId}/logs/stream?tail=300`}
+      initialLines={initialLines}
+    />
   )
 }
 
@@ -477,17 +563,24 @@ function Field({
   label,
   value,
   mono,
+  icon,
 }: {
   label: string
   value: string
   mono?: boolean
+  icon?: ReactNode
 }) {
   return (
-    <div className="flex items-baseline gap-3">
-      <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] w-32 shrink-0">
+    <div className="flex items-center gap-3 min-h-[22px]">
+      {icon && (
+        <span className="text-[var(--fg-muted)] shrink-0 inline-flex items-center justify-center w-3.5">
+          {icon}
+        </span>
+      )}
+      <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] w-32 shrink-0 leading-none">
         {label}
       </span>
-      <span className={mono ? 'mono text-xs' : 'text-sm'}>{value}</span>
+      <span className={`${mono ? 'mono text-xs' : 'text-sm'} leading-none`}>{value}</span>
     </div>
   )
 }
