@@ -1,0 +1,14 @@
+{
+  "empty": "// waiting for logs",
+  "status": {
+    "connecting": "Connecting…",
+    "live": "Live",
+    "reconnecting": "Reconnecting…",
+    "closed": "Disconnected",
+    "error": "Error"
+  },
+  "pause": "Pause (don't drop new lines)",
+  "resume": "Resume tailing",
+  "clear": "Clear",
+  "jumpToBottom": "↓ Jump to live"
+}

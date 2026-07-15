@@ -1,0 +1,14 @@
+{
+  "empty": "// 等待日志",
+  "status": {
+    "connecting": "连接中…",
+    "live": "实时",
+    "reconnecting": "重连中…",
+    "closed": "已断开",
+    "error": "错误"
+  },
+  "pause": "暂停（不丢新行）",
+  "resume": "继续追踪",
+  "clear": "清空",
+  "jumpToBottom": "↓ 回到最新"
+}

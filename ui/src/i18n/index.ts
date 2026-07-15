@@ -10,6 +10,7 @@ import enSites from './locales/en/sites.json'
 import enApps from './locales/en/apps.json'
 import enSystem from './locales/en/system.json'
 import enVersion from './locales/en/version.json'
+import enLogs from './locales/en/logs.json'
 
 import zhCommon from './locales/zh/common.json'
 import zhNav from './locales/zh/nav.json'
@@ -19,6 +20,7 @@ import zhSites from './locales/zh/sites.json'
 import zhApps from './locales/zh/apps.json'
 import zhSystem from './locales/zh/system.json'
 import zhVersion from './locales/zh/version.json'
+import zhLogs from './locales/zh/logs.json'
 
 export const SUPPORTED_LANGUAGES = ['en', 'zh'] as const
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]
@@ -52,6 +54,7 @@ void i18n
       'apps',
       'system',
       'version',
+      'logs',
     ],
     defaultNS: 'common',
     interpolation: { escapeValue: false },
@@ -70,6 +73,7 @@ void i18n
         apps: enApps,
         system: enSystem,
         version: enVersion,
+        logs: enLogs,
       },
       zh: {
         common: zhCommon,
@@ -80,6 +84,7 @@ void i18n
         apps: zhApps,
         system: zhSystem,
         version: zhVersion,
+        logs: zhLogs,
       },
     },
     returnNull: false,

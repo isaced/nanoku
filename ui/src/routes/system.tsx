@@ -1,12 +1,11 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import {
   Button,
   InputNumber,
   Space,
   Switch,
   Tag,
-  Tooltip,
 } from 'antd'
 import {
   CircleCheck,
@@ -26,6 +25,7 @@ import {
 } from '../lib/hooks'
 import { RouteError } from '../components/RouteError'
 import { RouteFallback } from '../components/RouteFallback'
+import { LogViewer } from '../components/LogViewer'
 
 export const Route = createFileRoute('/system')({
   beforeLoad: async () => {
@@ -55,12 +55,37 @@ function SystemPageContent() {
 
   const statusQuery = useSuspenseStatus()
   const systemStatusQuery = useSuspenseSystemStatus()
+  // Seed both panels with a one-shot GET so the user sees the last
+  // `tail` lines the moment the page opens; the SSE stream then
+  // keeps appending new lines below. We deliberately do NOT use the
+  // streamed data as a source of truth for the initial render — the
+  // GET lands before the SSE handshake in practice, but the
+  // useLogStream initialLines seed handles either order.
   const caddyLogs = useSystemLogs('caddy', tail, {
     enabled: systemStatusQuery.data.dockerAvailable === true,
   })
   const selfLogs = useSystemLogs('nanoku', tail, {
     enabled: systemStatusQuery.data.nanokuContainerConfigured === true,
   })
+  const caddyInitial = useMemo(
+    () => (caddyLogs.data ? caddyLogs.data.split('\n') : undefined),
+    [caddyLogs.data],
+  )
+  const selfInitial = useMemo(
+    () => (selfLogs.data ? selfLogs.data.split('\n') : undefined),
+    [selfLogs.data],
+  )
+  // When the user changes `tail`, force a fresh GET (which becomes
+  // a fresh SSE connection from the new url). We use a key bump
+  // trick: bumping a counter is enough to invalidate the seed memo
+  // because useSystemLogs is keyed on tail already, so a new tail
+  // → new query → new data → new initialLines → fresh stream.
+  useEffect(() => {
+    void caddyLogs.refetch()
+    void selfLogs.refetch()
+    // We intentionally re-run on tail change only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tail])
 
   const status = statusQuery.data
   const systemStatus = systemStatusQuery.data
@@ -106,15 +131,18 @@ function SystemPageContent() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <LogPanel
+          <LogCard
             icon={<ShieldCheck size={14} />}
             title={t('logPanel.nanokuSelf')}
             containerName={systemStatus.nanokuContainerName}
             status={systemStatus.nanokuContainerConfigured ? 'configured' : undefined}
-            loading={selfLogs.isFetching}
-            logs={selfLogs.data ?? ''}
             wordWrap={wordWrap}
-            onRefresh={() => selfLogs.refetch()}
+            streamUrl={
+              systemStatus.nanokuContainerConfigured
+                ? `/api/system/logs/stream?source=nanoku&tail=${tail}`
+                : null
+            }
+            initialLines={selfInitial}
             emptyHint={
               !systemStatus.nanokuContainerConfigured ? (
                 <div className="text-xs text-[var(--fg-muted)] space-y-1">
@@ -141,15 +169,18 @@ function SystemPageContent() {
               ) : null
             }
           />
-          <LogPanel
+          <LogCard
             icon={<ContainerIcon size={14} />}
             title={t('logPanel.caddy')}
             containerName={systemStatus.caddyContainer}
             status={status.caddyStatus}
-            loading={caddyLogs.isFetching}
-            logs={caddyLogs.data ?? ''}
             wordWrap={wordWrap}
-            onRefresh={() => caddyLogs.refetch()}
+            streamUrl={
+              systemStatus.dockerAvailable
+                ? `/api/system/logs/stream?source=caddy&tail=${tail}`
+                : null
+            }
+            initialLines={caddyInitial}
             emptyHint={
               !systemStatus.dockerAvailable ? (
                 <div className="text-xs text-[var(--fg-muted)] flex items-center gap-1.5">
@@ -165,31 +196,28 @@ function SystemPageContent() {
   )
 }
 
-function LogPanel({
+function LogCard({
   icon,
   title,
   containerName,
   status,
-  loading,
-  logs,
   wordWrap,
-  onRefresh,
+  streamUrl,
+  initialLines,
   emptyHint,
 }: {
   icon: React.ReactNode
   title: string
   containerName?: string
   status?: string
-  loading: boolean
-  logs: string
   wordWrap: boolean
-  onRefresh: () => void
+  streamUrl: string | null
+  initialLines?: string[]
   emptyHint?: React.ReactNode
 }) {
-  const { t } = useTranslation('system')
   return (
     <section className="border border-[var(--border)] rounded-lg bg-[var(--bg-elevated)] overflow-hidden flex flex-col">
-      <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between gap-3">
+      <div className="px-4 py-3 border-b border-[var(--border)] flex items-center gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-[var(--fg-muted)]">{icon}</span>
           <span className="mono text-sm">{title}</span>
@@ -198,33 +226,16 @@ function LogPanel({
           )}
           {status && <StatusTag status={status} />}
         </div>
-        <Tooltip title={t('logPanel.refresh')}>
-          <Button
-            type="text"
-            size="small"
-            icon={
-              <RefreshCw
-                size={13}
-                className={loading ? 'animate-spin' : ''}
-              />
-            }
-            onClick={onRefresh}
-            loading={loading}
-            disabled={!containerName}
-          />
-        </Tooltip>
       </div>
-      <div className="flex-1 min-h-0">
-        {emptyHint ? (
-          <div className="p-4">{emptyHint}</div>
+      <div className="flex-1 min-h-0 p-3">
+        {streamUrl ? (
+          <LogViewer
+            url={streamUrl}
+            initialLines={initialLines}
+            wordWrap={wordWrap}
+          />
         ) : (
-          <pre
-            className={`mono text-xs leading-relaxed bg-[var(--bg-input)] p-3 overflow-auto h-96 text-[var(--fg-muted)] ${
-              wordWrap ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'
-            }`}
-          >
-            {logs || t('logPanel.clickRefresh')}
-          </pre>
+          <div className="p-2">{emptyHint}</div>
         )}
       </div>
     </section>
