@@ -1,4 +1,4 @@
-import { Tooltip } from 'antd'
+import { Button, Tooltip } from 'antd'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { SystemStatus } from '../lib/types'
@@ -177,15 +177,18 @@ export function Footer({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <a
-            href={GITHUB_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={t('viewOnGithub')}
-            className="group inline-flex items-center justify-center size-7 rounded-full border border-[var(--border)] text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--bg-elevated)] hover:border-[var(--border-strong)] transition-colors"
-          >
-            <GithubMark size={14} className="transition-opacity group-hover:opacity-80" />
-          </a>
+          <Tooltip title={t('viewOnGithub')}>
+            <Button
+              type="text"
+              size="small"
+              icon={<GithubMark size={15} />}
+              href={GITHUB_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={t('viewOnGithub')}
+              className="!text-[var(--fg-muted)] hover:!text-[var(--fg)] hover:!bg-[var(--bg-elevated)]"
+            />
+          </Tooltip>
         </div>
       </div>
     </footer>
