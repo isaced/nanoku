@@ -9,9 +9,7 @@ import (
 	"time"
 
 	"github.com/isaced/nanoku/internal/db"
-	"github.com/isaced/nanoku/internal/db/app"
 	"github.com/isaced/nanoku/internal/db/container"
-	sitepkg "github.com/isaced/nanoku/internal/db/site"
 	"github.com/isaced/nanoku/internal/docker"
 )
 
@@ -364,39 +362,6 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 	if err := h.RefreshSitesForApp(ctx, a.ID); err != nil {
 		log.Printf("refresh sites for app %s: %v", a.Name, err)
 	}
-}
-
-// RefreshSitesForApp recomputes the upstream for every site linked to the
-// given app and writes it back if it changed. Used after a deploy (where
-// container names may rotate) and after an app update that touched
-// exposed_ports (where the upstream formula changed). A no-op for sites
-// where the recomputed upstream equals the stored value, so a routine
-// refresh is cheap.
-//
-// Free-upstream sites (no app or app with no current_container) are
-// skipped — they don't have a derivable upstream, and the stored value
-// is whatever the operator typed.
-func (h *Handlers) RefreshSitesForApp(ctx context.Context, appID int) error {
-	sites, err := h.DB.Site.Query().
-		Where(sitepkg.HasAppWith(app.IDEQ(appID))).
-		WithApp(func(q *db.AppQuery) { q.WithCurrentContainer() }).
-		All(ctx)
-	if err != nil {
-		return fmt.Errorf("load sites: %w", err)
-	}
-	for _, s := range sites {
-		if s.Edges.App == nil {
-			continue
-		}
-		newUpstream := computeUpstreamForApp(s.Edges.App, s.AppService)
-		if newUpstream == "" || newUpstream == s.Upstream {
-			continue
-		}
-		if _, uerr := h.DB.Site.UpdateOneID(s.ID).SetUpstream(newUpstream).Save(ctx); uerr != nil {
-			return fmt.Errorf("update site %d upstream: %w", s.ID, uerr)
-		}
-	}
-	return nil
 }
 
 // registryCreds safely dereferences an app's registry credential pointers.
