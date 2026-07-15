@@ -130,14 +130,22 @@ func (m *Manager) runCLI(ctx context.Context, args ...string) (string, error) {
 }
 
 // runCLIStream is the streaming variant of runCLI: it pipes the
-// subprocess's stdout straight into w as the command runs (so a slow
-// consumer sees progress in real time), and on failure folds the
-// captured stderr into the error so the diagnostic isn't lost.
+// subprocess's stdout AND stderr straight into w as the command runs
+// (so a slow consumer sees progress in real time), and on failure folds
+// the captured stderr into the error so the diagnostic isn't lost.
+//
+// Both streams are teed into w because `docker compose up` (non-TTY)
+// writes *all* of its progress — Pulling/Pulled/Creating/Started — to
+// stderr, not stdout. Streaming only stdout left the deploy log stuck
+// on the "→ compose up" annotation with no progress for the entire
+// pull, which looked like a hang. A trailing copy of stderr is kept so
+// a failure still surfaces a useful diagnostic; on success that copy
+// is discarded.
 func (m *Manager) runCLIStream(ctx context.Context, w io.Writer, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, m.composeBinary, args...)
 	var stderr bytes.Buffer
 	cmd.Stdout = w
-	cmd.Stderr = &stderr
+	cmd.Stderr = io.MultiWriter(w, &stderr)
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}

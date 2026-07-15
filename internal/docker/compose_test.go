@@ -147,6 +147,26 @@ exit 0`)
 	}
 }
 
+func TestComposeUp_WithStream_TeesStderr(t *testing.T) {
+	// `docker compose up` writes ALL of its non-TTY progress (Pulling /
+	// Pulled / Creating / Started) to stderr, not stdout. If runCLIStream
+	// only teed stdout the deploy log would stay stuck on the
+	// "→ compose up" annotation for the whole pull. Verify stderr lines
+	// reach the live stream.
+	bin := fakeBin(t, `printf 'Image blog Pulling \nImage blog Pulled \nContainer blog-1 Started \n' 1>&2
+exit 0`)
+	m := &Manager{composeBinary: bin}
+	var got strings.Builder
+	if err := m.ComposeUp(t.Context(), "blog", "/etc/blog.yml", true, WithComposeStream(&got)); err != nil {
+		t.Fatalf("ComposeUp: %v", err)
+	}
+	for _, want := range []string{"Pulling", "Pulled", "Started"} {
+		if !strings.Contains(got.String(), want) {
+			t.Errorf("missing stderr progress line %q in stream: %q", want, got.String())
+		}
+	}
+}
+
 func TestComposeUp_WithStream_FoldsStderrOnFailure(t *testing.T) {
 	// WithComposeStream changes the failure path: we don't capture
 	// stdout (the operator is seeing it live), but the stderr text must
