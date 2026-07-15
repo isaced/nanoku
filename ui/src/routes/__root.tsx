@@ -2,6 +2,7 @@ import {
   Outlet,
   createRootRoute,
   HeadContent,
+  useLocation,
 } from '@tanstack/react-router'
 import { App as AntdApp, ConfigProvider } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
@@ -31,15 +32,19 @@ function RootLayout() {
   const { i18n } = useTranslation()
   const locale = i18n.language?.startsWith('zh') ? zhCN : enUS
   const systemStatusQuery = useSystemStatus()
+  const location = useLocation()
+  // On the login page we drop the global chrome for an immersive full-screen
+  // experience — no TopNav, no Footer.
+  const chrome = location.pathname !== '/login'
   return (
     <>
       <HeadContent />
       <ConfigProvider locale={locale}>
         <AntdApp>
           <div className="min-h-screen flex flex-col bg-[var(--bg)]">
-            <RootShell />
+            {chrome && <RootShell />}
             <Outlet />
-            <Footer systemStatus={systemStatusQuery.data ?? null} />
+            {chrome && <Footer systemStatus={systemStatusQuery.data ?? null} />}
           </div>
         </AntdApp>
       </ConfigProvider>
@@ -49,9 +54,5 @@ function RootLayout() {
 
 function RootShell() {
   const statusQuery = useStatus()
-  return (
-    <TopNav
-      status={statusQuery.data ?? null}
-    />
-  )
+  return <TopNav status={statusQuery.data ?? null} />
 }

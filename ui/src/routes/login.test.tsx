@@ -122,4 +122,33 @@ describe('Login route', () => {
       expect(api.login).toHaveBeenCalled()
     })
   })
+
+  it('hides the global TopNav and Footer for an immersive full-screen layout', async () => {
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({ initialEntries: ['/login'] }),
+    })
+    await router.load()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AntdApp>
+          <RouterProvider router={router} />
+        </AntdApp>
+      </QueryClientProvider>,
+    )
+
+    // Wait for the login form to mount so the route is committed.
+    await waitFor(() => {
+      expect(document.querySelector('input[type="password"]')).toBeTruthy()
+    })
+
+    // TopNav: the nav items carry the route keys as their antd Menu item keys,
+    // so when the nav is gone none of those keys exist as <li data-menu-id>.
+    const navKeys = ['/dashboard', '/sites', '/apps', '/system']
+    for (const key of navKeys) {
+      expect(document.querySelector(`[data-menu-id="${key}"]`)).toBeNull()
+    }
+    // Footer: the version label only renders inside the Footer component.
+    expect(document.querySelector('[data-testid="footer-version"]')).toBeNull()
+  })
 })
