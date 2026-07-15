@@ -303,10 +303,30 @@ type pullConfig struct {
 }
 
 // WithPullStream tees the raw ImagePull JSON progress stream (one
-// {"status":"…"} object per line) into w. Used by the deploy SSE handler
-// to surface pull progress to the operator in real time.
+// {"status":"…"} object per line) into w verbatim. This is the
+// low-level escape hatch — used by tests that need to assert on the
+// engine's exact byte stream, and by anyone building a custom UI on
+// top of the JSON. For the operator-facing deploy log, prefer
+// WithPullProgress, which translates the JSON into one clean
+// human-readable line per state transition.
 func WithPullStream(w io.Writer) PullOption {
 	return func(c *pullConfig) { c.stream = w }
+}
+
+// WithPullProgress is the operator-facing counterpart of WithPullStream.
+// It writes a clean human-readable summary of the pull progress to w:
+//
+//	Pulling <short-sha>      (per layer, on first appearance)
+//	Layer <short-sha> downloaded
+//	Extracting <short-sha>
+//	Pull complete
+//	pull error: <message>   (terminal, on engine error)
+//
+// Noisy intermediate events (Downloading with progressDetail, Waiting,
+// Verifying Checksum, …) are dropped. The output is line-oriented and
+// safe to feed straight into a lineWriter → SSE pipeline.
+func WithPullProgress(w io.Writer) PullOption {
+	return func(c *pullConfig) { c.stream = newProgressWriter(w) }
 }
 
 func (m *Manager) PullImage(ctx context.Context, imageRef string, opts ...PullOption) error {

@@ -207,7 +207,7 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 			h.DeployLogs.publish(deployID, fmt.Sprintf("→ pull %s", image))
 		}
 		if err := h.Docker.WithRegistry(ctx, regURL, regUser, regPass, func() error {
-			if err := h.Docker.PullImage(ctx, image, docker.WithPullStream(logSink)); err != nil {
+			if err := h.Docker.PullImage(ctx, image, docker.WithPullProgress(logSink)); err != nil {
 				return fmt.Errorf("pull %s: %w", image, err)
 			}
 			if h.DeployLogs != nil {
