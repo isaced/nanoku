@@ -45,6 +45,8 @@
     "serviceRequired": "Pick a service to route to",
     "serviceExtra": "Service in {{name}}'s compose stack. The site will proxy to that container's exposed port.",
     "servicePlaceholder": "Pick a service",
+    "serviceNone": "(no exposed services)",
+    "serviceNoneExtra": "{{name}} has no exposed_ports configured — add one in the app's settings before linking a site.",
     "upstream": "Upstream",
     "upstreamRequired": "Upstream is required",
     "upstreamExtraApp": "Upstream auto-resolved from the app's current container.",

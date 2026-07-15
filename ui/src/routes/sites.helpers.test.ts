@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
-import { appOptionLabel, serviceOptionLabel } from './sites'
+import {
+  appOptionLabel,
+  computeUpstreamForAppUI,
+  serviceOptionLabel,
+} from './sites'
 import type { App } from '../lib/types'
 
 // These tests cover the App-select label rendering. The label
@@ -63,6 +67,81 @@ describe('appOptionLabel', () => {
 describe('serviceOptionLabel', () => {
   it('formats service name and port', () => {
     expect(serviceOptionLabel('web', 3000)).toBe('web · port 3000')
+  })
+})
+
+// computeUpstreamForAppUI mirrors the server's computeUpstreamForApp
+// so the editor can preview the locked upstream the moment the
+// operator picks an app. These tests pin the client-side shape — a
+// regression here (e.g. switching the prefix, dropping the port,
+// forgetting the docker-mode container branch) would silently leave
+// the upstream input blank even though the server's save path is
+// unaffected, so the UI lies about what the deploy will route to.
+describe('computeUpstreamForAppUI', () => {
+  it('returns "" when app is undefined', () => {
+    expect(computeUpstreamForAppUI(undefined, undefined)).toBe('')
+  })
+
+  it('compose mode: builds nanoku-<app>-<service>-1:<port> from the picked service', () => {
+    const a = makeApp({
+      name: 'ddd',
+      deployMethod: 'compose',
+      exposedPorts: [{ name: 'uptime-kuma', port: 3001 }],
+    })
+    expect(computeUpstreamForAppUI(a, 'uptime-kuma')).toBe(
+      'nanoku-ddd-uptime-kuma-1:3001',
+    )
+  })
+
+  it('compose mode: returns "" when no service was picked', () => {
+    const a = makeApp({
+      name: 'ddd',
+      deployMethod: 'compose',
+      exposedPorts: [{ name: 'uptime-kuma', port: 3001 }],
+    })
+    expect(computeUpstreamForAppUI(a, undefined)).toBe('')
+  })
+
+  it('compose mode: returns "" when the service is not in exposed_ports', () => {
+    // Server will 400 this on save, but the UI should not pretend
+    // the upstream is computable.
+    const a = makeApp({
+      name: 'ddd',
+      deployMethod: 'compose',
+      exposedPorts: [{ name: 'uptime-kuma', port: 3001 }],
+    })
+    expect(computeUpstreamForAppUI(a, 'web')).toBe('')
+  })
+
+  it('compose mode: returns "" when the app has no exposed_ports at all', () => {
+    const a = makeApp({
+      name: 'ddd',
+      deployMethod: 'compose',
+      exposedPorts: [],
+    })
+    expect(computeUpstreamForAppUI(a, 'web')).toBe('')
+  })
+
+  it('docker mode: builds <current-container>:<port> from the linked container', () => {
+    const a = makeApp({
+      name: 'blog',
+      deployMethod: 'docker',
+      port: 8080,
+      container: {
+        id: 1,
+        name: 'nanoku-blog',
+        image: 'nginx:1.27',
+        status: 'running',
+      },
+    })
+    expect(computeUpstreamForAppUI(a, undefined)).toBe('nanoku-blog:8080')
+  })
+
+  it('docker mode: returns "" when the app has no current container', () => {
+    // App exists but hasn't been deployed yet; the form should not
+    // show a phantom upstream.
+    const a = makeApp({ name: 'blog', deployMethod: 'docker', port: 80 })
+    expect(computeUpstreamForAppUI(a, undefined)).toBe('')
   })
 })
 

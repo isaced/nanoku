@@ -45,6 +45,8 @@
     "serviceRequired": "请选择服务",
     "serviceExtra": "{{name}} compose 堆栈中的服务。站点会反向代理到该容器暴露的端口。",
     "servicePlaceholder": "请选择服务",
+    "serviceNone": "（未声明服务）",
+    "serviceNoneExtra": "{{name}} 尚未配置 exposed_ports —— 请先在应用设置中添加，否则无法关联站点。",
     "upstream": "上游",
     "upstreamRequired": "请填写上游",
     "upstreamExtraApp": "上游将自动从应用当前容器解析。",

@@ -1,5 +1,5 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { Suspense, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import {
   App,
   Button,
@@ -99,6 +99,36 @@ export function serviceOptionLabel(name: string, port: number): string {
   return `${name} · port ${port}`
 }
 
+// computeUpstreamForAppUI mirrors the server's computeUpstreamForApp
+// (internal/api/sites.go) so the form can preview the locked upstream
+// the moment the operator picks an app. Without it, the disabled
+// upstream input stays empty after `appId` changes — the user sees a
+// blank field, has no way to verify the value the server will compute
+// on submit, and for multi-service compose the server would 400 on
+// `appService` until they noticed. The compose branch uses the
+// canonical `nanoku-<app>-<service>-1:<port>` shape that compose
+// assigns by default; the docker branch needs the app's current
+// container name (carried on the App DTO as `container.name`) to
+// reconstruct the legacy `<container>:<port>` upstream. Returns ""
+// when the inputs are insufficient — callers should render that as
+// "not yet determined", not as an error.
+export function computeUpstreamForAppUI(
+  app: AppType | undefined,
+  appService: string | undefined,
+): string {
+  if (!app) return ''
+  if (app.deployMethod === 'compose') {
+    if (!appService) return ''
+    const ports = app.exposedPorts ?? []
+    const ep = ports.find((p) => p.name === appService)
+    if (!ep) return ''
+    return `nanoku-${app.name}-${appService}-1:${ep.port}`
+  }
+  // docker mode
+  if (!app.container) return ''
+  return `${app.container.name}:${app.port}`
+}
+
 function SitesPageContent() {
   const { message, modal } = App.useApp()
   const { t } = useTranslation('sites')
@@ -119,6 +149,60 @@ function SitesPageContent() {
   const apps = appsQuery.data
 
   const fetching = sitesQuery.isFetching || statusQuery.isFetching
+
+  // Sync `upstream` (and the auto-picked `appService` for single-service
+  // compose) every time the operator picks a new app or service. The
+  // upstream field is disabled when linked, so the only way the user
+  // can see what value the server will compute on submit is to have
+  // us mirror it into the form here. We also auto-pick when a compose
+  // app has exactly one service: that case used to be hidden in the
+  // UI (the server's auto-pick did the work), but the user wants the
+  // select visible for consistency. We still pick the lone service
+  // on the user's behalf so the save path stays a one-click action.
+  //
+  // The "switched apps" branch is detected by comparing the current
+  // appId to the last one we synced for. Without that check, changing
+  // a service would clobber the user's pick; without skipping when
+  // nothing changed, setFieldsValue would loop the effect on every
+  // re-render.
+  const appIdWatched = Form.useWatch('appId', form)
+  const appServiceWatched = Form.useWatch('appService', form)
+  const lastSyncedAppIdRef = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    if (appIdWatched === undefined) {
+      // free-upstream mode: no app linked, nothing to derive.
+      lastSyncedAppIdRef.current = undefined
+      return
+    }
+    const app = apps.find((a) => a.id === appIdWatched)
+    if (!app) return
+
+    // appId changed since last sync: re-derive appService.
+    // appId unchanged but appService changed: respect the user's pick.
+    let nextService = appServiceWatched
+    if (lastSyncedAppIdRef.current !== appIdWatched) {
+      if (app.deployMethod === 'compose') {
+        const ports = app.exposedPorts ?? []
+        // Keep the existing selection only if it's still valid for
+        // this app. Otherwise auto-pick (single service) or clear
+        // (multi-service, let the user pick).
+        if (appServiceWatched && ports.some((p) => p.name === appServiceWatched)) {
+          nextService = appServiceWatched
+        } else {
+          nextService = ports.length === 1 ? ports[0].name : undefined
+        }
+      } else {
+        nextService = undefined
+      }
+    }
+
+    const upstream = computeUpstreamForAppUI(app, nextService)
+    lastSyncedAppIdRef.current = appIdWatched
+    // setFieldsValue is a no-op for the form state when nextService
+    // and upstream match the current values, so the re-render this
+    // effect triggers doesn't loop back into the effect.
+    form.setFieldsValue({ appService: nextService, upstream })
+  }, [appIdWatched, appServiceWatched, apps, form])
 
   // Build app options for the editor select. The "no app" sentinel
   // is encoded as id=0, which the API treats identically to the
@@ -419,26 +503,38 @@ function SitesPageContent() {
             />
           </Form.Item>
 
-          {/* Service select: only shown when the linked app is
-              compose-mode AND it has more than one exposed port.
-              Single-service stacks auto-pick (no UI friction),
-              docker-mode apps don't use services at all. The
-              server is the final validator against exposed_ports;
-              this select just narrows the input. */}
+          {/* Service select: shown for every compose-mode app, including
+              single-service stacks (the previous "hide for <= 1 service"
+              shortcut broke the visual feedback that something was
+              auto-resolved and the upstream preview that depends on
+              appService). The auto-pick for the lone-service case is
+              handled by the upstream-sync effect above, so a fresh
+              pick of a single-service app lands with that service
+              already selected — same one-click UX, but now the user
+              sees the choice and the upstream updates in real time.
+              For compose apps with no exposed_ports we render a
+              disabled message instead of a select, so the operator
+              knows why linking won't work and where to fix it. */}
           <Form.Item
             noStyle
-            shouldUpdate={(prev, curr) =>
-              prev.appId !== curr.appId ||
-              (prev.appService === undefined) !==
-                (curr.appService === undefined)
-            }
+            shouldUpdate={(prev, curr) => prev.appId !== curr.appId}
           >
             {({ getFieldValue }) => {
               const appId = getFieldValue('appId') as number | undefined
               const app = apps.find((a) => a.id === appId)
               const isCompose = app?.deployMethod === 'compose'
+              if (!isCompose) return null
               const services = app?.exposedPorts ?? []
-              if (!isCompose || services.length <= 1) return null
+              if (services.length === 0) {
+                return (
+                  <Form.Item
+                    label={t('editor.service')}
+                    extra={t('editor.serviceNoneExtra', { name: app!.name })}
+                  >
+                    <Input disabled value={t('editor.serviceNone')} />
+                  </Form.Item>
+                )
+              }
               return (
                 <Form.Item
                   name="appService"
@@ -463,10 +559,19 @@ function SitesPageContent() {
           {/* Upstream is locked when an app is linked (server derives
               it from app+service) and editable in the free-upstream
               path. The conditional `rules` keeps the validator in
-              sync with the field's editability. */}
+              sync with the field's editability. The shouldUpdate
+              predicate watches both `appId` and `appService` so the
+              "Resolved as nanoku-<app>-<service>-1:<port>" hint
+              re-renders when the user switches service (without
+              that, the hint would lag the input). The input value
+              itself is kept in sync by the upstream-sync effect at
+              the top of the page — this block just renders it. */}
           <Form.Item
             noStyle
-            shouldUpdate={(prev, curr) => prev.appId !== curr.appId}
+            shouldUpdate={(prev, curr) =>
+              prev.appId !== curr.appId ||
+              prev.appService !== curr.appService
+            }
           >
             {({ getFieldValue }) => {
               const appId = getFieldValue('appId') as number | undefined
