@@ -27,6 +27,17 @@ func (Site) Fields() []ent.Field {
 			Values("http", "https").
 			Default("https").
 			Comment("Listener scheme. http forces Caddy to bind :80 and skip auto-HTTPS for this site."),
+
+		// For sites linked to a compose-mode app, the service name within
+		// the app's stack that this site proxies to. Empty for docker-mode
+		// apps (which use App.port) and for "free upstream" sites (no app).
+		// Combined with App.exposed_ports[].name to compute the upstream at
+		// render time: `nanoku-<app>-<service>-1:<port>`.
+		field.String("app_service").
+			Optional().
+			Nillable().
+			MaxLen(64).
+			Comment("For compose-mode sites: the service name in the app's stack. Empty for docker-mode or free-upstream sites."),
 	}
 }
 

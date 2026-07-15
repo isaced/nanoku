@@ -80,6 +80,11 @@ func Enabled(v bool) predicate.Site {
 	return predicate.Site(sql.FieldEQ(FieldEnabled, v))
 }
 
+// AppService applies equality check predicate on the "app_service" field. It's identical to AppServiceEQ.
+func AppService(v string) predicate.Site {
+	return predicate.Site(sql.FieldEQ(FieldAppService, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Site {
 	return predicate.Site(sql.FieldEQ(FieldCreatedAt, v))
@@ -318,6 +323,81 @@ func SchemeIn(vs ...Scheme) predicate.Site {
 // SchemeNotIn applies the NotIn predicate on the "scheme" field.
 func SchemeNotIn(vs ...Scheme) predicate.Site {
 	return predicate.Site(sql.FieldNotIn(FieldScheme, vs...))
+}
+
+// AppServiceEQ applies the EQ predicate on the "app_service" field.
+func AppServiceEQ(v string) predicate.Site {
+	return predicate.Site(sql.FieldEQ(FieldAppService, v))
+}
+
+// AppServiceNEQ applies the NEQ predicate on the "app_service" field.
+func AppServiceNEQ(v string) predicate.Site {
+	return predicate.Site(sql.FieldNEQ(FieldAppService, v))
+}
+
+// AppServiceIn applies the In predicate on the "app_service" field.
+func AppServiceIn(vs ...string) predicate.Site {
+	return predicate.Site(sql.FieldIn(FieldAppService, vs...))
+}
+
+// AppServiceNotIn applies the NotIn predicate on the "app_service" field.
+func AppServiceNotIn(vs ...string) predicate.Site {
+	return predicate.Site(sql.FieldNotIn(FieldAppService, vs...))
+}
+
+// AppServiceGT applies the GT predicate on the "app_service" field.
+func AppServiceGT(v string) predicate.Site {
+	return predicate.Site(sql.FieldGT(FieldAppService, v))
+}
+
+// AppServiceGTE applies the GTE predicate on the "app_service" field.
+func AppServiceGTE(v string) predicate.Site {
+	return predicate.Site(sql.FieldGTE(FieldAppService, v))
+}
+
+// AppServiceLT applies the LT predicate on the "app_service" field.
+func AppServiceLT(v string) predicate.Site {
+	return predicate.Site(sql.FieldLT(FieldAppService, v))
+}
+
+// AppServiceLTE applies the LTE predicate on the "app_service" field.
+func AppServiceLTE(v string) predicate.Site {
+	return predicate.Site(sql.FieldLTE(FieldAppService, v))
+}
+
+// AppServiceContains applies the Contains predicate on the "app_service" field.
+func AppServiceContains(v string) predicate.Site {
+	return predicate.Site(sql.FieldContains(FieldAppService, v))
+}
+
+// AppServiceHasPrefix applies the HasPrefix predicate on the "app_service" field.
+func AppServiceHasPrefix(v string) predicate.Site {
+	return predicate.Site(sql.FieldHasPrefix(FieldAppService, v))
+}
+
+// AppServiceHasSuffix applies the HasSuffix predicate on the "app_service" field.
+func AppServiceHasSuffix(v string) predicate.Site {
+	return predicate.Site(sql.FieldHasSuffix(FieldAppService, v))
+}
+
+// AppServiceIsNil applies the IsNil predicate on the "app_service" field.
+func AppServiceIsNil() predicate.Site {
+	return predicate.Site(sql.FieldIsNull(FieldAppService))
+}
+
+// AppServiceNotNil applies the NotNil predicate on the "app_service" field.
+func AppServiceNotNil() predicate.Site {
+	return predicate.Site(sql.FieldNotNull(FieldAppService))
+}
+
+// AppServiceEqualFold applies the EqualFold predicate on the "app_service" field.
+func AppServiceEqualFold(v string) predicate.Site {
+	return predicate.Site(sql.FieldEqualFold(FieldAppService, v))
+}
+
+// AppServiceContainsFold applies the ContainsFold predicate on the "app_service" field.
+func AppServiceContainsFold(v string) predicate.Site {
+	return predicate.Site(sql.FieldContainsFold(FieldAppService, v))
 }
 
 // HasApp applies the HasEdge predicate on the "app" edge.

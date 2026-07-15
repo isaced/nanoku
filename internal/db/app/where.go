@@ -120,6 +120,11 @@ func DeleteVolumesOnRemove(v bool) predicate.App {
 	return predicate.App(sql.FieldEQ(FieldDeleteVolumesOnRemove, v))
 }
 
+// ExposedPorts applies equality check predicate on the "exposed_ports" field. It's identical to ExposedPortsEQ.
+func ExposedPorts(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldExposedPorts, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.App {
 	return predicate.App(sql.FieldEQ(FieldCreatedAt, v))
@@ -913,6 +918,81 @@ func DeleteVolumesOnRemoveEQ(v bool) predicate.App {
 // DeleteVolumesOnRemoveNEQ applies the NEQ predicate on the "delete_volumes_on_remove" field.
 func DeleteVolumesOnRemoveNEQ(v bool) predicate.App {
 	return predicate.App(sql.FieldNEQ(FieldDeleteVolumesOnRemove, v))
+}
+
+// ExposedPortsEQ applies the EQ predicate on the "exposed_ports" field.
+func ExposedPortsEQ(v string) predicate.App {
+	return predicate.App(sql.FieldEQ(FieldExposedPorts, v))
+}
+
+// ExposedPortsNEQ applies the NEQ predicate on the "exposed_ports" field.
+func ExposedPortsNEQ(v string) predicate.App {
+	return predicate.App(sql.FieldNEQ(FieldExposedPorts, v))
+}
+
+// ExposedPortsIn applies the In predicate on the "exposed_ports" field.
+func ExposedPortsIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldIn(FieldExposedPorts, vs...))
+}
+
+// ExposedPortsNotIn applies the NotIn predicate on the "exposed_ports" field.
+func ExposedPortsNotIn(vs ...string) predicate.App {
+	return predicate.App(sql.FieldNotIn(FieldExposedPorts, vs...))
+}
+
+// ExposedPortsGT applies the GT predicate on the "exposed_ports" field.
+func ExposedPortsGT(v string) predicate.App {
+	return predicate.App(sql.FieldGT(FieldExposedPorts, v))
+}
+
+// ExposedPortsGTE applies the GTE predicate on the "exposed_ports" field.
+func ExposedPortsGTE(v string) predicate.App {
+	return predicate.App(sql.FieldGTE(FieldExposedPorts, v))
+}
+
+// ExposedPortsLT applies the LT predicate on the "exposed_ports" field.
+func ExposedPortsLT(v string) predicate.App {
+	return predicate.App(sql.FieldLT(FieldExposedPorts, v))
+}
+
+// ExposedPortsLTE applies the LTE predicate on the "exposed_ports" field.
+func ExposedPortsLTE(v string) predicate.App {
+	return predicate.App(sql.FieldLTE(FieldExposedPorts, v))
+}
+
+// ExposedPortsContains applies the Contains predicate on the "exposed_ports" field.
+func ExposedPortsContains(v string) predicate.App {
+	return predicate.App(sql.FieldContains(FieldExposedPorts, v))
+}
+
+// ExposedPortsHasPrefix applies the HasPrefix predicate on the "exposed_ports" field.
+func ExposedPortsHasPrefix(v string) predicate.App {
+	return predicate.App(sql.FieldHasPrefix(FieldExposedPorts, v))
+}
+
+// ExposedPortsHasSuffix applies the HasSuffix predicate on the "exposed_ports" field.
+func ExposedPortsHasSuffix(v string) predicate.App {
+	return predicate.App(sql.FieldHasSuffix(FieldExposedPorts, v))
+}
+
+// ExposedPortsIsNil applies the IsNil predicate on the "exposed_ports" field.
+func ExposedPortsIsNil() predicate.App {
+	return predicate.App(sql.FieldIsNull(FieldExposedPorts))
+}
+
+// ExposedPortsNotNil applies the NotNil predicate on the "exposed_ports" field.
+func ExposedPortsNotNil() predicate.App {
+	return predicate.App(sql.FieldNotNull(FieldExposedPorts))
+}
+
+// ExposedPortsEqualFold applies the EqualFold predicate on the "exposed_ports" field.
+func ExposedPortsEqualFold(v string) predicate.App {
+	return predicate.App(sql.FieldEqualFold(FieldExposedPorts, v))
+}
+
+// ExposedPortsContainsFold applies the ContainsFold predicate on the "exposed_ports" field.
+func ExposedPortsContainsFold(v string) predicate.App {
+	return predicate.App(sql.FieldContainsFold(FieldExposedPorts, v))
 }
 
 // HasSites applies the HasEdge predicate on the "sites" edge.

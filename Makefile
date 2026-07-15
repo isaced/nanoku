@@ -59,7 +59,7 @@ run: build-go
 	./bin/nanoku
 
 ent-generate:
-	cd internal/db && $(GO) run -mod=mod entgo.io/ent/cmd/ent@latest generate ./schema
+	cd internal/db && GOTOOLCHAIN=go1.26.4 $(GO) run -mod=mod entgo.io/ent/cmd/ent@latest generate ./schema
 
 clean:
 	mavis-trash bin internal/api/dist

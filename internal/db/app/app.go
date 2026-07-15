@@ -40,6 +40,8 @@ const (
 	FieldTriggerToken = "trigger_token"
 	// FieldDeleteVolumesOnRemove holds the string denoting the delete_volumes_on_remove field in the database.
 	FieldDeleteVolumesOnRemove = "delete_volumes_on_remove"
+	// FieldExposedPorts holds the string denoting the exposed_ports field in the database.
+	FieldExposedPorts = "exposed_ports"
 	// EdgeSites holds the string denoting the sites edge name in mutations.
 	EdgeSites = "sites"
 	// EdgeContainers holds the string denoting the containers edge name in mutations.
@@ -114,6 +116,7 @@ var Columns = []string{
 	FieldRegistryPassword,
 	FieldTriggerToken,
 	FieldDeleteVolumesOnRemove,
+	FieldExposedPorts,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -214,6 +217,11 @@ func ByTriggerToken(opts ...sql.OrderTermOption) OrderOption {
 // ByDeleteVolumesOnRemove orders the results by the delete_volumes_on_remove field.
 func ByDeleteVolumesOnRemove(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDeleteVolumesOnRemove, opts...).ToFunc()
+}
+
+// ByExposedPorts orders the results by the exposed_ports field.
+func ByExposedPorts(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExposedPorts, opts...).ToFunc()
 }
 
 // BySitesCount orders the results by sites count.

@@ -10,6 +10,7 @@ import type {
   AppInput,
   DeployResponse,
   EnvVar,
+  ExposedPort,
   Site,
   SiteInput,
   VolumeInput,
@@ -190,6 +191,22 @@ export function useReplaceAppEnv(): UseMutationResult<
     onSuccess: (_data, { id }) => {
       void qc.invalidateQueries({ queryKey: queryKeys.apps.env(id) })
     },
+  })
+}
+
+// useImportExposedPorts parses the app's compose YAML and returns
+// a scaffolding list of services + best-effort ports. It does NOT
+// write to App.exposed_ports — the caller is expected to take the
+// result, let the user review/edit, and submit through the regular
+// UpdateApp path. No cache invalidation needed since the result is
+// transient.
+export function useImportExposedPorts(): UseMutationResult<
+  { appId: number; exposedPorts: ExposedPort[]; hint: string },
+  Error,
+  number
+> {
+  return useMutation({
+    mutationFn: (id) => api.importExposedPorts(id),
   })
 }
 

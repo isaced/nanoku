@@ -61,6 +61,7 @@ type AppMutation struct {
 	registry_password        *string
 	trigger_token            *string
 	delete_volumes_on_remove *bool
+	exposed_ports            *string
 	clearedFields            map[string]struct{}
 	sites                    map[int]struct{}
 	removedsites             map[int]struct{}
@@ -775,6 +776,55 @@ func (m *AppMutation) ResetDeleteVolumesOnRemove() {
 	m.delete_volumes_on_remove = nil
 }
 
+// SetExposedPorts sets the "exposed_ports" field.
+func (m *AppMutation) SetExposedPorts(s string) {
+	m.exposed_ports = &s
+}
+
+// ExposedPorts returns the value of the "exposed_ports" field in the mutation.
+func (m *AppMutation) ExposedPorts() (r string, exists bool) {
+	v := m.exposed_ports
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExposedPorts returns the old "exposed_ports" field's value of the App entity.
+// If the App object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AppMutation) OldExposedPorts(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExposedPorts is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExposedPorts requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExposedPorts: %w", err)
+	}
+	return oldValue.ExposedPorts, nil
+}
+
+// ClearExposedPorts clears the value of the "exposed_ports" field.
+func (m *AppMutation) ClearExposedPorts() {
+	m.exposed_ports = nil
+	m.clearedFields[app.FieldExposedPorts] = struct{}{}
+}
+
+// ExposedPortsCleared returns if the "exposed_ports" field was cleared in this mutation.
+func (m *AppMutation) ExposedPortsCleared() bool {
+	_, ok := m.clearedFields[app.FieldExposedPorts]
+	return ok
+}
+
+// ResetExposedPorts resets all changes to the "exposed_ports" field.
+func (m *AppMutation) ResetExposedPorts() {
+	m.exposed_ports = nil
+	delete(m.clearedFields, app.FieldExposedPorts)
+}
+
 // AddSiteIDs adds the "sites" edge to the Site entity by ids.
 func (m *AppMutation) AddSiteIDs(ids ...int) {
 	if m.sites == nil {
@@ -1118,7 +1168,7 @@ func (m *AppMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AppMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 14)
 	if m.created_at != nil {
 		fields = append(fields, app.FieldCreatedAt)
 	}
@@ -1158,6 +1208,9 @@ func (m *AppMutation) Fields() []string {
 	if m.delete_volumes_on_remove != nil {
 		fields = append(fields, app.FieldDeleteVolumesOnRemove)
 	}
+	if m.exposed_ports != nil {
+		fields = append(fields, app.FieldExposedPorts)
+	}
 	return fields
 }
 
@@ -1192,6 +1245,8 @@ func (m *AppMutation) Field(name string) (ent.Value, bool) {
 		return m.TriggerToken()
 	case app.FieldDeleteVolumesOnRemove:
 		return m.DeleteVolumesOnRemove()
+	case app.FieldExposedPorts:
+		return m.ExposedPorts()
 	}
 	return nil, false
 }
@@ -1227,6 +1282,8 @@ func (m *AppMutation) OldField(ctx context.Context, name string) (ent.Value, err
 		return m.OldTriggerToken(ctx)
 	case app.FieldDeleteVolumesOnRemove:
 		return m.OldDeleteVolumesOnRemove(ctx)
+	case app.FieldExposedPorts:
+		return m.OldExposedPorts(ctx)
 	}
 	return nil, fmt.Errorf("unknown App field %s", name)
 }
@@ -1327,6 +1384,13 @@ func (m *AppMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetDeleteVolumesOnRemove(v)
 		return nil
+	case app.FieldExposedPorts:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExposedPorts(v)
+		return nil
 	}
 	return fmt.Errorf("unknown App field %s", name)
 }
@@ -1396,6 +1460,9 @@ func (m *AppMutation) ClearedFields() []string {
 	if m.FieldCleared(app.FieldTriggerToken) {
 		fields = append(fields, app.FieldTriggerToken)
 	}
+	if m.FieldCleared(app.FieldExposedPorts) {
+		fields = append(fields, app.FieldExposedPorts)
+	}
 	return fields
 }
 
@@ -1433,6 +1500,9 @@ func (m *AppMutation) ClearField(name string) error {
 		return nil
 	case app.FieldTriggerToken:
 		m.ClearTriggerToken()
+		return nil
+	case app.FieldExposedPorts:
+		m.ClearExposedPorts()
 		return nil
 	}
 	return fmt.Errorf("unknown App nullable field %s", name)
@@ -1480,6 +1550,9 @@ func (m *AppMutation) ResetField(name string) error {
 		return nil
 	case app.FieldDeleteVolumesOnRemove:
 		m.ResetDeleteVolumesOnRemove()
+		return nil
+	case app.FieldExposedPorts:
+		m.ResetExposedPorts()
 		return nil
 	}
 	return fmt.Errorf("unknown App field %s", name)
@@ -4798,6 +4871,7 @@ type SiteMutation struct {
 	upstream      *string
 	enabled       *bool
 	scheme        *site.Scheme
+	app_service   *string
 	clearedFields map[string]struct{}
 	app           *int
 	clearedapp    bool
@@ -5120,6 +5194,55 @@ func (m *SiteMutation) ResetScheme() {
 	m.scheme = nil
 }
 
+// SetAppService sets the "app_service" field.
+func (m *SiteMutation) SetAppService(s string) {
+	m.app_service = &s
+}
+
+// AppService returns the value of the "app_service" field in the mutation.
+func (m *SiteMutation) AppService() (r string, exists bool) {
+	v := m.app_service
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAppService returns the old "app_service" field's value of the Site entity.
+// If the Site object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SiteMutation) OldAppService(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAppService is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAppService requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAppService: %w", err)
+	}
+	return oldValue.AppService, nil
+}
+
+// ClearAppService clears the value of the "app_service" field.
+func (m *SiteMutation) ClearAppService() {
+	m.app_service = nil
+	m.clearedFields[site.FieldAppService] = struct{}{}
+}
+
+// AppServiceCleared returns if the "app_service" field was cleared in this mutation.
+func (m *SiteMutation) AppServiceCleared() bool {
+	_, ok := m.clearedFields[site.FieldAppService]
+	return ok
+}
+
+// ResetAppService resets all changes to the "app_service" field.
+func (m *SiteMutation) ResetAppService() {
+	m.app_service = nil
+	delete(m.clearedFields, site.FieldAppService)
+}
+
 // SetAppID sets the "app" edge to the App entity by id.
 func (m *SiteMutation) SetAppID(id int) {
 	m.app = &id
@@ -5193,7 +5316,7 @@ func (m *SiteMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SiteMutation) Fields() []string {
-	fields := make([]string, 0, 6)
+	fields := make([]string, 0, 7)
 	if m.created_at != nil {
 		fields = append(fields, site.FieldCreatedAt)
 	}
@@ -5211,6 +5334,9 @@ func (m *SiteMutation) Fields() []string {
 	}
 	if m.scheme != nil {
 		fields = append(fields, site.FieldScheme)
+	}
+	if m.app_service != nil {
+		fields = append(fields, site.FieldAppService)
 	}
 	return fields
 }
@@ -5232,6 +5358,8 @@ func (m *SiteMutation) Field(name string) (ent.Value, bool) {
 		return m.Enabled()
 	case site.FieldScheme:
 		return m.Scheme()
+	case site.FieldAppService:
+		return m.AppService()
 	}
 	return nil, false
 }
@@ -5253,6 +5381,8 @@ func (m *SiteMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldEnabled(ctx)
 	case site.FieldScheme:
 		return m.OldScheme(ctx)
+	case site.FieldAppService:
+		return m.OldAppService(ctx)
 	}
 	return nil, fmt.Errorf("unknown Site field %s", name)
 }
@@ -5304,6 +5434,13 @@ func (m *SiteMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetScheme(v)
 		return nil
+	case site.FieldAppService:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAppService(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Site field %s", name)
 }
@@ -5333,7 +5470,11 @@ func (m *SiteMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *SiteMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(site.FieldAppService) {
+		fields = append(fields, site.FieldAppService)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -5346,6 +5487,11 @@ func (m *SiteMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *SiteMutation) ClearField(name string) error {
+	switch name {
+	case site.FieldAppService:
+		m.ClearAppService()
+		return nil
+	}
 	return fmt.Errorf("unknown Site nullable field %s", name)
 }
 
@@ -5370,6 +5516,9 @@ func (m *SiteMutation) ResetField(name string) error {
 		return nil
 	case site.FieldScheme:
 		m.ResetScheme()
+		return nil
+	case site.FieldAppService:
+		m.ResetAppService()
 		return nil
 	}
 	return fmt.Errorf("unknown Site field %s", name)

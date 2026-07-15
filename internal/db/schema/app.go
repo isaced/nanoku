@@ -75,6 +75,21 @@ func (App) Fields() []ent.Field {
 		// and user-named volumes are always left alone.
 		field.Bool("delete_volumes_on_remove").
 			Default(false),
+
+		// JSON array of ExposedPort. Only meaningful for deploy_method=compose
+		// — docker-mode apps always expose via App.port. Each entry names a
+		// service in the compose file and the container-side port Caddy should
+		// proxy to. Sites select from this list to compute their upstream
+		// (`nanoku-<app>-<service>-1:<port>`); the value is validated against
+		// `docker compose ps` after every deploy.
+		//
+		// Stored as a JSON string (not ent's typed JSON) so the wire format
+		// and DB column are simple to inspect. Empty string = no
+		// exposed_ports (legacy behavior, sites fall back to free upstream).
+		field.Text("exposed_ports").
+			Optional().
+			Nillable().
+			Comment(`JSON array of {name, port} objects for compose-mode apps. Each entry corresponds to a service in the compose file.`),
 	}
 }
 

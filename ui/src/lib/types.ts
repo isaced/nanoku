@@ -1,3 +1,8 @@
+export type ExposedPort = {
+  name: string;
+  port: number;
+};
+
 export type Site = {
   id: number;
   domain: string;
@@ -6,6 +11,14 @@ export type Site = {
   scheme: 'http' | 'https';
   appId?: number;
   appName?: string;
+  // Service within a compose-mode app that this site proxies to.
+  // Empty for docker-mode apps and for free-upstream sites.
+  appService?: string;
+  // Exposed services on the linked compose app. Populated by the
+  // server on every Site DTO so the editor can render a service
+  // select without re-fetching the app. Empty for docker-mode apps
+  // and sites without a linked app.
+  exposedServices?: ExposedPort[];
   createdAt: string;
   updatedAt: string;
 };
@@ -15,6 +28,14 @@ export type SiteInput = {
   upstream?: string;
   enabled?: boolean;
   appId?: number;
+  // Service within the linked compose-mode app. Ignored when the
+  // target app is docker-mode. Empty / null = no service (free
+  // upstream or auto-pick when only one service is declared).
+  appService?: string;
+  // Set true to detach the site from any app (also clears appService
+  // and upstream). More explicit than sending appId: 0; the API
+  // accepts both.
+  clearApp?: boolean;
   scheme?: 'http' | 'https';
 };
 
@@ -55,6 +76,11 @@ export type App = {
   composeContent?: string;
   composeFile?: string;
 
+  // Exposed services the app wants to make reachable via Sites. Only
+  // meaningful for compose-mode apps. Always undefined/empty for
+  // docker-mode apps (which use port instead).
+  exposedPorts?: ExposedPort[];
+
   registryConfigured: boolean;
   registryUrl?: string;
   registryUsername?: string;
@@ -75,6 +101,10 @@ export type AppInput = {
   deployMethod?: 'docker' | 'compose';
   composePath?: string;
   composeContent?: string;
+  // Nil leaves exposed_ports alone. Empty array clears it. Non-empty
+  // array replaces it. Only meaningful for compose-mode apps; the
+  // server silently drops it on docker-mode.
+  exposedPorts?: ExposedPort[];
   registryUrl?: string;
   registryUsername?: string;
   registryPassword?: string;
@@ -153,6 +183,7 @@ export type DashboardSite = {
   enabled: boolean;
   appId?: number;
   appName?: string;
+  appService?: string;
 };
 
 export type DashboardApp = {
@@ -164,6 +195,7 @@ export type DashboardApp = {
   siteDomains: string[];
   stats?: ContainerStats;
   deployMethod: 'docker' | 'compose';
+  exposedPorts?: ExposedPort[];
 };
 
 export type DashboardSummary = {

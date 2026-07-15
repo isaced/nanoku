@@ -64,6 +64,12 @@ type AppDTO struct {
 	// are never touched.
 	DeleteVolumesOnRemove bool `json:"deleteVolumesOnRemove"`
 
+	// Exposed services the app wants to make reachable via Sites. Only
+	// meaningful for compose-mode apps. Each entry contributes one
+	// upstream to the rendered Caddyfile. Always empty for docker-mode
+	// apps (they expose via App.port).
+	ExposedPorts []ExposedPort `json:"exposedPorts,omitempty"`
+
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
 }
@@ -108,6 +114,12 @@ type AppInput struct {
 	// app's auto-named nanoku volumes. Bind mounts and user-named
 	// volumes are never touched regardless.
 	DeleteVolumesOnRemove *bool `json:"deleteVolumesOnRemove"`
+
+	// ExposedPorts is the new value for the app's exposed_ports column.
+	// Nil = leave the existing value alone. Empty array (or a JSON `[]`)
+	// explicitly clears the field. Compose-mode apps use this to declare
+	// which services Caddy should be able to reverse-proxy to.
+	ExposedPorts *[]ExposedPort `json:"exposedPorts"`
 }
 
 type DeployDTO struct {
@@ -177,6 +189,9 @@ func (h *Handlers) toAppDTO(ctx context.Context, a *db.App) AppDTO {
 		DeleteVolumesOnRemove: a.DeleteVolumesOnRemove,
 		CreatedAt:             a.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:             a.UpdatedAt.UTC().Format(time.RFC3339),
+	}
+	if ports, err := ParseExposedPorts(a.ExposedPorts); err == nil && len(ports) > 0 {
+		out.ExposedPorts = ports
 	}
 	out.DeployMethod = a.DeployMethod
 	if a.DeployMethod == "compose" {
@@ -374,6 +389,22 @@ func (h *Handlers) CreateApp(w http.ResponseWriter, r *http.Request) {
 		// written to disk after Save so we have an ID
 		create.SetComposeContent(strings.TrimSpace(*in.ComposeContent))
 	}
+	// ExposedPorts is only meaningful for compose-mode apps; docker-mode
+	// apps always proxy through App.port. Validate + marshal now so a bad
+	// payload returns 400 before we touch the DB. We accept the field on
+	// docker-mode requests too (rather than silently drop) so a caller
+	// editing an app's deploy method in the same PATCH doesn't have to
+	// remember to clear the field — we ignore the value when mode=docker.
+	if in.ExposedPorts != nil {
+		ep, err := MarshalExposedPorts(*in.ExposedPorts)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		if ep != nil {
+			create.SetExposedPorts(*ep)
+		}
+	}
 	// registry
 	if in.RegistryURL != nil && strings.TrimSpace(*in.RegistryURL) != "" {
 		create.SetRegistryURL(strings.TrimSpace(*in.RegistryURL))
@@ -526,6 +557,22 @@ func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
 			upd.SetComposeContent(c)
 		}
 	}
+	// ExposedPorts update: nil = leave alone (the only nil case),
+	// empty array = clear, non-empty = replace. Only meaningful for
+	// compose-mode apps; we apply it on update regardless so users can
+	// switch an app from docker→compose with a single PATCH.
+	if in.ExposedPorts != nil {
+		ep, err := MarshalExposedPorts(*in.ExposedPorts)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		if ep == nil {
+			upd.ClearExposedPorts()
+		} else {
+			upd.SetExposedPorts(*ep)
+		}
+	}
 	if in.RegistryURL != nil {
 		u := strings.TrimSpace(*in.RegistryURL)
 		if u == "" {
@@ -593,6 +640,19 @@ func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
 			_ = werr
 		}
 	}
+	// If exposed_ports or the docker→compose mode changed, the upstream
+	// formula for every site linked to this app may have shifted. Refresh
+	// them so the API list view reflects what the Caddyfile actually
+	// serves. Best-effort: a refresh failure is not fatal here, since
+	// the next deploy will reconcile anyway.
+	if in.ExposedPorts != nil || in.DeployMethod != nil {
+		if rerr := h.RefreshSitesForApp(r.Context(), a.ID); rerr != nil {
+			// Don't fail the PATCH on a refresh error — the app row
+			// itself is already saved. The next site update / deploy
+			// will pick up the slack.
+			_ = rerr
+		}
+	}
 	writeJSON(w, http.StatusOK, h.toAppDTO(r.Context(), a))
 }
 
@@ -644,6 +704,75 @@ func (h *Handlers) DeleteApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ImportExposedPorts pre-fills the exposed_ports list for a
+// compose-mode app by parsing the app's compose YAML. The handler
+// returns a list of {name, port} scaffolding the operator can
+// review / edit in the UI before the value lands in the database —
+// we never write to App.exposed_ports here. The port for each
+// service is best-effort (expose[0] > ports[0] container-half >
+// 0); a service with no detectable port comes back with port=0
+// and the UI renders an empty input so the operator can fill it
+// in.
+//
+// This is compose-only: docker-mode apps have no services to
+// import, and the caller would have nothing to put in exposed_ports
+// anyway (docker apps use App.port). Refuse the request up front
+// rather than returning an empty list, so the UI can show a clear
+// error instead of silently populating zero rows.
+func (h *Handlers) ImportExposedPorts(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
+		return
+	}
+	a, err := h.DB.App.Get(r.Context(), id)
+	if err != nil {
+		if isNotFound(err) {
+			writeErr(w, http.StatusNotFound, errors.New("app not found"))
+			return
+		}
+		writeInternalErr(w, err)
+		return
+	}
+	if a.DeployMethod != "compose" {
+		writeErr(w, http.StatusBadRequest, errors.New("import is only available for compose-mode apps"))
+		return
+	}
+
+	// Pick the compose source the same way deploy does:
+	// user-provided path wins, otherwise the inline content.
+	// Empty content (path set but unreadable, or neither set) is
+	// a 400 with an actionable hint — the operator should either
+	// add compose_content or check compose_path.
+	var content string
+	switch {
+	case a.ComposePath != nil && *a.ComposePath != "":
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("compose_path is set (%s); import only reads inline compose content — paste the YAML into compose_content or open the file manually", *a.ComposePath))
+		return
+	case a.ComposeContent != nil:
+		content = *a.ComposeContent
+	}
+	if strings.TrimSpace(content) == "" {
+		writeErr(w, http.StatusBadRequest, errors.New("app has no compose content to import from"))
+		return
+	}
+
+	ports, err := ImportExposedPortsFromCompose(content)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	hint := "review and edit before saving"
+	if len(ports) == 0 {
+		hint = "no services found in compose content"
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"appId":        a.ID,
+		"exposedPorts": ports,
+		"hint":         hint,
+	})
 }
 
 func (h *Handlers) ListAppEnvVars(w http.ResponseWriter, r *http.Request) {

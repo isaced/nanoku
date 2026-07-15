@@ -248,6 +248,26 @@ func (_u *AppUpdate) SetNillableDeleteVolumesOnRemove(v *bool) *AppUpdate {
 	return _u
 }
 
+// SetExposedPorts sets the "exposed_ports" field.
+func (_u *AppUpdate) SetExposedPorts(v string) *AppUpdate {
+	_u.mutation.SetExposedPorts(v)
+	return _u
+}
+
+// SetNillableExposedPorts sets the "exposed_ports" field if the given value is not nil.
+func (_u *AppUpdate) SetNillableExposedPorts(v *string) *AppUpdate {
+	if v != nil {
+		_u.SetExposedPorts(*v)
+	}
+	return _u
+}
+
+// ClearExposedPorts clears the value of the "exposed_ports" field.
+func (_u *AppUpdate) ClearExposedPorts() *AppUpdate {
+	_u.mutation.ClearExposedPorts()
+	return _u
+}
+
 // AddSiteIDs adds the "sites" edge to the Site entity by IDs.
 func (_u *AppUpdate) AddSiteIDs(ids ...int) *AppUpdate {
 	_u.mutation.AddSiteIDs(ids...)
@@ -583,6 +603,12 @@ func (_u *AppUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.DeleteVolumesOnRemove(); ok {
 		_spec.SetField(app.FieldDeleteVolumesOnRemove, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ExposedPorts(); ok {
+		_spec.SetField(app.FieldExposedPorts, field.TypeString, value)
+	}
+	if _u.mutation.ExposedPortsCleared() {
+		_spec.ClearField(app.FieldExposedPorts, field.TypeString)
 	}
 	if _u.mutation.SitesCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1073,6 +1099,26 @@ func (_u *AppUpdateOne) SetNillableDeleteVolumesOnRemove(v *bool) *AppUpdateOne 
 	return _u
 }
 
+// SetExposedPorts sets the "exposed_ports" field.
+func (_u *AppUpdateOne) SetExposedPorts(v string) *AppUpdateOne {
+	_u.mutation.SetExposedPorts(v)
+	return _u
+}
+
+// SetNillableExposedPorts sets the "exposed_ports" field if the given value is not nil.
+func (_u *AppUpdateOne) SetNillableExposedPorts(v *string) *AppUpdateOne {
+	if v != nil {
+		_u.SetExposedPorts(*v)
+	}
+	return _u
+}
+
+// ClearExposedPorts clears the value of the "exposed_ports" field.
+func (_u *AppUpdateOne) ClearExposedPorts() *AppUpdateOne {
+	_u.mutation.ClearExposedPorts()
+	return _u
+}
+
 // AddSiteIDs adds the "sites" edge to the Site entity by IDs.
 func (_u *AppUpdateOne) AddSiteIDs(ids ...int) *AppUpdateOne {
 	_u.mutation.AddSiteIDs(ids...)
@@ -1438,6 +1484,12 @@ func (_u *AppUpdateOne) sqlSave(ctx context.Context) (_node *App, err error) {
 	}
 	if value, ok := _u.mutation.DeleteVolumesOnRemove(); ok {
 		_spec.SetField(app.FieldDeleteVolumesOnRemove, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ExposedPorts(); ok {
+		_spec.SetField(app.FieldExposedPorts, field.TypeString, value)
+	}
+	if _u.mutation.ExposedPortsCleared() {
+		_spec.ClearField(app.FieldExposedPorts, field.TypeString)
 	}
 	if _u.mutation.SitesCleared() {
 		edge := &sqlgraph.EdgeSpec{

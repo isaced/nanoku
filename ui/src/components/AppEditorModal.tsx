@@ -20,6 +20,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  Wand2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -27,12 +28,13 @@ import {
   useAppEnv,
   useAppVolumes,
   useCreateApp,
+  useImportExposedPorts,
   useReplaceAppEnv,
   useReplaceAppVolumes,
   useRotateTriggerToken,
   useUpdateApp,
 } from '../lib/hooks'
-import type { App as AppType, AppInput, EnvVar, VolumeInput } from '../lib/types'
+import type { App as AppType, AppInput, EnvVar, ExposedPort, VolumeInput } from '../lib/types'
 import { CopyableValue } from './CodeBlock'
 import { TriggerUsage } from './TriggerUsage'
 import { YamlEditor } from './YamlEditor'
@@ -59,6 +61,7 @@ export function AppEditorModal({
   const [form] = Form.useForm<AppInput>()
   const [envDraft, setEnvDraft] = useState<EnvVar[]>([])
   const [volumeDraft, setVolumeDraft] = useState<VolumeInput[]>([])
+  const [exposedPortsDraft, setExposedPortsDraft] = useState<ExposedPort[]>([])
 
   const createApp = useCreateApp()
   const updateApp = useUpdateApp()
@@ -85,6 +88,7 @@ export function AppEditorModal({
     if (!editing) {
       setEnvDraft([])
       setVolumeDraft([])
+      setExposedPortsDraft([])
       form.resetFields()
       form.setFieldsValue({
         port: 80,
@@ -111,6 +115,7 @@ export function AppEditorModal({
     if (!editing) {
       setEnvDraft([])
       setVolumeDraft([])
+      setExposedPortsDraft([])
       return
     }
     if (envQuery.data) setEnvDraft(envQuery.data)
@@ -126,6 +131,7 @@ export function AppEditorModal({
         })),
       )
     }
+    setExposedPortsDraft(editing.exposedPorts ?? [])
   }, [editing, envQuery.data, volumesQuery.data])
 
   function cleanedEnv(): EnvVar[] {
@@ -143,14 +149,32 @@ export function AppEditorModal({
       }))
       .filter((r) => r.target !== '')
   }
+  // cleanedExposedPorts trims + drops rows with no service name. The
+  // server is the final validator (port range, regex, duplicate name
+  // detection) but we strip empty rows here so a half-typed "add row"
+  // doesn't ship as { name: "", port: 0 } in the PATCH and bounce.
+  function cleanedExposedPorts(): ExposedPort[] {
+    return exposedPortsDraft
+      .map((r) => ({ name: r.name.trim(), port: Number(r.port) }))
+      .filter((r) => r.name !== '' && r.port > 0)
+  }
 
   function handleSubmit() {
     void form.validateFields().then(async (values) => {
       const isCompose = values.deployMethod === 'compose'
       const isNew = !editing
+      // Inject the in-component exposedPorts draft into the AppInput
+      // payload. compose mode sends the cleaned list; docker mode
+      // sends an empty array to clear any leftovers from a previous
+      // compose deploy (so a docker→compose→docker round trip doesn't
+      // leave a stale list in the DB).
+      const payload: AppInput = {
+        ...values,
+        exposedPorts: isCompose ? cleanedExposedPorts() : [],
+      }
       const saveMutation = isNew
-        ? createApp.mutateAsync(values)
-        : updateApp.mutateAsync({ id: editing!.id, input: values })
+        ? createApp.mutateAsync(payload)
+        : updateApp.mutateAsync({ id: editing!.id, input: payload })
       try {
         const saved = await saveMutation
         await replaceEnv.mutateAsync({ id: saved.id, vars: cleanedEnv() })
@@ -265,6 +289,11 @@ export function AppEditorModal({
                     placeholder={t('editor.composeContentPlaceholder')}
                   />
                 </Form.Item>
+                <ExposedPortsSection
+                  rows={exposedPortsDraft}
+                  onChange={setExposedPortsDraft}
+                  appId={editing?.id}
+                />
               </>
             ) : (
               <>
@@ -704,6 +733,167 @@ function TriggerSection({
       ) : (
         <div className="text-xs text-[var(--fg-muted)] py-1">
           {t('trigger.enableExtra')}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ExposedPortsSection is the compose-mode-only editor that lets the
+// user declare which services in the compose stack Caddy should be
+// able to reverse-proxy to. Each row maps a service name (must match
+// a `services:` key in the YAML) to the container-side port the
+// service listens on. The downstream sites editor renders a service
+// select from this list.
+//
+// We use component state (rows) rather than Form.List because the
+// field is a nested array of objects — Form.List works fine for it
+// but the local-state pattern matches the env/volume editors above
+// and keeps the cleanup logic (drop incomplete rows) in one place.
+//
+// The "Import from compose" button asks the server to parse the
+// stored compose YAML and return a scaffolding list. It's only
+// available when editing an existing app (the server endpoint
+// requires an app id); for a new app, the user has to save the
+// compose content first and then re-open the editor to import.
+function ExposedPortsSection({
+  rows,
+  onChange,
+  appId,
+}: {
+  rows: ExposedPort[]
+  onChange: (next: ExposedPort[]) => void
+  appId?: number
+}) {
+  const { t } = useTranslation('apps')
+  const { message } = App.useApp()
+  const [open, setOpen] = useState(rows.length > 0)
+  const [touched, setTouched] = useState(false)
+  useEffect(() => {
+    if (!touched && rows.length > 0) setOpen(true)
+  }, [rows.length, touched])
+  const importMutation = useImportExposedPorts()
+  const count = rows.length
+  const canImport = appId != null
+  function setRow(i: number, patch: Partial<ExposedPort>) {
+    onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
+  }
+  function addRow() {
+    onChange([...rows, { name: '', port: 80 }])
+    setOpen(true)
+    setTouched(true)
+  }
+  function delRow(i: number) {
+    onChange(rows.filter((_, idx) => idx !== i))
+  }
+  // doImport runs the server-side parser and replaces the current
+  // draft with the result. The user is expected to review before
+  // submitting — the import is scaffolding, not a commit. The
+  // message gives a quick "X imported, Y need a port" summary
+  // drawn from the same hint the server returns, so the operator
+  // knows whether to look at the port column.
+  function doImport() {
+    if (appId == null) return
+    importMutation.mutate(appId, {
+      onSuccess: (resp) => {
+        onChange(resp.exposedPorts)
+        setOpen(true)
+        setTouched(true)
+        const needPort = resp.exposedPorts.filter((p) => p.port <= 0).length
+        if (needPort > 0) {
+          message.info(
+            t('editor.exposedPortImportNeedsPort', {
+              total: resp.exposedPorts.length,
+              need: needPort,
+            }),
+          )
+        } else {
+          message.success(
+            t('editor.exposedPortImportOk', { count: resp.exposedPorts.length }),
+          )
+        }
+      },
+      onError: (err) => {
+        message.error(err.message)
+      },
+    })
+  }
+  return (
+    <div className="border border-[var(--border)] rounded-lg p-3 mb-2 bg-[var(--bg-input)]/30">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
+          {t('editor.exposedPortsTitle')}
+        </span>
+        {count > 0 && open && <Tag className="!m-0">{count}</Tag>}
+        {canImport && (
+          <Tooltip title={t('editor.exposedPortImportTooltip')}>
+            <Button
+              size="small"
+              icon={<Wand2 size={13} />}
+              onClick={doImport}
+              loading={importMutation.isPending}
+            >
+              {t('editor.exposedPortImport')}
+            </Button>
+          </Tooltip>
+        )}
+        <Switch
+          className="ml-auto"
+          checked={open}
+          onChange={(v) => {
+            setTouched(true)
+            setOpen(v)
+          }}
+          checkedChildren={t('registry.switchOn')}
+          unCheckedChildren={t('registry.switchOff')}
+        />
+      </div>
+      {!open ? (
+        <div className="text-xs text-[var(--fg-muted)] py-1">
+          {t('editor.exposedPortsHint')}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((row, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-2 border border-[var(--border)] rounded-md p-2 bg-[var(--bg-input)]"
+            >
+              <Input
+                className="!w-44 mono text-xs"
+                placeholder={t('editor.exposedPortNamePlaceholder')}
+                value={row.name}
+                onChange={(e) => setRow(i, { name: e.target.value })}
+              />
+              <InputNumber
+                className="!w-32"
+                min={1}
+                max={65535}
+                placeholder="3000"
+                value={row.port}
+                onChange={(v) => setRow(i, { port: Number(v) || 0 })}
+              />
+              <span className="text-[10px] text-[var(--fg-muted)] flex-1">
+                {t('editor.exposedPortExtra')}
+              </span>
+              <Button
+                type="text"
+                size="small"
+                icon={<Trash2 size={13} />}
+                onClick={() => delRow(i)}
+              />
+            </div>
+          ))}
+          <div className="flex items-center gap-2">
+            <Button
+              type="dashed"
+              size="small"
+              icon={<Plus size={13} />}
+              onClick={addRow}
+            >
+              {t('editor.exposedPortAdd')}
+            </Button>
+          </div>
         </div>
       )}
     </div>

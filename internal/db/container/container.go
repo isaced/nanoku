@@ -119,13 +119,7 @@ const (
 	StatusRemoving   Status = "removing"
 	StatusExited     Status = "exited"
 	StatusDead       Status = "dead"
-	// StatusRetired is nanoku's marker for a Container row that
-	// has been superseded by a newer deploy. The row is preserved
-	// for deploy-history queries and audit; the live row is the
-	// most recent one for the app. We rename such rows to
-	// "<name>-retired-<nanos>" so the UNIQUE(containers.name)
-	// constraint doesn't reject the new live row.
-	StatusRetired Status = "retired"
+	StatusRetired    Status = "retired"
 )
 
 func (s Status) String() string {

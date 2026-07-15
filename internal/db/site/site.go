@@ -27,6 +27,8 @@ const (
 	FieldEnabled = "enabled"
 	// FieldScheme holds the string denoting the scheme field in the database.
 	FieldScheme = "scheme"
+	// FieldAppService holds the string denoting the app_service field in the database.
+	FieldAppService = "app_service"
 	// EdgeApp holds the string denoting the app edge name in mutations.
 	EdgeApp = "app"
 	// Table holds the table name of the site in the database.
@@ -49,6 +51,7 @@ var Columns = []string{
 	FieldUpstream,
 	FieldEnabled,
 	FieldScheme,
+	FieldAppService,
 }
 
 // ForeignKeys holds the SQL foreign-keys that are owned by the "sites"
@@ -81,6 +84,8 @@ var (
 	UpdateDefaultUpdatedAt func() time.Time
 	// DefaultEnabled holds the default value on creation for the "enabled" field.
 	DefaultEnabled bool
+	// AppServiceValidator is a validator for the "app_service" field. It is called by the builders before save.
+	AppServiceValidator func(string) error
 )
 
 // Scheme defines the type for the "scheme" enum field.
@@ -145,6 +150,11 @@ func ByEnabled(opts ...sql.OrderTermOption) OrderOption {
 // ByScheme orders the results by the scheme field.
 func ByScheme(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldScheme, opts...).ToFunc()
+}
+
+// ByAppService orders the results by the app_service field.
+func ByAppService(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAppService, opts...).ToFunc()
 }
 
 // ByAppField orders the results by app field.

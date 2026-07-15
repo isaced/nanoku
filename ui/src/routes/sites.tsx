@@ -1,5 +1,5 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { Suspense, useState } from 'react'
+import { Suspense, useMemo, useState } from 'react'
 import {
   App,
   Button,
@@ -33,7 +33,7 @@ import {
   useToggleSite,
   useUpdateSite,
 } from '../lib/hooks'
-import type { Site } from '../lib/types'
+import type { App as AppType, Site } from '../lib/types'
 import { QueryErrorBoundary } from '../components/QueryErrorBoundary'
 import { SiteStatusBadge } from '../components/SiteStatusBadge'
 import { RouteError } from '../components/RouteError'
@@ -58,17 +58,53 @@ function SitesPage() {
   )
 }
 
+// Form shape for the site editor. The upstream field is shown as
+// read-only when an app is linked (it gets auto-resolved server-side
+// at submit time), and editable when the user picked the "no app ·
+// custom upstream" route. appService is the compose-only service
+// selector; it's only validated server-side against the linked app's
+// exposed_ports, so the type stays loose.
+type SiteFormValues = {
+  domain: string
+  upstream: string
+  appId?: number
+  appService?: string
+  scheme: 'http' | 'https'
+}
+
+// appOptionLabel renders the row shown in the App select. Docker
+// apps get the legacy `name · image :port` shape; compose apps
+// describe themselves by service count so the operator can see at a
+// glance whether the stack has 1 service (auto-pick) or N services
+// (will need a service pick). The "(no app · use custom upstream)"
+// entry is appended as a sentinel with a special id of 0; the form
+// maps it to a clearApp / empty upstream.
+export function appOptionLabel(a: AppType): string {
+  if (a.deployMethod === 'docker') {
+    return `${a.name} · docker · ${a.image || '(no image)'} :${a.port}`
+  }
+  const n = a.exposedPorts?.length ?? 0
+  if (n === 0) {
+    return `${a.name} · compose · (no exposed ports)`
+  }
+  if (n === 1) {
+    return `${a.name} · compose · ${n} service: ${a.exposedPorts![0].name}:${a.exposedPorts![0].port}`
+  }
+  return `${a.name} · compose · ${n} services`
+}
+
+// serviceOptionLabel formats a single compose service for the
+// service select. Mirrors appOptionLabel's terseness.
+export function serviceOptionLabel(name: string, port: number): string {
+  return `${name} · port ${port}`
+}
+
 function SitesPageContent() {
   const { message, modal } = App.useApp()
   const { t } = useTranslation('sites')
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<Site | null>(null)
-  const [form] = Form.useForm<{
-    domain: string;
-    upstream: string;
-    appId?: number;
-    scheme: 'http' | 'https';
-  }>()
+  const [form] = Form.useForm<SiteFormValues>()
 
   const sitesQuery = useSuspenseSites()
   const statusQuery = useSuspenseStatus()
@@ -84,6 +120,18 @@ function SitesPageContent() {
 
   const fetching = sitesQuery.isFetching || statusQuery.isFetching
 
+  // Build app options for the editor select. The "no app" sentinel
+  // is encoded as id=0, which the API treats identically to the
+  // explicit `clearApp: true` flag.
+  const appOptions = useMemo(
+    () =>
+      apps.map((a) => ({
+        value: a.id,
+        label: appOptionLabel(a),
+      })),
+    [apps],
+  )
+
   function openCreate() {
     setEditing(null)
     form.resetFields()
@@ -93,10 +141,14 @@ function SitesPageContent() {
 
   function openEdit(s: Site) {
     setEditing(s)
+    // The site is "free-upstream" when it has no app_id. We represent
+    // that in the form by setting appId to undefined so the upstream
+    // field becomes editable.
     form.setFieldsValue({
       domain: s.domain,
       upstream: s.upstream,
       appId: s.appId,
+      appService: s.appService,
       scheme: s.scheme,
     })
     setEditorOpen(true)
@@ -104,14 +156,20 @@ function SitesPageContent() {
 
   function onSubmit() {
     void form.validateFields().then((values) => {
+      const isLinked = !!values.appId
+      const isFree = !isLinked
       const payload: Parameters<typeof createSite.mutate>[0] = {
         domain: values.domain,
         scheme: values.scheme,
       }
-      if (values.appId) {
+      if (isLinked) {
         payload.appId = values.appId
-      } else if (values.upstream) {
-        payload.upstream = values.upstream
+        if (values.appService) payload.appService = values.appService
+        // Upstream is computed server-side; we never send it in the
+        // linked branch. (Sending a stale value would be ignored by
+        // the API but adds noise to the request body.)
+      } else if (isFree) {
+        if (values.upstream) payload.upstream = values.upstream
       }
       const onOk = () => {
         setEditorOpen(false)
@@ -120,6 +178,13 @@ function SitesPageContent() {
         message.error(err.message)
       }
       if (editing) {
+        // If the user clears the app linkage on an edit, route through
+        // the explicit clearApp flag so the server doesn't have to
+        // guess the difference between "no change" and "detach".
+        if (editing.appId && !values.appId) {
+          payload.clearApp = true
+          delete payload.appId
+        }
         updateSite.mutate(
           { id: editing.id, input: payload },
           { onSuccess: onOk, onError: onErr },
@@ -221,12 +286,19 @@ function SitesPageContent() {
                 title: t('table.upstream'),
                 dataIndex: 'upstream',
                 render: (u: string, row) => (
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-0.5">
                     <span className="mono text-sm text-[var(--fg-muted)]">
                       {u}
                     </span>
                     {row.appName && (
-                      <Tag className="!m-0 text-[10px]">app · {row.appName}</Tag>
+                      <span className="text-[11px] text-[var(--fg-muted)]">
+                        {row.appService
+                          ? t('table.upstreamFromService', {
+                              app: row.appName,
+                              service: row.appService,
+                            })
+                          : t('table.upstreamFromApp', { app: row.appName })}
+                      </span>
                     )}
                   </div>
                 ),
@@ -316,6 +388,7 @@ function SitesPageContent() {
         cancelText={t('actions.cancel', { ns: 'common' })}
         destroyOnClose
         confirmLoading={createSite.isPending || updateSite.isPending}
+        width={620}
       >
         <Form form={form} layout="vertical" preserve={false}>
           <Form.Item
@@ -335,48 +408,117 @@ function SitesPageContent() {
           >
             <Input placeholder={t('editor.domainPlaceholder')} autoFocus />
           </Form.Item>
+
           <Form.Item name="appId" label={t('editor.app')}>
             <Select
               allowClear
+              showSearch
+              optionFilterProp="label"
               placeholder={t('editor.appPlaceholder')}
-              options={apps.map((a) => ({
-                value: a.id,
-                label: `${a.name} · ${a.image} :${a.port}`,
-              }))}
+              options={appOptions}
             />
           </Form.Item>
+
+          {/* Service select: only shown when the linked app is
+              compose-mode AND it has more than one exposed port.
+              Single-service stacks auto-pick (no UI friction),
+              docker-mode apps don't use services at all. The
+              server is the final validator against exposed_ports;
+              this select just narrows the input. */}
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, curr) =>
+              prev.appId !== curr.appId ||
+              (prev.appService === undefined) !==
+                (curr.appService === undefined)
+            }
+          >
+            {({ getFieldValue }) => {
+              const appId = getFieldValue('appId') as number | undefined
+              const app = apps.find((a) => a.id === appId)
+              const isCompose = app?.deployMethod === 'compose'
+              const services = app?.exposedPorts ?? []
+              if (!isCompose || services.length <= 1) return null
+              return (
+                <Form.Item
+                  name="appService"
+                  label={t('editor.service')}
+                  rules={[
+                    { required: true, message: t('editor.serviceRequired') },
+                  ]}
+                  extra={t('editor.serviceExtra', { name: app!.name })}
+                >
+                  <Select
+                    placeholder={t('editor.servicePlaceholder')}
+                    options={services.map((s) => ({
+                      value: s.name,
+                      label: serviceOptionLabel(s.name, s.port),
+                    }))}
+                  />
+                </Form.Item>
+              )
+            }}
+          </Form.Item>
+
+          {/* Upstream is locked when an app is linked (server derives
+              it from app+service) and editable in the free-upstream
+              path. The conditional `rules` keeps the validator in
+              sync with the field's editability. */}
           <Form.Item
             noStyle
             shouldUpdate={(prev, curr) => prev.appId !== curr.appId}
           >
-            {({ getFieldValue }) => (
-              <Form.Item
-                name="upstream"
-                label={t('editor.upstream')}
-                rules={
-                  getFieldValue('appId')
-                    ? []
-                    : [
-                        { required: true, message: t('editor.upstreamRequired') },
-                      ]
+            {({ getFieldValue }) => {
+              const appId = getFieldValue('appId') as number | undefined
+              const app = apps.find((a) => a.id === appId)
+              const isLinked = !!appId
+              let extra: string
+              if (isLinked) {
+                const svc =
+                  (getFieldValue('appService') as string | undefined) ||
+                  (app?.exposedPorts?.length === 1
+                    ? app.exposedPorts![0].name
+                    : undefined)
+                if (app?.deployMethod === 'compose' && svc) {
+                  extra = t('editor.upstreamExtraAppService', {
+                    app: app.name,
+                    service: svc,
+                  })
+                } else {
+                  extra = t('editor.upstreamExtraApp')
                 }
-                extra={
-                  getFieldValue('appId')
-                    ? t('editor.upstreamExtraApp')
-                    : t('editor.upstreamExtraFree')
-                }
-              >
-                <Input
-                  placeholder={
-                    getFieldValue('appId')
-                      ? t('editor.upstreamPlaceholderApp')
-                      : t('editor.upstreamPlaceholderFree')
+              } else {
+                extra = t('editor.upstreamExtraFree')
+              }
+              return (
+                <Form.Item
+                  name="upstream"
+                  label={t('editor.upstream')}
+                  rules={
+                    isLinked
+                      ? []
+                      : [
+                          {
+                            required: true,
+                            message: t('editor.upstreamRequired'),
+                          },
+                        ]
                   }
-                  disabled={!!getFieldValue('appId')}
-                />
-              </Form.Item>
-            )}
+                  extra={extra}
+                >
+                  <Input
+                    placeholder={
+                      isLinked
+                        ? t('editor.upstreamPlaceholderApp')
+                        : t('editor.upstreamPlaceholderFree')
+                    }
+                    disabled={isLinked}
+                  />
+                </Form.Item>
+              )
+            }}
           </Form.Item>
+
           <Form.Item
             name="scheme"
             label={t('editor.scheme')}

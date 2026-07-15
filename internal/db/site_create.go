@@ -89,6 +89,20 @@ func (_c *SiteCreate) SetNillableScheme(v *site.Scheme) *SiteCreate {
 	return _c
 }
 
+// SetAppService sets the "app_service" field.
+func (_c *SiteCreate) SetAppService(v string) *SiteCreate {
+	_c.mutation.SetAppService(v)
+	return _c
+}
+
+// SetNillableAppService sets the "app_service" field if the given value is not nil.
+func (_c *SiteCreate) SetNillableAppService(v *string) *SiteCreate {
+	if v != nil {
+		_c.SetAppService(*v)
+	}
+	return _c
+}
+
 // SetAppID sets the "app" edge to the App entity by ID.
 func (_c *SiteCreate) SetAppID(id int) *SiteCreate {
 	_c.mutation.SetAppID(id)
@@ -186,6 +200,11 @@ func (_c *SiteCreate) check() error {
 			return &ValidationError{Name: "scheme", err: fmt.Errorf(`db: validator failed for field "Site.scheme": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.AppService(); ok {
+		if err := site.AppServiceValidator(v); err != nil {
+			return &ValidationError{Name: "app_service", err: fmt.Errorf(`db: validator failed for field "Site.app_service": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -235,6 +254,10 @@ func (_c *SiteCreate) createSpec() (*Site, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Scheme(); ok {
 		_spec.SetField(site.FieldScheme, field.TypeEnum, value)
 		_node.Scheme = value
+	}
+	if value, ok := _c.mutation.AppService(); ok {
+		_spec.SetField(site.FieldAppService, field.TypeString, value)
+		_node.AppService = &value
 	}
 	if nodes := _c.mutation.AppIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

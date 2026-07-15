@@ -199,6 +199,20 @@ func (_c *AppCreate) SetNillableDeleteVolumesOnRemove(v *bool) *AppCreate {
 	return _c
 }
 
+// SetExposedPorts sets the "exposed_ports" field.
+func (_c *AppCreate) SetExposedPorts(v string) *AppCreate {
+	_c.mutation.SetExposedPorts(v)
+	return _c
+}
+
+// SetNillableExposedPorts sets the "exposed_ports" field if the given value is not nil.
+func (_c *AppCreate) SetNillableExposedPorts(v *string) *AppCreate {
+	if v != nil {
+		_c.SetExposedPorts(*v)
+	}
+	return _c
+}
+
 // AddSiteIDs adds the "sites" edge to the Site entity by IDs.
 func (_c *AppCreate) AddSiteIDs(ids ...int) *AppCreate {
 	_c.mutation.AddSiteIDs(ids...)
@@ -450,6 +464,10 @@ func (_c *AppCreate) createSpec() (*App, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DeleteVolumesOnRemove(); ok {
 		_spec.SetField(app.FieldDeleteVolumesOnRemove, field.TypeBool, value)
 		_node.DeleteVolumesOnRemove = value
+	}
+	if value, ok := _c.mutation.ExposedPorts(); ok {
+		_spec.SetField(app.FieldExposedPorts, field.TypeString, value)
+		_node.ExposedPorts = &value
 	}
 	if nodes := _c.mutation.SitesIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

@@ -44,6 +44,8 @@ type App struct {
 	TriggerToken *string `json:"-"`
 	// DeleteVolumesOnRemove holds the value of the "delete_volumes_on_remove" field.
 	DeleteVolumesOnRemove bool `json:"delete_volumes_on_remove,omitempty"`
+	// JSON array of {name, port} objects for compose-mode apps. Each entry corresponds to a service in the compose file.
+	ExposedPorts *string `json:"exposed_ports,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the AppQuery when eager-loading is set.
 	Edges        AppEdges `json:"edges"`
@@ -134,7 +136,7 @@ func (*App) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case app.FieldID, app.FieldPort:
 			values[i] = new(sql.NullInt64)
-		case app.FieldName, app.FieldImage, app.FieldDeployMethod, app.FieldComposeContent, app.FieldComposePath, app.FieldRegistryURL, app.FieldRegistryUsername, app.FieldRegistryPassword, app.FieldTriggerToken:
+		case app.FieldName, app.FieldImage, app.FieldDeployMethod, app.FieldComposeContent, app.FieldComposePath, app.FieldRegistryURL, app.FieldRegistryUsername, app.FieldRegistryPassword, app.FieldTriggerToken, app.FieldExposedPorts:
 			values[i] = new(sql.NullString)
 		case app.FieldCreatedAt, app.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -243,6 +245,13 @@ func (_m *App) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field delete_volumes_on_remove", values[i])
 			} else if value.Valid {
 				_m.DeleteVolumesOnRemove = value.Bool
+			}
+		case app.FieldExposedPorts:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field exposed_ports", values[i])
+			} else if value.Valid {
+				_m.ExposedPorts = new(string)
+				*_m.ExposedPorts = value.String
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -356,6 +365,11 @@ func (_m *App) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("delete_volumes_on_remove=")
 	builder.WriteString(fmt.Sprintf("%v", _m.DeleteVolumesOnRemove))
+	builder.WriteString(", ")
+	if v := _m.ExposedPorts; v != nil {
+		builder.WriteString("exposed_ports=")
+		builder.WriteString(*v)
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

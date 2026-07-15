@@ -91,6 +91,26 @@ func (_u *SiteUpdate) SetNillableScheme(v *site.Scheme) *SiteUpdate {
 	return _u
 }
 
+// SetAppService sets the "app_service" field.
+func (_u *SiteUpdate) SetAppService(v string) *SiteUpdate {
+	_u.mutation.SetAppService(v)
+	return _u
+}
+
+// SetNillableAppService sets the "app_service" field if the given value is not nil.
+func (_u *SiteUpdate) SetNillableAppService(v *string) *SiteUpdate {
+	if v != nil {
+		_u.SetAppService(*v)
+	}
+	return _u
+}
+
+// ClearAppService clears the value of the "app_service" field.
+func (_u *SiteUpdate) ClearAppService() *SiteUpdate {
+	_u.mutation.ClearAppService()
+	return _u
+}
+
 // SetAppID sets the "app" edge to the App entity by ID.
 func (_u *SiteUpdate) SetAppID(id int) *SiteUpdate {
 	_u.mutation.SetAppID(id)
@@ -164,6 +184,11 @@ func (_u *SiteUpdate) check() error {
 			return &ValidationError{Name: "scheme", err: fmt.Errorf(`db: validator failed for field "Site.scheme": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.AppService(); ok {
+		if err := site.AppServiceValidator(v); err != nil {
+			return &ValidationError{Name: "app_service", err: fmt.Errorf(`db: validator failed for field "Site.app_service": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -193,6 +218,12 @@ func (_u *SiteUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Scheme(); ok {
 		_spec.SetField(site.FieldScheme, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.AppService(); ok {
+		_spec.SetField(site.FieldAppService, field.TypeString, value)
+	}
+	if _u.mutation.AppServiceCleared() {
+		_spec.ClearField(site.FieldAppService, field.TypeString)
 	}
 	if _u.mutation.AppCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -305,6 +336,26 @@ func (_u *SiteUpdateOne) SetNillableScheme(v *site.Scheme) *SiteUpdateOne {
 	return _u
 }
 
+// SetAppService sets the "app_service" field.
+func (_u *SiteUpdateOne) SetAppService(v string) *SiteUpdateOne {
+	_u.mutation.SetAppService(v)
+	return _u
+}
+
+// SetNillableAppService sets the "app_service" field if the given value is not nil.
+func (_u *SiteUpdateOne) SetNillableAppService(v *string) *SiteUpdateOne {
+	if v != nil {
+		_u.SetAppService(*v)
+	}
+	return _u
+}
+
+// ClearAppService clears the value of the "app_service" field.
+func (_u *SiteUpdateOne) ClearAppService() *SiteUpdateOne {
+	_u.mutation.ClearAppService()
+	return _u
+}
+
 // SetAppID sets the "app" edge to the App entity by ID.
 func (_u *SiteUpdateOne) SetAppID(id int) *SiteUpdateOne {
 	_u.mutation.SetAppID(id)
@@ -391,6 +442,11 @@ func (_u *SiteUpdateOne) check() error {
 			return &ValidationError{Name: "scheme", err: fmt.Errorf(`db: validator failed for field "Site.scheme": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.AppService(); ok {
+		if err := site.AppServiceValidator(v); err != nil {
+			return &ValidationError{Name: "app_service", err: fmt.Errorf(`db: validator failed for field "Site.app_service": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -437,6 +493,12 @@ func (_u *SiteUpdateOne) sqlSave(ctx context.Context) (_node *Site, err error) {
 	}
 	if value, ok := _u.mutation.Scheme(); ok {
 		_spec.SetField(site.FieldScheme, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.AppService(); ok {
+		_spec.SetField(site.FieldAppService, field.TypeString, value)
+	}
+	if _u.mutation.AppServiceCleared() {
+		_spec.ClearField(site.FieldAppService, field.TypeString)
 	}
 	if _u.mutation.AppCleared() {
 		edge := &sqlgraph.EdgeSpec{

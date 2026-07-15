@@ -5,6 +5,7 @@ import type {
   Deploy,
   DeployResponse,
   EnvVar,
+  ExposedPort,
   Site,
   SiteInput,
   Status,
@@ -125,6 +126,17 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ deployId }),
     }),
+  // importExposedPorts parses the app's compose YAML and returns a
+  // {name, port} list the operator can review before saving.
+  // Compose-only: the server returns 400 for docker-mode apps and
+  // for apps with compose_path set (since the import only reads
+  // inline content). The mutation caller should map those errors
+  // to a user-visible message.
+  importExposedPorts: (id: number) =>
+    request<{ appId: number; exposedPorts: ExposedPort[]; hint: string }>(
+      `/api/apps/${id}/exposed-ports/import`,
+      { method: 'POST' },
+    ),
 
   systemStatus: () => request<SystemStatus>('/api/system/status'),
   systemLogs: (source: 'caddy' | 'nanoku', tail = 200) =>

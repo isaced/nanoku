@@ -24,6 +24,7 @@ var (
 		{Name: "registry_password", Type: field.TypeString, Nullable: true},
 		{Name: "trigger_token", Type: field.TypeString, Nullable: true},
 		{Name: "delete_volumes_on_remove", Type: field.TypeBool, Default: false},
+		{Name: "exposed_ports", Type: field.TypeString, Nullable: true, Size: 2147483647},
 	}
 	// AppsTable holds the schema information for the "apps" table.
 	AppsTable = &schema.Table{
@@ -182,6 +183,7 @@ var (
 		{Name: "upstream", Type: field.TypeString},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "scheme", Type: field.TypeEnum, Enums: []string{"http", "https"}, Default: "https"},
+		{Name: "app_service", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "app_sites", Type: field.TypeInt, Nullable: true},
 	}
 	// SitesTable holds the schema information for the "sites" table.
@@ -192,7 +194,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "sites_apps_sites",
-				Columns:    []*schema.Column{SitesColumns[7]},
+				Columns:    []*schema.Column{SitesColumns[8]},
 				RefColumns: []*schema.Column{AppsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},

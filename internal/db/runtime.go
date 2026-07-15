@@ -139,6 +139,10 @@ func init() {
 	siteDescEnabled := siteFields[2].Descriptor()
 	// site.DefaultEnabled holds the default value on creation for the enabled field.
 	site.DefaultEnabled = siteDescEnabled.Default.(bool)
+	// siteDescAppService is the schema descriptor for app_service field.
+	siteDescAppService := siteFields[4].Descriptor()
+	// site.AppServiceValidator is a validator for the "app_service" field. It is called by the builders before save.
+	site.AppServiceValidator = siteDescAppService.Validators[0].(func(string) error)
 	userMixin := schema.User{}.Mixin()
 	userMixinFields0 := userMixin[0].Fields()
 	_ = userMixinFields0
