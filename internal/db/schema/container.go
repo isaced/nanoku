@@ -23,7 +23,8 @@ func (Container) Fields() []ent.Field {
 		field.String("image").
 			Comment("Resolved image reference."),
 		field.Enum("status").
-			Values("created", "running", "paused", "restarting", "removing", "exited", "dead"),
+			Values("created", "running", "paused", "restarting", "removing", "exited", "dead", "retired"),
+
 		field.Time("started_at").
 			Optional().Nillable(),
 		field.Time("stopped_at").

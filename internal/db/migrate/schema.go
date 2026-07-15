@@ -39,7 +39,7 @@ var (
 		{Name: "docker_id", Type: field.TypeString},
 		{Name: "name", Type: field.TypeString, Unique: true},
 		{Name: "image", Type: field.TypeString},
-		{Name: "status", Type: field.TypeEnum, Enums: []string{"created", "running", "paused", "restarting", "removing", "exited", "dead"}},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"created", "running", "paused", "restarting", "removing", "exited", "dead", "retired"}},
 		{Name: "started_at", Type: field.TypeTime, Nullable: true},
 		{Name: "stopped_at", Type: field.TypeTime, Nullable: true},
 		{Name: "app_containers", Type: field.TypeInt, Nullable: true},

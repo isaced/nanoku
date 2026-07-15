@@ -119,6 +119,13 @@ const (
 	StatusRemoving   Status = "removing"
 	StatusExited     Status = "exited"
 	StatusDead       Status = "dead"
+	// StatusRetired is nanoku's marker for a Container row that
+	// has been superseded by a newer deploy. The row is preserved
+	// for deploy-history queries and audit; the live row is the
+	// most recent one for the app. We rename such rows to
+	// "<name>-retired-<nanos>" so the UNIQUE(containers.name)
+	// constraint doesn't reject the new live row.
+	StatusRetired Status = "retired"
 )
 
 func (s Status) String() string {
@@ -128,7 +135,7 @@ func (s Status) String() string {
 // StatusValidator is a validator for the "status" field enum values. It is called by the builders before save.
 func StatusValidator(s Status) error {
 	switch s {
-	case StatusCreated, StatusRunning, StatusPaused, StatusRestarting, StatusRemoving, StatusExited, StatusDead:
+	case StatusCreated, StatusRunning, StatusPaused, StatusRestarting, StatusRemoving, StatusExited, StatusDead, StatusRetired:
 		return nil
 	default:
 		return fmt.Errorf("container: invalid enum value for status field: %q", s)

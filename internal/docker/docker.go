@@ -74,6 +74,14 @@ func newManagerWithClient(cfg Config, cli client.APIClient) *Manager {
 	}
 }
 
+// NewManagerWithClient is the public form of newManagerWithClient. It
+// exists so tests in other packages (notably internal/api) can wire a
+// Manager to a fake / mocked Docker Engine API client without going
+// through NewManager (which dials the real socket).
+func NewManagerWithClient(cfg Config, cli client.APIClient) *Manager {
+	return newManagerWithClient(cfg, cli)
+}
+
 func (m *Manager) Close() error {
 	if m.cliCloser == nil {
 		return nil
@@ -434,6 +442,16 @@ func (m *Manager) CreateAppContainer(ctx context.Context, namePrefix, imageRef s
 		},
 	}
 
+	// Clean up any leftover container with this name before we
+	// create the new one. A previous deploy that crashed between
+	// ContainerCreate and ContainerStart, or that errored before
+	// the retire step, leaves a stub in the daemon with the
+	// desired name; the next deploy's create call would otherwise
+	// fail with "name already in use". Idempotent: no-op if the
+	// name is free.
+	if err := m.removeContainerIfExists(ctx, containerName); err != nil {
+		return "", "", err
+	}
 	createResp, err := m.cli.ContainerCreate(ctx, cfg, host, networking, nil, containerName)
 	if err != nil {
 		return "", "", fmt.Errorf("create app container: %w", err)
@@ -442,6 +460,37 @@ func (m *Manager) CreateAppContainer(ctx context.Context, namePrefix, imageRef s
 		return "", "", fmt.Errorf("start app container: %w", err)
 	}
 	return createResp.ID, containerName, nil
+}
+
+// removeContainerIfExists force-removes a container with the given
+// name if it exists, regardless of its current state (running, exited,
+// created, paused, …). It is the recovery path for "name already in
+// use" — a previous deploy that created the container but failed to
+// start it (or a crash that aborted the retire step) leaves a stub
+// entry in the docker daemon with the desired name, and the next
+// deploy must evict it before the create call can succeed.
+//
+// The function swallows "not found" so it's safe to call
+// unconditionally. Other errors are returned so the caller can
+// surface them — a permission error here is real and should not be
+// masked.
+func (m *Manager) removeContainerIfExists(ctx context.Context, name string) error {
+	insp, err := m.cli.ContainerInspect(ctx, name)
+	if err != nil {
+		if errdefs.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("inspect %s: %w", name, err)
+	}
+	// Prefer a graceful stop (so processes can clean up) but
+	// force-remove the container record either way. Force=true
+	// also tears down a running container, so we don't have to
+	// reason about state.
+	_ = m.cli.ContainerStop(ctx, insp.ID, container.StopOptions{Timeout: intPtr(5)})
+	if err := m.cli.ContainerRemove(ctx, insp.ID, container.RemoveOptions{Force: true}); err != nil {
+		return fmt.Errorf("remove stale %s: %w", name, err)
+	}
+	return nil
 }
 
 func (m *Manager) RemoveAppVolumes(ctx context.Context, appName string) error {

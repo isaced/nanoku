@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/isaced/nanoku/internal/db"
+	"github.com/isaced/nanoku/internal/db/container"
+	"github.com/isaced/nanoku/internal/docker"
 )
 
 // executeDeploy is the shared async deploy worker used by both the manual
@@ -73,6 +75,78 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 		return
 	}
 
+	// Stream every step of the deploy (pull progress, compose up lines,
+	// our own status annotations) into the live log hub. Subscribers in
+	// the UI see a real-time feed; the hub also keeps a bounded replay
+	// buffer so a late subscriber gets the start of the deploy.
+	//
+	// The defer order matters: we mark the stream terminal AFTER
+	// updating the Deploy row to success/failed, so a subscriber polling
+	// the row sees "success" only after the terminal log line has been
+	// published. (markDeployFailed is the corresponding path for the
+	// error case — see below.)
+	logSink := &lineWriterToHub{hub: h.DeployLogs, deployID: deployID}
+	if h.DeployLogs != nil {
+		logSink.hub.publish(deployID, fmt.Sprintf("→ deploy started (image=%s)", image))
+	}
+	defer func() {
+		if h.DeployLogs != nil {
+			logSink.flushPartial()
+			h.DeployLogs.markTerminal(deployID)
+		}
+	}()
+
+	// Schema has UNIQUE(containers.name). A prior deploy on the
+	// same app left a row with the same name; the new deploy's
+	// Create would otherwise fail with a UNIQUE-constraint
+	// violation. Retire all live rows whose name is either the
+	// docker-mode canonical name (nanoku-<name>) or the
+	// compose-mode fallback (nanoku-<name>-1, the first service
+	// container in the project). We do this BEFORE the docker
+	// availability check, so a stale row never blocks a fresh
+	// deploy — even when Docker is unreachable. (The retired
+	// name is recorded in the audit trail; the row stays around
+	// for rollback tooling to read by deploy_id.)
+	//
+	// The bulk UPDATE is a no-op when no prior row matches, so
+	// first-time deploys go through unchanged. We restrict the
+	// name match to exact equality on the two well-known forms
+	// (rather than a HasPrefix) to avoid retiring a sibling
+	// app's row by accident — e.g. an app named "blog" must not
+	// evict a row for an app named "blog-staging".
+	canon := "nanoku-" + a.Name
+	composed := canon + "-1"
+	if _, err := h.DB.Container.Update().
+		Where(
+			container.NameIn(canon, composed),
+			container.StatusNEQ(container.StatusRetired),
+		).
+		SetName(fmt.Sprintf("%s-retired-%d", canon, time.Now().UnixNano())).
+		SetStatus(container.StatusRetired).
+		Save(ctx); err != nil {
+		h.markDeployFailed(ctx, deployID, fmt.Errorf("retire prior container row: %w", err))
+		return
+	}
+
+	// Schema has UNIQUE(containers.app_current_container) — the
+	// App→Container O2O reverse edge is stored as a column on the
+	// container side. The previous deploy's row still points at
+	// this app; if we don't clear the relationship before creating
+	// the new row, the new row's SetCurrentContainerID below will
+	// fail with a UNIQUE violation (only one container row may
+	// carry a given app's current_container FK at a time).
+	//
+	// Done in the same window as the `name` retire so a stale row
+	// never blocks a fresh deploy — even when Docker is
+	// unreachable. (Both operations are no-ops on a first-time
+	// deploy.)
+	if err := h.DB.App.UpdateOneID(a.ID).
+		ClearCurrentContainer().
+		Exec(ctx); err != nil {
+		h.markDeployFailed(ctx, deployID, fmt.Errorf("clear prior current_container: %w", err))
+		return
+	}
+
 	if h.Docker == nil {
 		h.markDeployFailed(ctx, deployID, errors.New("docker unavailable"))
 		return
@@ -113,8 +187,11 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 			}
 			filePath = written
 		}
+		if h.DeployLogs != nil {
+			h.DeployLogs.publish(deployID, fmt.Sprintf("→ compose up: project=%s", project))
+		}
 		if err := h.Docker.WithRegistry(ctx, regURL, regUser, regPass, func() error {
-			return h.Docker.ComposeUp(ctx, project, filePath, true)
+			return h.Docker.ComposeUp(ctx, project, filePath, true, docker.WithComposeStream(logSink))
 		}); err != nil {
 			h.markDeployFailed(ctx, deployID, err)
 			return
@@ -126,9 +203,15 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 			containerName = composeProjectName(a.Name) + "-1"
 		}
 	} else {
+		if h.DeployLogs != nil {
+			h.DeployLogs.publish(deployID, fmt.Sprintf("→ pull %s", image))
+		}
 		if err := h.Docker.WithRegistry(ctx, regURL, regUser, regPass, func() error {
-			if err := h.Docker.PullImage(ctx, image); err != nil {
+			if err := h.Docker.PullImage(ctx, image, docker.WithPullStream(logSink)); err != nil {
 				return fmt.Errorf("pull %s: %w", image, err)
+			}
+			if h.DeployLogs != nil {
+				h.DeployLogs.publish(deployID, fmt.Sprintf("→ pull %s: ok", image))
 			}
 			mounts, merr := loadMounts(ctx, a)
 			if merr != nil {
@@ -163,6 +246,11 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 	}
 
 	now := time.Now().UTC()
+	// expectedName was already retired up front (before the docker
+	// call) so the UNIQUE constraint on containers.name doesn't
+	// fire here. The Container.Create below must use the same name
+	// the docker engine actually created (compose path may have
+	// produced a slightly different name from the docker one).
 	cont, err := h.DB.Container.Create().
 		SetDockerID("").
 		SetName(containerName).
