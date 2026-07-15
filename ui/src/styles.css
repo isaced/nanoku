@@ -80,3 +80,35 @@ header .ant-menu-horizontal > .ant-menu-item-selected::after,
 header .ant-menu-horizontal > .ant-menu-item-selected:hover::after {
   border-bottom-color: var(--accent) !important;
 }
+
+/* Apps table: tighten the default antd look so it reads as a deliberate
+   list rather than a stock data grid. Scoped via .nk-apps-table so other
+   tables (sites, etc.) are untouched. */
+@layer components {
+  .nk-apps-table.ant-table-wrapper .ant-table {
+    background: transparent;
+  }
+  /* Quieter header: lighter weight, muted caps, no per-cell divider rule. */
+  .nk-apps-table .ant-table-thead > tr > th {
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    background: transparent;
+    border-bottom: 1px solid var(--border);
+  }
+  .nk-apps-table .ant-table-thead > tr > th::before {
+    display: none;
+  }
+  /* Rows: slightly tighter vertical rhythm, subtle hover wash. */
+  .nk-apps-table .ant-table-tbody > tr > td {
+    border-bottom: 1px solid var(--border);
+  }
+  .nk-apps-table .ant-table-tbody > tr:last-child > td {
+    border-bottom: none;
+  }
+  .nk-apps-table .ant-table-tbody > tr:hover > td {
+    background: var(--accent-soft);
+  }
+}

@@ -190,174 +190,177 @@ function AppsPageContent() {
           </Button>
         </div>
 
-        <div className="border border-[var(--border)] rounded-lg overflow-hidden bg-[var(--bg-elevated)]">
-          <Table<AppType>
-            dataSource={apps}
-            rowKey="id"
-            loading={fetching}
-            pagination={false}
-            locale={{ emptyText: <EmptyState onCreate={openCreate} /> }}
-            columns={[
-              {
-                title: t('table.name'),
-                dataIndex: 'name',
-                render: (n: string, row) => (
+        <div className="border border-[var(--border)] rounded-lg overflow-hidden bg-[var(--bg)]">
+        <Table<AppType>
+          dataSource={apps}
+          rowKey="id"
+          loading={fetching}
+          pagination={false}
+          scroll={{ x: 'max-content' }}
+          className="nk-apps-table"
+          locale={{ emptyText: <EmptyState onCreate={openCreate} /> }}
+          columns={[
+            {
+              title: t('table.name'),
+              dataIndex: 'name',
+              render: (n: string, row) => {
+                const image =
+                  row.image ||
+                  (row.deployMethod === 'compose' ? t('table.imageFromCompose') : '-')
+                return (
                   <button
                     type="button"
-                    className="text-left mono text-sm text-[var(--accent)] hover:underline"
+                    className="text-left group"
                     onClick={() => setDetailAppId(row.id)}
                   >
-                    {n}
+                    <span className="block text-sm font-medium text-[var(--accent)] group-hover:underline">
+                      {n}
+                    </span>
+                    <span className="block mono text-[11px] leading-tight text-[var(--fg-muted)] mt-0.5">
+                      {image}
+                    </span>
                   </button>
-                ),
+                )
               },
-              {
-                title: t('table.method'),
-                dataIndex: 'deployMethod',
-                width: 90,
-                render: (m: string) => (
-                  <Tag
-                    color={m === 'compose' ? 'purple' : 'default'}
-                    className="!m-0 mono text-[10px]"
-                  >
-                    {m ?? 'docker'}
-                  </Tag>
-                ),
-              },
-              {
-                title: t('table.image'),
-                dataIndex: 'image',
-                render: (i: string, row) => (
-                  <span className="mono text-xs text-[var(--fg-muted)]">
-                    {i || (row.deployMethod === 'compose' ? t('table.imageFromCompose') : '—')}
-                  </span>
-                ),
-              },
-              {
-                title: t('table.port'),
-                dataIndex: 'port',
-                width: 80,
-                align: 'right',
-                render: (p: number) => (
-                  <span className="mono text-sm text-[var(--fg-muted)]">{p}</span>
-                ),
-              },
-              {
-                title: t('table.status'),
-                key: 'status',
-                width: 200,
-                render: (_: unknown, row) => <StatusCell app={row} />,
-              },
-              {
-                title: '',
-                key: 'actions',
-                width: 280,
-                align: 'right',
-                render: (_: unknown, row) => (
-                  <Space size={4}>
-                    {!row.container && (
-                      <Tooltip title={t('table.actions.deploy')}>
-                        <Button
-                          type="text"
-                          size="small"
-                          loading={deployApp.isPending && deployApp.variables === row.id}
-                          icon={<Rocket size={14} />}
-                          onClick={() => triggerDeploy(row)}
-                        />
-                      </Tooltip>
-                    )}
-                    {/* Lifecycle rules live in appLifecycle() so the
-                        list and the detail drawer don't drift. */}
-                    {(() => {
-                      const lc = appLifecycle(row.container)
-                      return (
-                        <>
-                          {lc.isLive && (
-                            <>
-                              <Tooltip title={t('table.actions.stop')}>
-                                <Button
-                                  type="text"
-                                  size="small"
-                                  loading={
-                                    stopApp.isPending && stopApp.variables === row.id
-                                  }
-                                  icon={<Square size={14} />}
-                                  onClick={() =>
-                                    runAction(row, 'stopped', () =>
-                                      stopApp.mutateAsync(row.id),
-                                    )
-                                  }
-                                />
-                              </Tooltip>
-                              {!lc.isRestarting && (
-                                <Tooltip title={t('table.actions.restart')}>
-                                  <Button
-                                    type="text"
-                                    size="small"
-                                    loading={
-                                      restartApp.isPending &&
-                                      restartApp.variables === row.id
-                                    }
-                                    icon={<RefreshCw size={14} />}
-                                    onClick={() =>
-                                      runAction(row, 'restarted', () =>
-                                        restartApp.mutateAsync(row.id),
-                                      )
-                                    }
-                                  />
-                                </Tooltip>
-                              )}
-                            </>
-                          )}
-                          {lc.isStopped && (
-                            <Tooltip title={t('table.actions.start')}>
+            },
+            {
+              title: t('table.method'),
+              dataIndex: 'deployMethod',
+              width: 90,
+              render: (m: string) => (
+                <Tag
+                  color={m === 'compose' ? 'purple' : 'default'}
+                  className="!m-0 mono text-[10px]"
+                >
+                  {m ?? 'docker'}
+                </Tag>
+              ),
+            },
+            {
+              title: t('table.port'),
+              dataIndex: 'port',
+              width: 80,
+              align: 'right',
+              render: (p: number) => (
+                <span className="mono text-sm text-[var(--fg-muted)]">{p}</span>
+              ),
+            },
+            {
+              title: t('table.status'),
+              key: 'status',
+              width: 220,
+              render: (_: unknown, row) => <StatusCell app={row} />,
+            },
+            {
+              title: '',
+              key: 'actions',
+              width: 240,
+              align: 'right',
+              render: (_: unknown, row) => (
+                <Space size={4}>
+                  {!row.container && (
+                    <Tooltip title={t('table.actions.deploy')}>
+                      <Button
+                        type="text"
+                        size="small"
+                        loading={deployApp.isPending && deployApp.variables === row.id}
+                        icon={<Rocket size={14} />}
+                        onClick={() => triggerDeploy(row)}
+                      />
+                    </Tooltip>
+                  )}
+                  {/* Lifecycle rules live in appLifecycle() so the
+                      list and the detail drawer don't drift. */}
+                  {(() => {
+                    const lc = appLifecycle(row.container)
+                    return (
+                      <>
+                        {lc.isLive && (
+                          <>
+                            <Tooltip title={t('table.actions.stop')}>
                               <Button
                                 type="text"
                                 size="small"
                                 loading={
-                                  startApp.isPending && startApp.variables === row.id
+                                  stopApp.isPending && stopApp.variables === row.id
                                 }
-                                icon={<Play size={14} />}
+                                icon={<Square size={14} />}
                                 onClick={() =>
-                                  runAction(row, 'started', () =>
-                                    startApp.mutateAsync(row.id),
+                                  runAction(row, 'stopped', () =>
+                                    stopApp.mutateAsync(row.id),
                                   )
                                 }
                               />
                             </Tooltip>
-                          )}
-                        </>
-                      )
-                    })()}
-                    {row.container && (
-                      <Tooltip title={t('table.actions.redeploy')}>
-                        <Button
-                          type="text"
-                          size="small"
-                          loading={deployApp.isPending && deployApp.variables === row.id}
-                          icon={<ContainerIcon size={14} />}
-                          onClick={() => triggerDeploy(row)}
-                        />
-                      </Tooltip>
-                    )}
-                    <Tooltip title={t('table.actions.edit')}>
+                            {!lc.isRestarting && (
+                              <Tooltip title={t('table.actions.restart')}>
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  loading={
+                                    restartApp.isPending &&
+                                    restartApp.variables === row.id
+                                  }
+                                  icon={<RefreshCw size={14} />}
+                                  onClick={() =>
+                                    runAction(row, 'restarted', () =>
+                                      restartApp.mutateAsync(row.id),
+                                    )
+                                  }
+                                />
+                              </Tooltip>
+                            )}
+                          </>
+                        )}
+                        {lc.isStopped && (
+                          <Tooltip title={t('table.actions.start')}>
+                            <Button
+                              type="text"
+                              size="small"
+                              loading={
+                                startApp.isPending && startApp.variables === row.id
+                              }
+                              icon={<Play size={14} />}
+                              onClick={() =>
+                                runAction(row, 'started', () =>
+                                  startApp.mutateAsync(row.id),
+                                )
+                              }
+                            />
+                          </Tooltip>
+                        )}
+                      </>
+                    )
+                  })()}
+                  {row.container && (
+                    <Tooltip title={t('table.actions.redeploy')}>
                       <Button
                         type="text"
                         size="small"
-                        icon={<Pencil size={14} />}
-                        onClick={() => openEdit(row)}
+                        loading={deployApp.isPending && deployApp.variables === row.id}
+                        icon={<ContainerIcon size={14} />}
+                        onClick={() => triggerDeploy(row)}
                       />
                     </Tooltip>
-                    <Tooltip title={t('table.actions.delete')}>
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<Trash2 size={14} />}
-                        onClick={() => confirmDelete(row)}
-                      />
-                    </Tooltip>
-                  </Space>
-                ),
+                  )}
+                  <Tooltip title={t('table.actions.edit')}>
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<Pencil size={14} />}
+                      onClick={() => openEdit(row)}
+                    />
+                  </Tooltip>
+                  <Tooltip title={t('table.actions.delete')}>
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<Trash2 size={14} />}
+                      onClick={() => confirmDelete(row)}
+                    />
+                  </Tooltip>
+                </Space>
+              ),
               },
             ]}
           />
@@ -408,34 +411,42 @@ function StatusCell({ app }: { app: AppType }) {
           : s
   if (!app.container) {
     return (
-      <Tag className="!m-0">
-        <span className="inline-flex items-center gap-1">
-          <CircleDashed size={10} /> {t('status.notDeployed')}
-        </span>
-      </Tag>
+      <span className="inline-flex items-center gap-1.5 text-[var(--fg-muted)]">
+        <CircleDashed size={12} className="shrink-0" />
+        <span className="text-xs">{t('status.notDeployed')}</span>
+      </span>
     )
   }
   const s = app.container.status
   if (s === 'running') {
     return (
-      <span className="inline-flex items-center gap-1.5 text-[var(--success)]">
-        <CircleCheck size={12} />
-        <span className="mono text-xs">{app.container.name}</span>
+      <span className="inline-flex items-center gap-1.5">
+        <CircleCheck size={12} className="text-[var(--success)] shrink-0" />
+        <span className="text-xs text-[var(--fg)]">{t('status.running')}</span>
+        <span className="mono text-[11px] text-[var(--fg-muted)] max-w-[8rem] truncate">
+          {app.container.name}
+        </span>
       </span>
     )
   }
   if (s === 'exited' || s === 'created') {
     return (
       <span className="inline-flex items-center gap-1.5 text-[var(--fg-muted)]">
-        <CircleDashed size={12} />
-        <span className="mono text-xs">{translate(s)} · {app.container.name}</span>
+        <CircleDashed size={12} className="shrink-0" />
+        <span className="text-xs">{translate(s)}</span>
+        <span className="mono text-[11px] max-w-[8rem] truncate">
+          {app.container.name}
+        </span>
       </span>
     )
   }
   return (
     <span className="inline-flex items-center gap-1.5 text-[var(--danger)]">
-      <CircleX size={12} />
-      <span className="mono text-xs">{s} · {app.container.name}</span>
+      <CircleX size={12} className="shrink-0" />
+      <span className="text-xs">{s}</span>
+      <span className="mono text-[11px] max-w-[8rem] truncate">
+        {app.container.name}
+      </span>
     </span>
   )
 }
