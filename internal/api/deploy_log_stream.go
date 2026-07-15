@@ -125,11 +125,16 @@ func streamDeployLog(
 	if terminalNow {
 		// The deploy is done. Drain whatever the publisher already
 		// queued into the live channel (it may have flushed lines
-		// between subscribe and the terminal-mark), then exit.
+		// between subscribe and the terminal-mark), then emit a real
+		// `end` event and close the connection so the browser's
+		// EventSource doesn't auto-reconnect — reconnecting would just
+		// replay the same history forever, since the deploy is no
+		// longer producing new lines. The matching `es.close()` is in
+		// the frontend (useLogStream's `end` handler).
 		drainClosed(live, func(s string) bool {
 			return sw.sseEvent("line", s) == nil
 		})
-		_ = sw.sseComment("nanoku deploy log stream end")
+		_ = sw.sseEvent("end", "nanoku deploy log stream end")
 		return
 	}
 
@@ -142,7 +147,12 @@ func streamDeployLog(
 			return
 		case l, ok := <-live:
 			if !ok {
-				_ = sw.sseComment("nanoku deploy log stream end")
+				// Live channel closed by the publisher. Emit the
+				// `end` sentinel so the browser closes the
+				// EventSource and doesn't auto-reconnect into a
+				// replay loop. See the terminalNow branch above
+				// for the full rationale.
+				_ = sw.sseEvent("end", "nanoku deploy log stream end")
 				return
 			}
 			if err := sw.sseEvent("line", l.msg); err != nil {
@@ -151,11 +161,12 @@ func streamDeployLog(
 		case <-done:
 			// Deploy reached a terminal status. Drain the live channel
 			// (the publisher is still allowed to flush a few final
-			// lines before closing it), then exit.
+			// lines before closing it), then emit the `end` sentinel
+			// so the browser closes the EventSource.
 			drainClosed(live, func(s string) bool {
 				return sw.sseEvent("line", s) == nil
 			})
-			_ = sw.sseComment("nanoku deploy log stream end")
+			_ = sw.sseEvent("end", "nanoku deploy log stream end")
 			return
 		case <-keepalive.C:
 			if err := sw.sseComment("ka"); err != nil {

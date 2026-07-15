@@ -173,6 +173,23 @@ export function useLogStream(
       // built-in `error` handler above for connection-level issues.
       setError((ev.data as string) || 'log stream error')
     })
+    es.addEventListener('end', () => {
+      // Server-side sentinel that the deploy log stream is done.
+      // The deploy reached a terminal status, no more lines are
+      // coming, and the server has replayed everything it will ever
+      // replay. Without this handler the browser's EventSource
+      // auto-reconnects on close (per the `retry: 2000` directive
+      // the server emits) and the next connect just replays the
+      // same history again — an infinite loop visible to the
+      // operator as the same three lines cycling forever.
+      //
+      // Container log streams (Logs tab, system page) don't send
+      // `end`, so this handler is a no-op for them — only the
+      // deploy stream opts in by emitting the event before
+      // closing.
+      es.close()
+      setStatus('closed')
+    })
     return () => {
       es.close()
       esRef.current = null

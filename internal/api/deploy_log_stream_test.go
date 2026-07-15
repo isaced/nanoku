@@ -60,7 +60,15 @@ func TestStreamDeployLog_ReplaysHistoryThenLivePublishesLines(t *testing.T) {
 
 // TestStreamDeployLog_TerminalAtSubscribeExitsImmediately documents the
 // "user opened the panel after the deploy finished" path: we replay
-// history and exit without waiting on the done channel.
+// history and emit the `end` event so the browser's EventSource
+// closes itself rather than auto-reconnecting into a replay loop.
+//
+// The end marker MUST be a real `event: end` (not a `: comment`) —
+// a comment is ignored by EventSource, the connection closes, the
+// browser reconnects per the server's `retry: 2000` directive, and
+// the operator sees the same history repeating every 2s forever.
+// The matching frontend handler is in useLogStream.ts; this test
+// guards the wire contract.
 func TestStreamDeployLog_TerminalAtSubscribeExitsImmediately(t *testing.T) {
 	hub := newDeployLogHub()
 	hub.publish(1, "history-1")
@@ -84,11 +92,49 @@ func TestStreamDeployLog_TerminalAtSubscribeExitsImmediately(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("streamDeployLog did not return for terminal-at-subscribe")
 	}
-	if !strings.Contains(w.Body.String(), "data: history-1") {
-		t.Errorf("body missing history-1: %q", w.Body.String())
+	body := w.Body.String()
+	if !strings.Contains(body, "data: history-1") {
+		t.Errorf("body missing history-1: %q", body)
 	}
-	if !strings.Contains(w.Body.String(), ": nanoku deploy log stream end") {
-		t.Errorf("body missing end comment: %q", w.Body.String())
+	// The `end` event — the whole point of the fix. An older comment
+	// form (`: nanoku deploy log stream end`) was indistinguishable
+	// from a keepalive and caused infinite replay loops.
+	if !strings.Contains(body, "event: end") {
+		t.Errorf("body missing `event: end` marker (would cause replay loop): %q", body)
+	}
+}
+
+// TestStreamDeployLog_TerminalAfterSubscribeEmitsEnd covers the live
+// path: the deploy was running when the user opened the panel, the
+// subscriber is hooked up to the done channel, and we expect the
+// end-event after markTerminal fires.
+func TestStreamDeployLog_TerminalAfterSubscribeEmitsEnd(t *testing.T) {
+	hub := newDeployLogHub()
+	hist, live, done, unsub, _ := hub.subscribe(context.Background(), 1)
+	defer unsub()
+
+	// Simulate a still-running deploy that publishes lines, then
+	// reaches a terminal state.
+	hub.publish(1, "live-1")
+	hub.publish(1, "live-2")
+	hub.markTerminal(1)
+
+	w := httptest.NewRecorder()
+	streamDone := make(chan struct{})
+	go func() {
+		streamDeployLog(context.Background(), w, hist, live, done, "running")
+		close(streamDone)
+	}()
+	select {
+	case <-streamDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("streamDeployLog did not return after markTerminal")
+	}
+	body := w.Body.String()
+	for _, want := range []string{"data: live-1", "data: live-2", "event: end"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q: %q", want, body)
+		}
 	}
 }
 

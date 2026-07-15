@@ -337,4 +337,21 @@ describe('useLogStream', () => {
     rerender({ enabled: true })
     expect(FakeEventSource.instances).toHaveLength(1)
   })
+
+  // The server sends `event: end` once the deploy log stream is
+  // definitively done (deploy reached terminal status, all history
+  // replayed, no more lines coming). Without this handler the
+  // browser's EventSource auto-reconnects on close and the operator
+  // sees the same history replay forever — the deploy log "loops"
+  // every 2 seconds. The handler must close the EventSource and
+  // surface `closed` status so the UI can show a definitive end.
+  it('closes the EventSource on `end` event to stop the replay loop', () => {
+    const { result } = renderHook(() => useLogStream('/api/test/stream'))
+    const es = FakeEventSource.instances[0]
+    act(() => es.__fire('open'))
+    expect(result.current.status).toBe('live')
+    act(() => es.__fire('end', 'nanoku deploy log stream end'))
+    expect(es.closed).toBe(true)
+    expect(result.current.status).toBe('closed')
+  })
 })
