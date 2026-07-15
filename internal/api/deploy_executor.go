@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/isaced/nanoku/internal/db"
+	"github.com/isaced/nanoku/internal/db/app"
 	"github.com/isaced/nanoku/internal/db/container"
 	"github.com/isaced/nanoku/internal/docker"
 )
@@ -110,33 +111,47 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 	// Schema has UNIQUE(containers.name). A prior deploy on the
 	// same app left a row with the same name; the new deploy's
 	// Create would otherwise fail with a UNIQUE-constraint
-	// violation. Retire all live rows whose name is either the
-	// docker-mode canonical name (nanoku-<name>) or the
-	// compose-mode fallback (nanoku-<name>-1, the first service
-	// container in the project). We do this BEFORE the docker
-	// availability check, so a stale row never blocks a fresh
-	// deploy — even when Docker is unreachable. (The retired
-	// name is recorded in the audit trail; the row stays around
-	// for rollback tooling to read by deploy_id.)
+	// violation. Retire every live row owned by THIS app so a
+	// fresh deploy can re-use the canonical name. We do this
+	// BEFORE the docker availability check, so a stale row
+	// never blocks a fresh deploy — even when Docker is
+	// unreachable. (The retired name is recorded in the audit
+	// trail; the row stays around for rollback tooling to read
+	// by deploy_id.)
 	//
-	// The bulk UPDATE is a no-op when no prior row matches, so
-	// first-time deploys go through unchanged. We restrict the
-	// name match to exact equality on the two well-known forms
-	// (rather than a HasPrefix) to avoid retiring a sibling
-	// app's row by accident — e.g. an app named "blog" must not
-	// evict a row for an app named "blog-staging".
-	canon := "nanoku-" + a.Name
-	composed := canon + "-1"
-	if _, err := h.DB.Container.Update().
+	// Scoping by the app edge (not by a name pattern) is
+	// critical for compose-mode apps with multiple services:
+	// each service has its own container name
+	// (nanoku-<app>-<service>-1), and a HasPrefix("nanoku-<app>")
+	// match would also retire sibling apps (e.g. an app named
+	// "blog" would collide with "blog-staging"). The FK
+	// relationship is exact, so a per-app scope is both
+	// sufficient and safe.
+	//
+	// Each row is renamed to <original-name>-retired-<id>. The
+	// row id is unique and stable (unlike UnixNano, which would
+	// collide across multiple services retired in the same
+	// batch — a real risk for multi-service compose stacks).
+	// First-time deploys match zero rows and the loop is a
+	// no-op.
+	liveContainers, err := h.DB.Container.Query().
 		Where(
-			container.NameIn(canon, composed),
+			container.HasAppWith(app.IDEQ(a.ID)),
 			container.StatusNEQ(container.StatusRetired),
 		).
-		SetName(fmt.Sprintf("%s-retired-%d", canon, time.Now().UnixNano())).
-		SetStatus(container.StatusRetired).
-		Save(ctx); err != nil {
-		h.markDeployFailed(ctx, deployID, fmt.Errorf("retire prior container row: %w", err))
+		All(ctx)
+	if err != nil {
+		h.markDeployFailed(ctx, deployID, fmt.Errorf("query live container rows: %w", err))
 		return
+	}
+	for _, c := range liveContainers {
+		if _, err := h.DB.Container.UpdateOneID(c.ID).
+			SetName(fmt.Sprintf("%s-retired-%d", c.Name, c.ID)).
+			SetStatus(container.StatusRetired).
+			Save(ctx); err != nil {
+			h.markDeployFailed(ctx, deployID, fmt.Errorf("retire prior container row %d: %w", c.ID, err))
+			return
+		}
 	}
 
 	// Schema has UNIQUE(containers.app_current_container) — the

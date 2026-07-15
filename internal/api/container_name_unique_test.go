@@ -183,3 +183,103 @@ func TestDeployExecutor_ClearsPriorCurrentContainerFK(t *testing.T) {
 		t.Errorf("old row status = %q, want retired", oldAfter.Status)
 	}
 }
+
+// TestDeployExecutor_RetiresAllComposeServiceRows reproduces the
+// production failure mode that motivated this fix: a compose-mode app
+// with multiple services has one container row per service, named
+// nanoku-<app>-<service>-1 (not just nanoku-<app>-1 or nanoku-<app>).
+// The previous name-based retire only matched two hard-coded forms
+// and missed every multi-service compose row, so the next deploy
+// crashed with `UNIQUE constraint failed: containers.name` on the
+// first service that still had a live row.
+//
+// We seed two service rows for one compose app and assert that
+// executeDeploy retires BOTH with distinct retired-names (the
+// per-row ID suffix keeps them unique) and leaves no live row with
+// the original names. Docker is nil so the deploy reports failure
+// after the retire — same shape as the other executor tests.
+func TestDeployExecutor_RetiresAllComposeServiceRows(t *testing.T) {
+	d := newTestDB(t)
+	a, err := d.App.Create().
+		SetName("ddd").
+		SetDeployMethod("compose").
+		SetComposeContent("services:\n  uptime-kuma:\n    image: louislam/uptime-kuma:2\n  web:\n    image: nginx:1.27\n").
+		Save(context.Background())
+	if err != nil {
+		t.Fatalf("seed app: %v", err)
+	}
+	h := &Handlers{
+		DB:             d,
+		DeployLock:     NewDeployLock(),
+		CaddyfilePath:  t.TempDir() + "/Caddyfile",
+		ComposeBaseDir: t.TempDir(),
+		Secret:         newTestSealer(t),
+	}
+
+	// Seed two live service container rows. These are the
+	// canonical compose names: nanoku-<app>-<service>-1.
+	svc1, err := h.DB.Container.Create().
+		SetDockerID("svc1-docker-id").
+		SetName("nanoku-ddd-uptime-kuma-1").
+		SetImage("louislam/uptime-kuma:2").
+		SetStatus(container.StatusRunning).
+		SetAppID(a.ID).
+		Save(context.Background())
+	if err != nil {
+		t.Fatalf("create svc1: %v", err)
+	}
+	svc2, err := h.DB.Container.Create().
+		SetDockerID("svc2-docker-id").
+		SetName("nanoku-ddd-web-1").
+		SetImage("nginx:1.27").
+		SetStatus(container.StatusRunning).
+		SetAppID(a.ID).
+		Save(context.Background())
+	if err != nil {
+		t.Fatalf("create svc2: %v", err)
+	}
+
+	depID, err := h.DB.Deploy.Create().
+		SetAppID(a.ID).
+		SetTrigger("manual").
+		SetStatus("running").
+		SetImage("louislam/uptime-kuma:2").
+		Save(context.Background())
+	if err != nil {
+		t.Fatalf("create deploy: %v", err)
+	}
+	h.executeDeploy(context.Background(), a.ID, depID.ID, "")
+
+	// Both rows must be retired (status flipped) and renamed
+	// (not equal to the original canonical name). The per-row
+	// rename is what protects us from a multi-row batch
+	// UNIQUE-collision on the new name.
+	for _, c := range []struct {
+		id   int
+		name string
+	}{{svc1.ID, "nanoku-ddd-uptime-kuma-1"}, {svc2.ID, "nanoku-ddd-web-1"}} {
+		row, err := h.DB.Container.Get(context.Background(), c.id)
+		if err != nil {
+			t.Fatalf("get row %d: %v", c.id, err)
+		}
+		if row.Name == c.name {
+			t.Errorf("row %d name = %q, want it to be renamed", c.id, row.Name)
+		}
+		if row.Status != container.StatusRetired {
+			t.Errorf("row %d status = %q, want retired", c.id, row.Status)
+		}
+	}
+
+	// Sanity: no live row remains with either canonical name.
+	for _, n := range []string{"nanoku-ddd-uptime-kuma-1", "nanoku-ddd-web-1"} {
+		count, err := h.DB.Container.Query().
+			Where(container.Name(n), container.StatusNEQ(container.StatusRetired)).
+			Count(context.Background())
+		if err != nil {
+			t.Fatalf("count %s: %v", n, err)
+		}
+		if count != 0 {
+			t.Errorf("live rows named %q = %d, want 0", n, count)
+		}
+	}
+}
