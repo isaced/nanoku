@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { App, Button, Drawer, Popconfirm, Tabs, Tag } from 'antd'
 import { Bell, Pencil, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -14,6 +14,7 @@ import {
 import { queryKeys } from '../lib/queryKeys'
 import { useQueryClient } from '@tanstack/react-query'
 import type { App as AppType, Deploy, EnvVar, Volume } from '../lib/types'
+import { RouteFallback } from './RouteFallback'
 
 const DEPLOY_POLL_INTERVAL_MS = 3000
 
@@ -32,21 +33,76 @@ export function AppDetail({
   onChanged: () => void
   onEditRequested: (app: AppType) => void
 }) {
-  return <AppDetailContent appId={appId} initialTab={initialTab} onClose={onClose} onChanged={onChanged} onEditRequested={onEditRequested} />
+  // The Drawer is rendered OUTSIDE the Suspense boundary so it mounts
+  // once and stays in the DOM while the body suspends. Earlier the
+  // Suspense fallback was a hand-rolled fake drawer div that appeared,
+  // vanished, then got replaced by the real antd Drawer — visually a
+  // "white flash → drawer disappears → drawer reappears with content"
+  // sequence. Lifting <Drawer> above <Suspense> makes the Drawer mount
+  // exactly once: the slide-in plays once, and during data load only
+  // the body swaps from <RouteFallback> to the real tabs.
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      width={680}
+      destroyOnClose
+      title={
+        <Suspense
+          fallback={
+            <div className="h-6 w-40 bg-[var(--bg-input)] rounded animate-pulse" />
+          }
+        >
+          <AppDetailTitle appId={appId} onEditRequested={onEditRequested} />
+        </Suspense>
+      }
+    >
+      <Suspense fallback={<RouteFallback variant="drawer" />}>
+        <AppDetailContent
+          appId={appId}
+          initialTab={initialTab}
+          onChanged={onChanged}
+        />
+      </Suspense>
+    </Drawer>
+  )
+}
+
+function AppDetailTitle({
+  appId,
+  onEditRequested,
+}: {
+  appId: number
+  onEditRequested: (app: AppType) => void
+}) {
+  const { t } = useTranslation('apps')
+  const appQuery = useSuspenseApp(appId)
+  const app = appQuery.data
+  return (
+    <div className="flex items-center gap-3">
+      <span className="mono text-base">{app.name}</span>
+      {app.container && <Tag className="!m-0">{app.container.status}</Tag>}
+      <Button
+        size="small"
+        type="text"
+        icon={<Pencil size={13} />}
+        className="!ml-auto"
+        onClick={() => onEditRequested(app)}
+      >
+        {t('detail.editInEditor')}
+      </Button>
+    </div>
+  )
 }
 
 function AppDetailContent({
   appId,
   initialTab,
-  onClose,
   onChanged,
-  onEditRequested,
 }: {
   appId: number
   initialTab?: TabKey
-  onClose: () => void
   onChanged: () => void
-  onEditRequested: (app: AppType) => void
 }) {
   const { message } = App.useApp()
   const { t } = useTranslation('apps')
@@ -89,102 +145,59 @@ function AppDetailContent({
     wasInFlight.current = inFlight
   }, [inFlight, appQuery, envQuery, volumesQuery, queryClient, onChanged])
 
-  // Surface deploy terminal status to the user.
-  const lastReported = useRef<{ id: number; status: string } | null>(null)
-  useEffect(() => {
-    const top = deploys[0]
-    if (!top) return
-    if (top.status === 'running') return
-    const prev = lastReported.current
-    if (prev && prev.id === top.id && prev.status === top.status) return
-    lastReported.current = { id: top.id, status: top.status }
-    if (top.status === 'success') {
-      message.success(t('detail.deploySuccess', { name: app.name }))
-    } else if (top.status === 'failed') {
-      message.error(
-        t('detail.deployFailed', {
-          name: app.name,
-          error: top.error ?? '',
-        }),
-      )
-    }
-  }, [deploys, app.name, message, t])
-
   return (
-    <Drawer
-      open
-      onClose={onClose}
-      width={680}
-      title={
-        <div className="flex items-center gap-3">
-          <span className="mono text-base">{app.name}</span>
-          {app.container && <Tag className="!m-0">{app.container.status}</Tag>}
-          <Button
-            size="small"
-            type="text"
-            icon={<Pencil size={13} />}
-            className="!ml-auto"
-            onClick={() => onEditRequested(app)}
-          >
-            {t('detail.editInEditor')}
-          </Button>
-        </div>
-      }
-      destroyOnClose
-    >
-      <Tabs
-        activeKey={activeTab}
-        onChange={(k) => setActiveTab(k as TabKey)}
-        items={[
-          {
-            key: 'overview',
-            label: t('detail.tabOverview'),
-            children: (
-              <OverviewTab
-                app={app}
-                env={env}
-                volumes={volumes}
-                onRotateTrigger={async () => {
-                  try {
-                    await api.rotateTriggerToken(app.id)
-                    message.success(
-                      t('trigger.rotatedToast', {
-                        url: `${window.location.origin}/api/apps/${app.name}/trigger`,
-                      }),
-                    )
-                    void appQuery.refetch()
-                    void queryClient.invalidateQueries({ queryKey: queryKeys.apps.all() })
-                    onChanged()
-                  } catch (err) {
-                    message.error((err as Error).message)
-                  }
-                }}
-              />
-            ),
-          },
-          {
-            key: 'deploys',
-            label: (
-              <span className="inline-flex items-center gap-2">
-                {t('detail.tabDeploys', { count: deploys.length })}
-                {inFlight && (
-                  <span
-                    className="inline-block size-1.5 rounded-full bg-[var(--accent)] animate-pulse"
-                    aria-label={t('detail.deployInFlight')}
-                  />
-                )}
-              </span>
-            ),
-            children: <DeploysTab deploys={deploys} appId={appId} />,
-          },
-          {
-            key: 'logs',
-            label: t('detail.tabLogs'),
-            children: <LogsTab appId={appId} hasContainer={!!app.container} />,
-          },
-        ]}
-      />
-    </Drawer>
+    <Tabs
+      activeKey={activeTab}
+      onChange={(k) => setActiveTab(k as TabKey)}
+      items={[
+        {
+          key: 'overview',
+          label: t('detail.tabOverview'),
+          children: (
+            <OverviewTab
+              app={app}
+              env={env}
+              volumes={volumes}
+              onRotateTrigger={async () => {
+                try {
+                  await api.rotateTriggerToken(app.id)
+                  message.success(
+                    t('trigger.rotatedToast', {
+                      url: `${window.location.origin}/api/apps/${app.name}/trigger`,
+                    }),
+                  )
+                  void appQuery.refetch()
+                  void queryClient.invalidateQueries({ queryKey: queryKeys.apps.all() })
+                  onChanged()
+                } catch (err) {
+                  message.error((err as Error).message)
+                }
+              }}
+            />
+          ),
+        },
+        {
+          key: 'deploys',
+          label: (
+            <span className="inline-flex items-center gap-2">
+              {t('detail.tabDeploys', { count: deploys.length })}
+              {inFlight && (
+                <span
+                  className="inline-block size-1.5 rounded-full bg-[var(--accent)] animate-pulse"
+                  aria-label={t('detail.deployInFlight')}
+                />
+              )}
+            </span>
+          ),
+          children: <DeploysTab deploys={deploys} appId={appId} />,
+        },
+        {
+          key: 'logs',
+          label: t('detail.tabLogs'),
+          children: <LogsTab appId={appId} hasContainer={!!app.container} />,
+        },
+      ]}
+    />
   )
 }
 

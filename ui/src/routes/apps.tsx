@@ -358,36 +358,22 @@ function AppsPageContent() {
       )}
 
       {detailAppId !== null && (
-        <Suspense fallback={<DrawerLoadingFallback />}>
-          <AppDetail
-            key={`${detailAppId}:${detailInitialTab}`}
-            appId={detailAppId}
-            initialTab={detailInitialTab}
-            onClose={() => {
-              setDetailAppId(null)
-              setDetailInitialTab('overview')
-            }}
-            onChanged={() => reload()}
-            onEditRequested={(a) => {
-              setDetailAppId(null)
-              setDetailInitialTab('overview')
-              openEdit(a)
-            }}
-          />
-        </Suspense>
+        <AppDetail
+          key={`${detailAppId}:${detailInitialTab}`}
+          appId={detailAppId}
+          initialTab={detailInitialTab}
+          onClose={() => {
+            setDetailAppId(null)
+            setDetailInitialTab('overview')
+          }}
+          onChanged={() => reload()}
+          onEditRequested={(a) => {
+            setDetailAppId(null)
+            setDetailInitialTab('overview')
+            openEdit(a)
+          }}
+        />
       )}
-    </div>
-  )
-}
-
-function DrawerLoadingFallback() {
-  return (
-    <div
-      className="fixed inset-y-0 right-0 w-[680px] max-w-full bg-[var(--bg)] border-l border-[var(--border)] shadow-xl z-50 flex items-center justify-center"
-      role="status"
-      aria-label="loading"
-    >
-      <RouteFallback variant="drawer" />
     </div>
   )
 }
