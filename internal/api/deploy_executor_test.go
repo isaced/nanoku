@@ -153,6 +153,56 @@ func TestExecuteDeploy_EmptyImageOverrideAndApp(t *testing.T) {
 	}
 }
 
+// TestExecuteDeploy_ComposeAppWithoutImage verifies that a compose-mode app
+// whose image lives only in compose_content (i.e. app.image is NULL) is NOT
+// rejected by the "no image configured" guard. The guard must apply to
+// docker-mode apps only; compose apps pull their image from the YAML.
+//
+// Before the fix this test failed with "no image configured"; after the fix
+// the executor reaches the compose branch and falls through to the
+// "docker unavailable" failure (Docker is nil in this harness, same as the
+// other executor tests), proving the compose path was entered.
+func TestExecuteDeploy_ComposeAppWithoutImage(t *testing.T) {
+	d := newTestDB(t)
+	a, err := d.App.Create().
+		SetName("compose-no-image").
+		SetDeployMethod("compose").
+		SetComposeContent("services:\n  web:\n    image: nginx:1.27\n").
+		Save(context.Background())
+	if err != nil {
+		t.Fatalf("seed app: %v", err)
+	}
+	// Defensive: the app must genuinely have no image stored for the test
+	// to exercise the bug.
+	if a.Image != nil && *a.Image != "" {
+		t.Fatalf("seed app unexpectedly has image %q", *a.Image)
+	}
+	h := &Handlers{
+		DB:             d,
+		DeployLock:     NewDeployLock(),
+		CaddyfilePath:  t.TempDir() + "/Caddyfile",
+		ComposeBaseDir: t.TempDir(),
+		Secret:         newTestSealer(t),
+	}
+	depID := seedRunningDeploy(t, h, a.ID)
+
+	runExecutor(t, h, a.ID, depID, "")
+
+	status, msg := readDeployError(t, h, depID)
+	if status != "failed" {
+		t.Errorf("status = %s, want failed", status)
+	}
+	// The compose branch must have been entered; the only reason it fails
+	// here is the nil Docker manager. A "no image configured" message
+	// would mean the guard wrongly fired on a compose app.
+	if strings.Contains(msg, "no image") {
+		t.Errorf("compose app should bypass the no-image guard, but got: %s", msg)
+	}
+	if !strings.Contains(msg, "docker unavailable") {
+		t.Errorf("error = %q, want contains 'docker unavailable' (compose branch entered)", msg)
+	}
+}
+
 // TestExecuteDeploy_ImageOverrideUsedForTrigger verifies that a non-empty
 // imageOverride (trigger flow) is used verbatim, ignoring the app's stored
 // image. We can't observe which image was pulled (Docker=nil), but the

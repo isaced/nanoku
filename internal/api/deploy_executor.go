@@ -66,11 +66,17 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 		return
 	}
 
+	// Resolve the image reference for docker-mode deploys. Compose-mode
+	// apps pull their image(s) from the compose YAML, so they must NOT
+	// be gated on app.Image — the schema explicitly marks image as
+	// "ignored when deploy_method=compose" and CreateApp only requires
+	// it for docker mode. Running this check unconditionally broke
+	// legitimate compose apps whose image lives only in compose_content.
 	image := imageOverride
 	if image == "" {
 		image = appImage(a)
 	}
-	if image == "" {
+	if a.DeployMethod != "compose" && image == "" {
 		h.markDeployFailed(ctx, deployID, errors.New("app has no image configured"))
 		return
 	}

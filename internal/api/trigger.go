@@ -165,6 +165,9 @@ func verifyToken(expected, header string) bool {
 // have nothing to pull.
 func resolveTriggerImage(a *db.App, tag string) (string, error) {
 	if a.Image == nil || *a.Image == "" {
+		if a.DeployMethod == "compose" {
+			return "", errors.New("trigger deploys are not supported for compose-mode apps (image is defined in compose YAML)")
+		}
 		return "", errors.New("app has no image configured")
 	}
 	ref := *a.Image
