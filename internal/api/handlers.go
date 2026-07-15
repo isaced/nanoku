@@ -121,6 +121,10 @@ func (h *Handlers) UpdateSite(w http.ResponseWriter, r *http.Request) {
 
 	upd := h.DB.Site.UpdateOneID(id)
 	if in.Domain != nil {
+		if err := validateDomain(*in.Domain); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
 		upd.SetDomain(strings.TrimSpace(*in.Domain))
 	}
 	if in.Upstream != nil {
@@ -172,6 +176,10 @@ func (h *Handlers) CreateSite(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Domain == nil || strings.TrimSpace(*in.Domain) == "" {
 		writeErr(w, http.StatusBadRequest, errors.New("domain is required"))
+		return
+	}
+	if err := validateDomain(*in.Domain); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
 	if in.AppID == nil && (in.Upstream == nil || strings.TrimSpace(*in.Upstream) == "") {

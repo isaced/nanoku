@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ensureAuth, isAuthenticated } from '../lib/auth'
+import { isValidDomain } from '../lib/domain-validation'
 import {
   useCreateSite,
   useDeleteSite,
@@ -323,8 +324,12 @@ function SitesPageContent() {
             rules={[
               { required: true, message: t('editor.domainRequired') },
               {
-                pattern: /^[a-z0-9.-]+\.[a-z]{2,}$/i,
-                message: t('editor.domainPattern'),
+                validator: (_rule, value) => {
+                  if (typeof value !== 'string' || !isValidDomain(value)) {
+                    return Promise.reject(new Error(t('editor.domainPattern')))
+                  }
+                  return Promise.resolve()
+                },
               },
             ]}
           >

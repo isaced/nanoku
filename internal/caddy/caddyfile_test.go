@@ -95,3 +95,93 @@ func TestRender_AutoHTTPSGloballyOff(t *testing.T) {
 		t.Errorf("http site should keep http:// scheme even under global off:\n%s", out)
 	}
 }
+
+func TestRender_LoopbackSiteForcesHTTP(t *testing.T) {
+	out := Render([]*db.Site{
+		{Domain: "localhost", Upstream: "app:3000", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
+	}, "")
+	if !strings.Contains(out, "auto_https off") {
+		t.Errorf("loopback site should force global auto_https off:\n%s", out)
+	}
+	if !strings.Contains(out, "http://localhost {") {
+		t.Errorf("loopback site should render with http:// scheme regardless of Scheme field:\n%s", out)
+	}
+	if !strings.Contains(out, "reverse_proxy app:3000") {
+		t.Errorf("upstream missing:\n%s", out)
+	}
+}
+
+func TestRender_LoopbackIPLiteralForcesHTTP(t *testing.T) {
+	out := Render([]*db.Site{
+		{Domain: "127.0.0.1", Upstream: "app:3000", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
+		{Domain: "::1", Upstream: "app:3000", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
+	}, "")
+	if !strings.Contains(out, "http://127.0.0.1") {
+		t.Errorf("127.0.0.1 should render as http://:\n%s", out)
+	}
+	if !strings.Contains(out, "http://::1") {
+		t.Errorf("::1 should render as http://:\n%s", out)
+	}
+}
+
+func TestRender_LoopbackSubdomainForcesHTTP(t *testing.T) {
+	out := Render([]*db.Site{
+		{Domain: "app.localhost", Upstream: "app:3000", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
+	}, "")
+	if !strings.Contains(out, "http://app.localhost") {
+		t.Errorf("*.localhost should render as http://:\n%s", out)
+	}
+}
+
+func TestRender_LoopbackSiteMixedWithPublicKeepsGlobalOff(t *testing.T) {
+	// If at least one site is loopback, global auto_https must be off.
+	// Public sites under that same file will then not auto-upgrade to
+	// HTTPS — users mixing both should put them on separate Nanoku
+	// instances or stick to one scheme. We only assert the rendering
+	// consequence here, not the deployment guidance.
+	out := Render([]*db.Site{
+		{Domain: "localhost", Upstream: "a:1", Scheme: sitepkg.SchemeHTTP, Enabled: true},
+		{Domain: "app.example.com", Upstream: "b:2", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
+	}, "")
+	if !strings.Contains(out, "auto_https off") {
+		t.Errorf("any loopback site should still flip global auto_https off:\n%s", out)
+	}
+}
+
+func TestRender_DisabledLoopbackSiteDoesNotForceGlobalOff(t *testing.T) {
+	// A loopback site that's disabled should not pull auto_https down,
+	// otherwise the user gets a confusing global state change.
+	out := Render([]*db.Site{
+		{Domain: "localhost", Upstream: "a:1", Scheme: sitepkg.SchemeHTTP, Enabled: false},
+		{Domain: "app.example.com", Upstream: "b:2", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
+	}, "")
+	if strings.Contains(out, "auto_https off") {
+		t.Errorf("disabled loopback site should not flip global auto_https off:\n%s", out)
+	}
+}
+
+func TestIsLoopbackDomain(t *testing.T) {
+	cases := []struct {
+		domain string
+		want   bool
+	}{
+		{"localhost", true},
+		{"LOCALHOST", true},
+		{"Localhost", true},
+		{"app.localhost", true},
+		{"a.b.localhost", true},
+		{"127.0.0.1", true},
+		{"127.1.2.3", true}, // whole 127.0.0.0/8
+		{"::1", true},
+		{"app.example.com", false},
+		{"example.com", false},
+		{"myapp.local", false}, // mDNS, not loopback
+		{"", false},
+		{"  localhost  ", true}, // trimmed
+	}
+	for _, tc := range cases {
+		if got := IsLoopbackDomain(tc.domain); got != tc.want {
+			t.Errorf("IsLoopbackDomain(%q) = %v, want %v", tc.domain, got, tc.want)
+		}
+	}
+}
