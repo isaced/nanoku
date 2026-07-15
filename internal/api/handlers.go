@@ -27,6 +27,7 @@ type Handlers struct {
 	SelfContainer   string
 	ComposeBaseDir  string
 	DeployLock      *DeployLock
+	DeployLogs      *deployLogHub
 	Sessions        *SessionStore
 	Secret          *secret.Sealer
 	Version         string

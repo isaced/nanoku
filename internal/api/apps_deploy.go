@@ -221,3 +221,54 @@ func (h *Handlers) AppLogs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	_, _ = w.Write([]byte(out))
 }
+
+// AppLogsStream is the SSE counterpart to AppLogs. The frontend uses
+// GET /api/apps/{id}/logs for the initial history dump, then opens this
+// stream to subscribe to new lines. The stream is open-ended (Follow:
+// true on the engine) — it stays connected until the client disconnects
+// or the container exits.
+//
+// We resolve the same {app → current container} lookup as AppLogs and
+// bail with a synthetic SSE error event when there's no container
+// (e.g. the app hasn't been deployed yet). The browser's EventSource
+// will retry on the retry: 2000 directive we set, so once the app is
+// deployed the same connection can be reopened.
+func (h *Handlers) AppLogsStream(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
+		return
+	}
+	if h.Docker == nil {
+		writeErr(w, http.StatusServiceUnavailable, errors.New("docker unavailable"))
+		return
+	}
+	tail := 200
+	if t := r.URL.Query().Get("tail"); t != "" {
+		if n, err := strconv.Atoi(t); err == nil {
+			tail = n
+		}
+	}
+	a, err := h.DB.App.Get(r.Context(), id)
+	if err != nil {
+		if isNotFound(err) {
+			writeErr(w, http.StatusNotFound, errors.New("app not found"))
+			return
+		}
+		writeInternalErr(w, err)
+		return
+	}
+	cur, err := a.QueryCurrentContainer().Only(r.Context())
+	if err != nil || cur == nil {
+		writeErr(w, http.StatusConflict, errors.New("no deployed container"))
+		return
+	}
+	stream, err := h.Docker.ContainerLogsStream(r.Context(), cur.Name, tail, true)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err)
+		return
+	}
+	sseHeaders(w)
+	w.WriteHeader(http.StatusOK)
+	streamToSSE(r.Context(), w, stream.Lines, stream.Err, stream.Cancel)
+}

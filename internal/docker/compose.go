@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 )
@@ -23,10 +24,40 @@ func composeArgs(project, filePath, subcmd string, extra ...string) []string {
 	return args
 }
 
-func (m *Manager) ComposeUp(ctx context.Context, project, filePath string, pull bool) error {
+// ComposeOption mutates a compose call. The zero value is a no-op so the
+// existing ComposeUp(ctx, project, filePath, pull) signature still works.
+type ComposeOption func(*composeConfig)
+
+type composeConfig struct {
+	stream io.Writer // nil = fold stdout into return value (legacy behavior)
+}
+
+// WithComposeStream tees the raw `docker compose` stdout (and stderr on
+// failure) into w as the command runs. Used by the deploy SSE handler to
+// surface compose progress (Pulling / Creating / Starting lines) to the
+// operator in real time.
+func WithComposeStream(w io.Writer) ComposeOption {
+	return func(c *composeConfig) { c.stream = w }
+}
+
+func (m *Manager) ComposeUp(ctx context.Context, project, filePath string, pull bool, opts ...ComposeOption) error {
+	cfg := composeConfig{}
+	for _, o := range opts {
+		o(&cfg)
+	}
 	extra := []string{"-d"}
 	if pull {
 		extra = append([]string{"--pull", "always"}, extra...)
+	}
+	if cfg.stream != nil {
+		// Stream the raw subprocess output; we still capture stdout for
+		// the error-on-failure path so we can surface the trailing
+		// diagnostic, but it goes to a discardable sink on success.
+		_, err := m.runCLIStream(ctx, cfg.stream, composeArgs(project, filePath, "up", extra...)...)
+		if err != nil {
+			return fmt.Errorf("compose up: %w", err)
+		}
+		return nil
 	}
 	out, err := m.runCLI(ctx, composeArgs(project, filePath, "up", extra...)...)
 	if err != nil {
@@ -96,4 +127,19 @@ func (m *Manager) runCLI(ctx context.Context, args ...string) (string, error) {
 		return stdout.String(), fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil
+}
+
+// runCLIStream is the streaming variant of runCLI: it pipes the
+// subprocess's stdout straight into w as the command runs (so a slow
+// consumer sees progress in real time), and on failure folds the
+// captured stderr into the error so the diagnostic isn't lost.
+func (m *Manager) runCLIStream(ctx context.Context, w io.Writer, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, m.composeBinary, args...)
+	var stderr bytes.Buffer
+	cmd.Stdout = w
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return "", nil
 }

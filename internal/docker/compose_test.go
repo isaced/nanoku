@@ -129,6 +129,42 @@ exit 0`)
 	}
 }
 
+func TestComposeUp_WithStream_TeesStdout(t *testing.T) {
+	// The fake bin writes three progress lines to stdout and exits
+	// cleanly. WithComposeStream should tee each line into the supplied
+	// writer, and ComposeUp should still report nil error.
+	bin := fakeBin(t, `printf 'Pulling blog ...\nCreating blog ... done\nStarting blog ... done\n'
+exit 0`)
+	m := &Manager{composeBinary: bin}
+	var got strings.Builder
+	if err := m.ComposeUp(t.Context(), "blog", "/etc/blog.yml", true, WithComposeStream(&got)); err != nil {
+		t.Fatalf("ComposeUp: %v", err)
+	}
+	for _, want := range []string{"Pulling blog", "Creating blog", "Starting blog"} {
+		if !strings.Contains(got.String(), want) {
+			t.Errorf("missing line %q in stream: %q", want, got.String())
+		}
+	}
+}
+
+func TestComposeUp_WithStream_FoldsStderrOnFailure(t *testing.T) {
+	// WithComposeStream changes the failure path: we don't capture
+	// stdout (the operator is seeing it live), but the stderr text must
+	// still surface in the returned error so the deploy row gets a
+	// useful diagnostic.
+	bin := fakeBin(t, `echo 'pull access denied for blog' 1>&2
+exit 1`)
+	m := &Manager{composeBinary: bin}
+	var got strings.Builder
+	err := m.ComposeUp(t.Context(), "blog", "/etc/blog.yml", true, WithComposeStream(&got))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "pull access denied") {
+		t.Errorf("error %q should contain stderr text", err)
+	}
+}
+
 func TestComposeUp_FoldsStderrIntoError(t *testing.T) {
 	bin := fakeBin(t, `echo 'pull access denied for blog' 1>&2
 echo 'partial stdout' 1>&2

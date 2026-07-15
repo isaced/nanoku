@@ -132,6 +132,7 @@ func main() {
 		SelfContainer:   cfg.SelfContainer,
 		ComposeBaseDir:  cfg.ComposeBaseDir,
 		DeployLock:      api.NewDeployLock(),
+		DeployLogs:      api.NewDeployLogHub(),
 		Sessions:        sessions,
 		Secret:          sealer,
 		Version:         version,
@@ -172,6 +173,8 @@ func main() {
 	mux.HandleFunc("POST /api/apps/{id}/stop", handlers.StopApp)
 	mux.HandleFunc("POST /api/apps/{id}/restart", handlers.RestartApp)
 	mux.HandleFunc("GET /api/apps/{id}/logs", handlers.AppLogs)
+	mux.HandleFunc("GET /api/apps/{id}/logs/stream", handlers.AppLogsStream)
+	mux.HandleFunc("GET /api/apps/{id}/deployments/{did}/logs/stream", handlers.DeployLogStream)
 	mux.HandleFunc("GET /api/apps/{id}/env", handlers.ListAppEnvVars)
 	mux.HandleFunc("PUT /api/apps/{id}/env", handlers.ReplaceAppEnvVars)
 	mux.HandleFunc("GET /api/apps/{id}/volumes", handlers.ListAppVolumes)
@@ -182,6 +185,7 @@ func main() {
 
 	mux.HandleFunc("GET /api/system/status", handlers.SystemStatus)
 	mux.HandleFunc("GET /api/system/logs", handlers.SystemLogs)
+	mux.HandleFunc("GET /api/system/logs/stream", handlers.SystemLogsStream)
 	mux.HandleFunc("GET /api/system/reconcile", handlers.SystemReconcile)
 	mux.HandleFunc("POST /api/system/reconcile", handlers.SystemReconcileApply)
 	mux.HandleFunc("DELETE /api/system/orphans/{name}", handlers.SystemRemoveOrphan)

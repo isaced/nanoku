@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -293,13 +294,36 @@ func (m *Manager) containerStatus(ctx context.Context, name string) (string, err
 	return "not_found", nil
 }
 
-func (m *Manager) PullImage(ctx context.Context, imageRef string) error {
+// PullOption mutates a pull call. The zero value is a no-op so existing
+// callers (PullImage(ctx, ref)) keep working unchanged.
+type PullOption func(*pullConfig)
+
+type pullConfig struct {
+	stream io.Writer // nil = discard the JSON progress stream (legacy behavior)
+}
+
+// WithPullStream tees the raw ImagePull JSON progress stream (one
+// {"status":"…"} object per line) into w. Used by the deploy SSE handler
+// to surface pull progress to the operator in real time.
+func WithPullStream(w io.Writer) PullOption {
+	return func(c *pullConfig) { c.stream = w }
+}
+
+func (m *Manager) PullImage(ctx context.Context, imageRef string, opts ...PullOption) error {
+	cfg := pullConfig{}
+	for _, o := range opts {
+		o(&cfg)
+	}
 	rc, err := m.cli.ImagePull(ctx, imageRef, image.PullOptions{})
 	if err != nil {
 		return fmt.Errorf("pull %s: %w", imageRef, err)
 	}
 	defer rc.Close()
-	if _, err := io.Copy(io.Discard, rc); err != nil {
+	sink := cfg.stream
+	if sink == nil {
+		sink = io.Discard
+	}
+	if _, err := io.Copy(sink, rc); err != nil {
 		return fmt.Errorf("pull %s: read stream: %w", imageRef, err)
 	}
 	return nil
@@ -356,6 +380,116 @@ func (m *Manager) ContainerLogs(ctx context.Context, name string, tail int) (str
 		return "", fmt.Errorf("container logs %s: demux: %w", name, err)
 	}
 	return stdout.String() + stderr.String(), nil
+}
+
+// LogStream is the live tail of a container's logs. Lines is a buffered
+// channel of newline-terminated log lines (the stdcopy stdout/stderr
+// demuxer guarantees line boundaries; timestamps are kept as the engine
+// emits them). Err receives at most one terminal error and is then
+// closed. Cancel releases the Docker engine stream — call it on client
+// disconnect so we don't keep a follow-stream open for an SSE client that
+// navigated away.
+//
+// The channel buffer is small (64) so the engine can apply backpressure
+// when the consumer is slow, which is what we want on a live tail: drop
+// at the consumer, not the producer.
+type LogStream struct {
+	Lines  <-chan string
+	Err    <-chan error
+	Cancel func()
+}
+
+// ContainerLogsStream returns a live tail of the named container's
+// stdout+stderr. When follow is false it behaves like the buffered
+// ContainerLogs call (drain the channel until EOF, then Err is closed).
+// When follow is true the stream stays open and pushes new lines until
+// the caller cancels or the engine closes the connection (typically when
+// the container exits).
+func (m *Manager) ContainerLogsStream(ctx context.Context, name string, tail int, follow bool) (*LogStream, error) {
+	if tail < 0 {
+		tail = 0
+	}
+	if tail > 5000 {
+		tail = 5000
+	}
+	rc, err := m.cli.ContainerLogs(ctx, name, container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Timestamps: true,
+		Follow:     follow,
+		Tail:       strconv.Itoa(tail),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("container logs %s: %w", name, err)
+	}
+
+	// Buffered so the engine reader goroutine never blocks on a slow
+	// consumer — the contract is that a busy client may miss lines, not
+	// that a slow one backpressures into Docker.
+	lines := make(chan string, 64)
+	errs := make(chan error, 1)
+	// Cancel closes the underlying Docker reader, which unblocks the
+	// read goroutine and lets it drain. The sync.Once prevents
+	// double-close when the caller races Cancel with the natural EOF.
+	var once sync.Once
+	cancel := func() {
+		once.Do(func() {
+			_ = rc.Close()
+		})
+	}
+
+	go func() {
+		defer close(lines)
+		defer close(errs)
+		defer cancel() // always release the engine stream
+		// stdcopy.StdCopy demuxes the engine's 8-byte-framed stream and
+		// writes one line at a time to the chosen sink. We hand it a
+		// thin writer that splits on '\n' and forwards each line to
+		// the channel, so the SSE handler can flush line-by-line. We
+		// don't distinguish stdout vs stderr in the output — the
+		// channel sees them in the same order the engine emitted them.
+		mw := lineWriter{w: lines}
+		if _, copyErr := stdcopy.StdCopy(&mw, &lineWriter{w: lines}, rc); copyErr != nil {
+			errs <- fmt.Errorf("container logs %s: demux: %w", name, copyErr)
+			return
+		}
+	}()
+
+	return &LogStream{
+		Lines:  lines,
+		Err:    errs,
+		Cancel: cancel,
+	}, nil
+}
+
+// lineWriter splits the bytes StdCopy hands it on '\n' and forwards each
+// line (including the trailing newline) to the channel. It blocks on a
+// full channel so the engine reader applies backpressure to Docker when
+// the consumer is slow. Partial lines (no terminating '\n') are buffered
+// and emitted on the next write, so a single frame split across two
+// engine reads still reassembles into one consumer-visible line.
+type lineWriter struct {
+	w   chan<- string
+	buf []byte
+}
+
+func (l *lineWriter) Write(p []byte) (int, error) {
+	l.buf = append(l.buf, p...)
+	for {
+		idx := bytes.IndexByte(l.buf, '\n')
+		if idx < 0 {
+			break
+		}
+		// The newline is part of the line for downstream consumers
+		// (the SSE handler writes it as-is, the frontend renders it as
+		// whitespace), so include it.
+		line := string(l.buf[:idx+1])
+		l.w <- line
+		// Shift the buffer: copy the tail over the consumed prefix.
+		copy(l.buf, l.buf[idx+1:])
+		l.buf = l.buf[:len(l.buf)-(idx+1)]
+	}
+	return len(p), nil
 }
 
 func (m *Manager) ListContainersByNamePrefix(ctx context.Context, prefix string) ([]string, error) {
