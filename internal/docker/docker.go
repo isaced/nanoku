@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -128,6 +129,20 @@ func (m *Manager) EnsureVolume(ctx context.Context) error {
 }
 
 func (m *Manager) EnsureCaddyContainer(ctx context.Context, caddyfileHostPath string) error {
+	// Docker bind mounts require absolute source paths. Without this, a
+	// relative path like "./Caddyfile" works fine for the in-process
+	// Caddyfile writer (it resolves against cwd) but the engine rejects
+	// the mount with "invalid mount path: mount path must be absolute".
+	// Resolve once, here, so the same string is used for both the write
+	// site (caddy.WriteAtomic on cfg.CaddyfilePath) and the mount source
+	// below — as long as cwd doesn't change between them, both end up
+	// pointing at the same file.
+	abs, err := filepath.Abs(caddyfileHostPath)
+	if err != nil {
+		return fmt.Errorf("resolve caddyfile path: %w", err)
+	}
+	caddyfileHostPath = abs
+
 	if err := m.EnsureNetwork(ctx); err != nil {
 		return err
 	}
