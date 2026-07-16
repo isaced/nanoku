@@ -1,43 +1,140 @@
 # Nanoku
 
-**The ultra-lightweight self-hosted deployment hub for modern frontends.**
+> **The ultra-lightweight self-hosted deployment hub for modern frontends.**
 
-Nanoku is a minimal yet powerful PaaS-like tool that brings a smooth Vercel/Dokku-style experience to your own server — without the bloat.
+A single Go binary that ships with an embedded React admin UI, pulls
+pre-built container images, manages a Caddy reverse proxy for HTTPS,
+and gives you a Vercel-style "git push → deployed" experience on your
+own server. Think of it as a nano Coolify / Dokploy.
 
-### ✨ Features
+## ✨ Features
 
-- **Single binary deployment** — Built with Go, everything (including the web UI) in one executable
-- **Embedded Admin UI** — Clean, lightweight web interface for managing projects
-- **SQLite powered** — Zero external database required
-- **Provider-agnostic HTTP trigger** — `git push` → CI builds image → POST to nanoku → deploy
-- **Visual configuration** — Easily manage domains, build settings, and reverse proxy rules
-- **Frontend focused** — Perfect for Vite, Next.js, React, Vue, Svelte, and other static/SPA projects
-- **Caddy integration ready** — Automatic config generation and reload support
-- **Minimal resource usage** — Designed to run efficiently even on small VPS
+- **Single binary** — Go server + embedded React admin UI in one executable
+- **SQLite powered** — zero external database; state lives in a single file
+- **Pull, don't build** — nanoku pulls pre-built images from your CI
+- **HTTP-trigger deploys** — provider-agnostic: works with GitHub Actions,
+  GitLab CI, Drone, or any system that can POST JSON
+- **Docker & Docker Compose apps** — single-image apps or multi-service
+  compose stacks side by side
+- **Caddy integration** — managed Caddy container, automatic Caddyfile
+  regeneration, ACME / Let's Encrypt TLS out of the box
+- **Sites & domains** — one domain = one upstream; sites can be linked
+  to an app (auto-resolved) or stand alone with a free upstream
+- **Per-app secrets** — env vars, registry credentials, and trigger
+  tokens are AES-256-GCM encrypted at rest
+- **Private registry support** — `docker login` on demand with logout
+  after pull, no lingering credentials
+- **Live log streaming** — SSE-powered real-time deploy / app / system
+  logs in the UI
+- **Dashboard** — aggregated resource view (CPU, memory, network) across
+  all running containers
+- **System tools** — orphan container reconcile, nanoku/Caddy log view
+- **Session auth** — HttpOnly cookies, sliding 7-day TTL, login
+  rate-limited per IP
+- **Bilingual UI** — English & 简体中文
+- **Tiny footprint** — runs comfortably on a $5 VPS
+- **Health endpoint** — `/healthz` for orchestrators and load balancers
+- **Multi-arch** — linux/amd64, linux/arm64, darwin/amd64, darwin/arm64,
+  windows/amd64
 
-### Philosophy
+## 🧭 Philosophy
 
-While Coolify and Dokploy are great, sometimes you just want something **truly lightweight**.  
-Nanoku is the nano version: less features, less overhead, but retains the core joy of “push → deployed”.
+Coolify and Dokploy are great, but sometimes you just want something
+**truly lightweight**. Nanoku is the nano version: fewer features, less
+overhead, but the same core joy of "push → deployed".
 
-### Quick Start
+Builds live in your CI where they belong. nanoku only does the parts
+that have to live on the host: pull the image, swap the container,
+reload the proxy, and stream the logs back.
+
+## 🚀 Quick Start
+
+### Option A — Download the binary
 
 ```bash
-# Download the latest binary
-curl -L -o nanoku https://github.com/yourname/nanoku/releases/latest/download/nanoku
+# Grab the latest release
+curl -L -o nanoku https://github.com/isaced/nanoku/releases/latest/download/nanoku_$(uname -s)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz
+tar -xzf nanoku*.tar.gz
 chmod +x nanoku
-
-# Start it
-./nanoku
 ```
 
-### Auto-deploy from CI
+Or grab a specific asset from the
+[Releases page](https://github.com/isaced/nanoku/releases/latest).
 
-Nanoku doesn't build your code — it pulls pre-built images. The build runs in
-**your** CI (GitHub Actions, GitLab CI, Drone, anything that can POST JSON);
-nanoku just exposes a small HTTP endpoint that triggers a deploy when called.
+### Option B — `docker compose`
 
-#### Protocol
+```bash
+git clone https://github.com/isaced/nanoku.git
+cd nanoku
+cp .env.example .env
+# Edit .env — set NANOKU_ADMIN_PASSWORD and NANOKU_SECRET_KEY at minimum
+docker compose up -d
+```
+
+The image is multi-arch (`linux/amd64`, `linux/arm64`) and is published
+to both Docker Hub and GHCR on every release tag.
+
+### First boot
+
+1. Open `http://<host>:8080` and log in with the credentials from your
+   `.env` (`NANOKU_ADMIN_USER` / `NANOKU_ADMIN_PASSWORD`). The seed
+   only runs on a fresh DB; change the password from the UI afterwards.
+2. nanoku auto-creates its managed Caddy container (`nanoku-caddy`) on
+   first start. Sites served through Caddy will get automatic HTTPS
+   via Let's Encrypt once a domain is pointed at the host.
+3. `NANOKU_SECRET_KEY` is **required** — it derives the AES-256-GCM
+   key that encrypts registry passwords, trigger tokens, and env var
+   values at rest. Lost key = permanently lost secrets.
+
+## 🖥️ Admin UI
+
+The embedded SPA is built with React 19, Vite, TanStack Router, Ant
+Design, and Tailwind 4. All routes are session-authenticated (except
+`/login` and the HTTP trigger endpoint).
+
+| Page        | What it does                                                       |
+| ----------- | ------------------------------------------------------------------ |
+| `/sites`    | Manage domains: one domain = one upstream, link to an app or free  |
+| `/apps`     | Create / edit apps, configure deploys, rotate trigger tokens      |
+| `/dashboard`| Aggregate view: sites, running apps, live container stats (CPU/mem) |
+| `/system`   | Caddy / nanoku logs, orphan container reconcile, version info     |
+| `/login`    | Admin sign-in                                                      |
+
+The app editor is tabbed: **General · Environment · Volumes · Network
+(exposed ports) · Registry · Trigger**. Switch an app between `Docker`
+and `Docker Compose` deploy methods with a single toggle.
+
+## 🐳 Apps: Docker vs Docker Compose
+
+Each app runs in one of two modes:
+
+- **Docker** — single image, single container. Set the image repo, the
+  port to expose, and you're done. The current container is recorded
+  in the DB; sites auto-resolve `<current_container>:<port>`.
+- **Docker Compose** — paste compose YAML inline or point at a path
+  on disk. Declare the **exposed services** you want Caddy to reach
+  (with port numbers) and sites can target any of them.
+
+On deploy, nanoku:
+
+1. Logs into the registry if credentials are configured
+2. Pulls the new image (or runs `docker compose pull`)
+3. Stops the old container / stack
+4. Starts the new one
+5. Validates that every exposed service is actually running
+6. Regenerates the Caddyfile and reloads Caddy
+7. Streams the full log to the deploy record (and to your browser via SSE)
+
+A single `DeployLock` enforces one deploy per app at a time — calling
+the trigger while a deploy is running returns `409 Conflict`.
+
+## 🌐 HTTP Trigger
+
+Nanoku doesn't build your code. It pulls pre-built images. The build
+runs in **your** CI; nanoku just exposes a small endpoint that fires
+off a deploy when called.
+
+### Protocol
 
 ```http
 POST /api/apps/{name}/trigger
@@ -48,23 +145,26 @@ Content-Type: application/json
 ```
 
 - `{name}` is the app's DNS-1123 name (set on create)
-- `<token>` is the per-app bearer token, shown once when you enable the trigger
-- The `tag` becomes the image tag; nanoku pulls `<app.image repo part>:<tag>`
-- Response is `202 Accepted` with the new deploy id, or `409` if a deploy for
-  that app is already running (a single deploy at a time is enforced)
-- The token is compared with `crypto/subtle.ConstantTimeCompare` — only exact
-  matches work, no prefix / suffix tricks
+- `<token>` is the per-app bearer token, shown **once** when you
+  enable the trigger in the editor (or via
+  `POST /api/apps/{id}/rotate-trigger-token`)
+- The `tag` becomes the image tag; nanoku pulls
+  `<app.image repo part>:<tag>`
+- `202 Accepted` with the new deploy id, or `409` if a deploy for that
+  app is already running
+- Tokens are compared with `crypto/subtle.ConstantTimeCompare` —
+  exact matches only, no prefix / suffix tricks
 
-#### Setup
+### Setup
 
-1. In nanoku, create an app and tick **Enable HTTP trigger**. Save the token
+1. In the app editor, tick **Enable HTTP trigger**. Save the token
    shown in the popup — you won't see it again.
 2. In your CI, set two env vars:
    - `NANOKU_TRIGGER_URL`: `https://your-nanoku/api/apps/<name>/trigger`
    - `NANOKU_TRIGGER_TOKEN`: the token from step 1
 3. Build & push your image, then POST the URL with the token.
 
-#### GitHub Actions example
+### GitHub Actions example
 
 Drop this into your app repo at `.github/workflows/deploy.yml`:
 
@@ -82,20 +182,16 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-
       - uses: docker/setup-buildx-action@v3
-
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - uses: docker/build-push-action@v5
         with:
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:${{ github.sha }}
-
       - name: Notify Nanoku
         env:
           URL: ${{ vars.NANOKU_TRIGGER_URL }}
@@ -110,7 +206,7 @@ jobs:
             -d "$BODY"
 ```
 
-#### Generic shell (any CI / local)
+### Generic shell (any CI / local)
 
 ```bash
 BODY='{"tag":"v1.2.3","commit_message":"fix: ..."}'
@@ -120,8 +216,121 @@ curl -fsS -X POST "$NANOKU_TRIGGER_URL" \
   -d "$BODY"
 ```
 
-#### Private registries
+### Private registries
 
-Add matching registry credentials in the nanoku app form (Registry URL +
-username + password). The trigger worker logs into the registry before pull
-and logs out after, so credentials don't linger in `~/.docker/config.json`.
+Add matching registry credentials in the app editor (Registry URL +
+username + password). The trigger worker logs into the registry before
+pull and logs out after, so credentials don't linger in
+`~/.docker/config.json`.
+
+## ⚙️ Configuration
+
+Everything is configured through `NANOKU_*` environment variables
+(or command-line flags — see `nanoku --help`).
+
+| Variable                      | Flag                  | Default                       | Description                                                                  |
+| ----------------------------- | --------------------- | ----------------------------- | ---------------------------------------------------------------------------- |
+| `NANOKU_LISTEN`               | `--listen`            | `:8080`                       | HTTP listen address                                                          |
+| `NANOKU_DB`                   | `--db`                | `./nanoku.db`                 | SQLite database file path                                                    |
+| `NANOKU_CADDYFILE`            | `--caddyfile`         | `./Caddyfile`                 | Generated Caddyfile path (host filesystem)                                   |
+| `NANOKU_CADDY_MODE`           | —                     | `managed`                     | Caddy integration mode (v1 only supports `managed`)                          |
+| `NANOKU_CADDY_IMAGE`          | —                     | `caddy:2`                     | Caddy image used by the managed container                                    |
+| `NANOKU_CADDY_CONTAINER`      | —                     | `nanoku-caddy`                | Managed Caddy container name                                                 |
+| `NANOKU_CADDY_VOLUME`         | —                     | `nanoku-caddy-data`           | Caddy data volume name                                                       |
+| `NANOKU_CADDY_NETWORK`        | —                     | `nanoku-net`                  | Docker network the managed Caddy and app containers share                    |
+| `NANOKU_ACME_EMAIL`           | —                     | *(empty)*                     | Email for Let's Encrypt registration                                         |
+| `NANOKU_COMPOSE_DIR`          | —                     | `./composes`                  | Where nanoku stores generated `docker-compose.yml` files                     |
+| `NANOKU_DEPLOY_LOG_DIR`       | —                     | `./data/deploy-logs`          | Where per-deploy log files live                                              |
+| `NANOKU_SELF_CONTAINER`       | —                     | *(empty)*                     | nanoku's own container name (enables the "self log" view in `/system`)       |
+| `NANOKU_ADMIN_USER`           | —                     | `admin`                       | Seed admin username on a **fresh** DB; ignored after first boot              |
+| `NANOKU_ADMIN_PASSWORD`       | —                     | *(empty)*                     | Seed admin password; **required** on first boot                              |
+| `NANOKU_SECRET_KEY`           | —                     | *(empty)*                     | **Required.** Passphrase for the AES-256-GCM key (generate with `openssl rand -base64 32`) |
+| `NANOKU_CADDY_AUTO_HTTPS`     | —                     | *(empty)*                     | Set to `true` for Caddy auto-HTTPS in production                             |
+| `NANOKU_TRUST_PROXY`          | —                     | `false`                       | Honor `X-Forwarded-For` for client IP. Enable **only** behind a trusted proxy |
+| `DOCKER_HOST`                 | —                     | `unix:///var/run/docker.sock` | Docker daemon socket                                                         |
+| —                             | `--skip-caddy-reload` | `false`                       | Write Caddyfile but don't manage the Caddy container                         |
+
+> 💡 Lost `NANOKU_SECRET_KEY` = permanently lost secrets. The key is
+> not stored anywhere except the env you set it in. There is no
+> rotation tool yet — back it up.
+
+## 🛠️ Development
+
+```bash
+# Requirements: Go 1.26+, Node 20+
+go mod download
+cd ui && npm ci && cd ..
+
+# Run the stack: Go on :8080, UI dev server on :3000 (HMR)
+make dev
+
+# Build everything (UI + Go) into bin/nanoku
+make build
+
+# Run all tests
+go test -race -count=1 ./...
+cd ui && npm test
+```
+
+> Local `go test` will fail to compile unless `internal/api/dist`
+> exists (it's `go:embed`'d). Run `cd ui && npm run build` (or
+> `make build-ui`) first. `make dev` and `make build` both do this
+> for you.
+
+See [`AGENTS.md`](./AGENTS.md) for the full project layout, code style,
+and testing conventions.
+
+## 🔐 Security
+
+- **`NANOKU_SECRET_KEY` is required** — nanoku refuses to boot without
+  it. It derives the AES-256-GCM key that encrypts
+  `registry_password`, `trigger_token`, and `envvar.value` at rest.
+- **Per-app trigger tokens** are single-shot returned only on
+  Create / Rotate, never on List / Get.
+- **`registry_password` is passed to `docker login --password-stdin`**
+  (never via argv). The worker logs out after the pull.
+- **Login is rate-limited per IP** (`5/min`). Only honor
+  `X-Forwarded-For` when you sit behind a trusted proxy that
+  sanitizes the header (set `NANOKU_TRUST_PROXY=true`).
+- **Session cookies** are `HttpOnly`, `SameSite=Strict`,
+  `Secure` (when TLS). Sessions are stored SHA-256-hashed; the raw
+  token only ever lives in the cookie. TTL 7 days, sliding renewal.
+- **CORS allows `Origin: *`** for the trigger endpoint (CI calls
+  are cross-origin). Session cookies are `SameSite=Strict` so they
+  won't ride along cross-site.
+- **Treat the host as trusted** — nanoku talks to
+  `/var/run/docker.sock`. Anyone who can call the admin API can
+  spawn containers on the host.
+
+## 📚 Project Layout
+
+- `main.go` — entry point: config, DB open + migrate, Caddy ensure,
+  session store, HTTP wiring, graceful shutdown
+- `internal/api/` — HTTP handlers, routing, session auth, deploy lock,
+  embedded UI
+- `internal/db/` — ent ORM schema + generated code
+- `internal/secret/` — AES-256-GCM sealer
+- `internal/caddy/` — Caddyfile writer / renderer
+- `internal/config/` — env-based config loading
+- `internal/docker/` — Docker manager (Caddy lifecycle, image pulls,
+  container stats, log streaming)
+- `ui/` — React 19 + Vite 8 + TanStack Router + Ant Design + Tailwind 4
+- `composes/` — example compose apps used by the Docker Compose deploy path
+- `docs/` — design records (proposals, schema, reviews)
+
+## 🤝 Contributing
+
+PRs welcome. Conventional commits enforced (see `AGENTS.md` for the
+full list and changelog rules). Branch from `main`; `test.yml` must
+be green before review.
+
+```bash
+# Before opening a PR
+go test -race -count=1 ./...
+cd ui && npm test
+```
+
+## 📄 License
+
+Released under the MIT License. See `LICENSE` (add one if you're
+forking for distribution — none is currently committed).
