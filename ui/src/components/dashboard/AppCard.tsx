@@ -19,7 +19,7 @@ export function AppCard({ app }: { app: Dashboard['apps'][number] }) {
   const c = app.container
   const stats = app.stats
   return (
-    <div className="border border-[var(--border)] rounded-lg bg-[var(--bg-elevated)] p-4">
+    <div className="surface-card surface-card-interactive p-4">
       <div className="flex items-start justify-between mb-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">

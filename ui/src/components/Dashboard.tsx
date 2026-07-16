@@ -1,4 +1,4 @@
-import { Button, Empty, Switch, Table, Tag, Tooltip } from 'antd'
+import { Button, Empty, Switch, Table, Tooltip } from 'antd'
 import {
   Container as ContainerIcon,
   Cpu,
@@ -14,6 +14,7 @@ import { useSuspenseDashboard, useSuspenseStatus } from '../lib/hooks'
 import { formatBytes } from '../lib/formatBytes'
 import { RouteFallback } from './RouteFallback'
 import { SiteStatusBadge } from './SiteStatusBadge'
+import { StatusPill } from './StatusPill'
 import { AppCard } from './dashboard/AppCard'
 import { MemCard } from './dashboard/MemCard'
 import { StatTile } from './dashboard/StatTile'
@@ -170,7 +171,7 @@ function DashboardContent() {
           <h2 className="eyebrow">
             {t('sections.sites')}
           </h2>
-          <div className="border border-[var(--border)] rounded-lg overflow-hidden bg-[var(--bg-elevated)]">
+          <div className="surface-card overflow-hidden">
             <Table
               dataSource={sites}
               rowKey="id"
@@ -185,7 +186,9 @@ function DashboardContent() {
                     <div className="flex items-center gap-2">
                       <span className="mono text-sm">{d}</span>
                       {!row.enabled && (
-                        <Tag className="!m-0">{t('common:status.disabled', { ns: 'common' })}</Tag>
+                        <StatusPill variant="muted">
+                          {t('common:status.disabled', { ns: 'common' })}
+                        </StatusPill>
                       )}
                     </div>
                   ),
@@ -226,7 +229,7 @@ function DashboardContent() {
           <h2 className="eyebrow">
             {t('sections.runningContainers')}
           </h2>
-          <div className="border border-[var(--border)] rounded-lg overflow-hidden bg-[var(--bg-elevated)]">
+          <div className="surface-card overflow-hidden">
             <Table
               dataSource={runningContainers}
               rowKey="name"

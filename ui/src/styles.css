@@ -229,4 +229,140 @@ header .ant-menu-horizontal > .ant-menu-item-selected:hover::after {
   .nk-apps-table .ant-table-tbody > tr:hover > td {
     background: var(--accent-soft);
   }
+  /* Selection: antd's default selection is a flat primary tint.
+     We use a slightly darker accent-soft for a clearer active
+     row, matching Vercel's table style. */
+  .nk-apps-table .ant-table-tbody > tr.ant-table-row-selected > td {
+    background: var(--accent-soft-2) !important;
+  }
+}
+
+/* Generic surfaces — Vercel/Linear's "card" idiom. A 1px border
+   plus a 1px hairline shadow that lives below the border, not on
+   top of it. The shadow is barely visible in light mode (where
+   borders do the heavy lifting) and slightly stronger in dark
+   mode (where borders are too easy to lose in the noise). */
+.surface-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow:
+    0 1px 0 0 rgba(0, 0, 0, 0.02),
+    0 1px 3px 0 rgba(0, 0, 0, 0.04);
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+[data-theme="dark"] .surface-card {
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.02),
+    0 1px 3px 0 rgba(0, 0, 0, 0.4);
+}
+.surface-card:hover {
+  border-color: var(--border-strong);
+}
+
+/* "Interactive" card: cards the user can click into. Adds the
+   cursor + a tiny lift on hover so they read as clickable, not
+   just present. Used on the dashboard AppCard / site row. */
+.surface-card-interactive {
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease,
+    transform 150ms ease;
+}
+.surface-card-interactive:hover {
+  border-color: var(--border-strong);
+  box-shadow:
+    0 2px 4px 0 rgba(0, 0, 0, 0.04),
+    0 4px 8px 0 rgba(0, 0, 0, 0.04);
+  transform: translateY(-1px);
+}
+[data-theme="dark"] .surface-card-interactive:hover {
+  box-shadow:
+    0 2px 4px 0 rgba(0, 0, 0, 0.4),
+    0 4px 8px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* Status pill (the small colour-coded chip). Built on top of antd's
+   Tag with custom background + foreground so dark-mode contrast
+   stays readable without antd's flat green/red. We use the
+   -soft variants from the palette so the pill doesn't shout. */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+.status-pill-success {
+  color: var(--success);
+  background: var(--success-soft);
+  border-color: color-mix(in srgb, var(--success) 18%, transparent);
+}
+.status-pill-warn {
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-color: color-mix(in srgb, var(--warn) 18%, transparent);
+}
+.status-pill-danger {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 18%, transparent);
+}
+.status-pill-muted {
+  color: var(--fg-muted);
+  background: var(--bg-input);
+  border-color: var(--border);
+}
+.status-pill-accent {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* Focus ring. antd's default focus ring is a 2px primary outline
+   which is heavy; we soften to a 2px accent-soft halo with a
+   tighter 1px inner outline. The result is the input is clearly
+   focused without screaming. */
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+.ant-input:focus,
+.ant-input-focused,
+.ant-input-affix-wrapper:focus,
+.ant-input-affix-wrapper-focused,
+.ant-select-focused .ant-select-selector,
+.ant-input-number-focused {
+  box-shadow: 0 0 0 3px var(--accent-soft) !important;
+  border-color: var(--accent) !important;
+}
+
+/* Subtle scrollbar — macOS gives us thin bars by default but on
+   Win/Linux the chunky grey one breaks the visual rhythm. We
+   size the bar to 8px and tint it to --border so it reads as
+   part of the surface, not a 90s browser chrome. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
 }

@@ -4,7 +4,6 @@ import {
   App,
   Button,
   Table,
-  Tag,
   Tooltip,
 } from 'antd'
 import {
@@ -35,6 +34,7 @@ import {
   type SiteEditorSubmitPayload,
 } from '../components/SiteEditorModal'
 import { SiteStatusBadge } from '../components/SiteStatusBadge'
+import { StatusPill } from '../components/StatusPill'
 
 export const Route = createFileRoute('/sites')({
   beforeLoad: async () => {
@@ -141,7 +141,7 @@ function SitesPageContent() {
           </Button>
         </div>
 
-        <div className="border border-[var(--border)] rounded-lg overflow-hidden bg-[var(--bg-elevated)]">
+        <div className="surface-card overflow-hidden">
           <Table<Site>
             dataSource={sites}
             rowKey="id"
@@ -156,7 +156,9 @@ function SitesPageContent() {
                   <div className="flex items-center gap-3">
                     <span className="mono text-sm">{d}</span>
                     {!row.enabled && (
-                      <Tag className="!m-0">{t('common:status.disabled', { ns: 'common' })}</Tag>
+                      <StatusPill variant="muted">
+                        {t('common:status.disabled', { ns: 'common' })}
+                      </StatusPill>
                     )}
                   </div>
                 ),
@@ -187,13 +189,12 @@ function SitesPageContent() {
                 dataIndex: 'scheme',
                 width: 90,
                 render: (s: Site['scheme']) => (
-                  <Tag
-                    className={`!m-0 ${
-                      s === 'http' ? '!bg-amber-500/10 !text-amber-600' : ''
-                    }`}
+                  <StatusPill
+                    variant={s === 'http' ? 'warn' : 'muted'}
+                    className="!font-mono"
                   >
                     {s.toUpperCase()}
-                  </Tag>
+                  </StatusPill>
                 ),
               },
               {

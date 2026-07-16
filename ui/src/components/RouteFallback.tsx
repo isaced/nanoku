@@ -60,7 +60,7 @@ const TABLE_COLUMNS: { width: string; barWidth: number }[] = [
 
 function TableSkeleton({ rows = 6 }: { rows?: number }) {
   return (
-    <div className="border border-[var(--border)] rounded-lg overflow-hidden bg-[var(--bg-elevated)]">
+    <div className="surface-card overflow-hidden">
       <div className="flex items-center px-4 h-10 border-b border-[var(--border)] bg-[var(--bg)]">
         {TABLE_COLUMNS.map((c, i) => (
           <div key={i} style={{ width: c.width }} className="pr-3">

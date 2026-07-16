@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Button, Tag } from 'antd'
+import { Button } from 'antd'
 import { ChevronDown, ChevronRight, ScrollText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { Deploy } from '../lib/types'
 import { LogViewer } from './LogViewer'
+import { StatusPill, type StatusPillVariant } from './StatusPill'
 
 /**
  * AppDetailDeploys is the "Deploys" tab in the app detail drawer.
@@ -39,6 +40,14 @@ export function AppDetailDeploys({
     <div className="space-y-2">
       {deploys.map((d) => {
         const isOpen = openLogs.has(d.id)
+        const statusVariant: StatusPillVariant =
+          d.status === 'success'
+            ? 'success'
+            : d.status === 'failed'
+              ? 'danger'
+              : d.status === 'running'
+                ? 'accent'
+                : 'muted'
         return (
           <div
             key={d.id}
@@ -53,19 +62,7 @@ export function AppDetailDeploys({
                   )}
                 </span>
                 <div className="flex items-center gap-2">
-                  <Tag
-                    color={
-                      d.status === 'success'
-                        ? 'green'
-                        : d.status === 'failed'
-                          ? 'red'
-                          : d.status === 'running'
-                            ? 'blue'
-                            : 'default'
-                    }
-                  >
-                    {d.status}
-                  </Tag>
+                  <StatusPill variant={statusVariant}>{d.status}</StatusPill>
                   <Button
                     size="small"
                     type="text"

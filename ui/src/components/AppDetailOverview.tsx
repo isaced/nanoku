@@ -10,6 +10,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import type { App as AppType, EnvVar, Volume } from '../lib/types'
 import type { ReactNode } from 'react'
+import { StatusPill } from './StatusPill'
 
 /**
  * AppDetailOverview is the "Overview" tab in the app detail drawer.
@@ -83,9 +84,9 @@ export function AppDetailOverview({
             <span className="eyebrow">
               {t('detail.trigger')}
             </span>
-            <Tag color="green" className="!m-0 ml-auto">
+            <StatusPill variant="success" className="ml-auto">
               {t('detail.triggerActive')}
-            </Tag>
+            </StatusPill>
           </div>
           <div className="mono text-xs text-[var(--fg-muted)] break-all">
             POST {window.location.origin}/api/apps/{app.name}/trigger
@@ -143,7 +144,7 @@ export function AppDetailOverview({
                     <span>{v.target}</span>
                   </span>
                   {v.readOnly && (
-                    <Tag className="!m-0">{t('detail.readOnly')}</Tag>
+                    <StatusPill variant="muted">{t('detail.readOnly')}</StatusPill>
                   )}
                 </div>
               ))}

@@ -61,7 +61,7 @@ export function TopNav({
     : 'en'
 
   return (
-    <div className="w-full bg-white border-b border-[var(--border)]">
+    <div className="w-full bg-[var(--bg)] border-b border-[var(--border)]">
       <Layout.Header className="!h-16 !bg-transparent flex items-center !px-8 !gap-8 max-w-6xl w-full mx-auto">
       <button
         type="button"

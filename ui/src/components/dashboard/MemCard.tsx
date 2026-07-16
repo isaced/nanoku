@@ -16,7 +16,7 @@ export function MemCard({ summary }: { summary: Dashboard['summary'] }) {
   const { t } = useTranslation('dashboard')
   const pct = summary.totalMemPerc
   return (
-    <div className="md:col-span-3 border border-[var(--border)] rounded-lg bg-[var(--bg-elevated)] p-4">
+    <div className="md:col-span-3 surface-card p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 text-[var(--fg-muted)]">
           <MemoryStick size={14} />

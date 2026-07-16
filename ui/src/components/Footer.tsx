@@ -126,7 +126,7 @@ export function Footer({
       : ''
 
   return (
-    <footer className="mt-auto w-full border-t border-[var(--border)] bg-white">
+    <footer className="mt-auto w-full border-t border-[var(--border)] bg-[var(--bg)]">
       <div className="max-w-6xl w-full mx-auto px-8 py-3 flex items-center justify-between gap-4 text-xs text-[var(--fg-muted)]">
         <div className="flex items-center gap-2 min-w-0">
           <span>{t('copyright', { year })}</span>

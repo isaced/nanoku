@@ -157,7 +157,7 @@ function AppsPageContent() {
           </Button>
         </div>
 
-        <div className="border border-[var(--border)] rounded-lg overflow-hidden bg-[var(--bg)]">
+        <div className="surface-card overflow-hidden">
         <Table<AppType>
           dataSource={apps}
           rowKey="id"

@@ -19,14 +19,12 @@ export function StatTile({
   sub?: ReactNode
 }) {
   return (
-    <div className="border border-[var(--border)] rounded-lg bg-[var(--bg-elevated)] p-4">
-      <div className="flex items-center gap-2 text-[var(--fg-muted)] mb-2">
+    <div className="surface-card p-4">
+      <div className="flex items-center gap-2 text-[var(--fg-muted)] mb-3">
         {icon}
         <span className="eyebrow">{label}</span>
       </div>
-      <div className="text-2xl font-medium tracking-tight text-[var(--fg)] mono">
-        {value}
-      </div>
+      <div className="display-2 tabular-nums">{value}</div>
       {sub && (
         <div className="text-xs text-[var(--fg-muted)] mt-1">{sub}</div>
       )}
