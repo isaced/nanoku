@@ -20,6 +20,22 @@ vi.mock('../lib/api', async () => {
     ...actual,
     api: {
       login: vi.fn(),
+      listSites: vi.fn().mockResolvedValue([]),
+      listApps: vi.fn().mockResolvedValue([]),
+      status: vi.fn().mockResolvedValue({
+        dockerConnected: true,
+        caddyStatus: 'running',
+        siteCount: 0,
+        enabledSiteCount: 0,
+        appCount: 0,
+        runningAppCount: 0,
+        acmeEmail: '',
+      }),
+      caddyfile: vi.fn().mockResolvedValue(''),
+      systemStatus: vi.fn().mockResolvedValue({
+        dockerVersion: '',
+        caddyVersion: '',
+      }),
     },
   }
 })
@@ -28,12 +44,12 @@ vi.mock('../lib/auth', async () => {
   const actual = await vi.importActual<typeof import('../lib/auth')>('../lib/auth')
   return {
     ...actual,
-    ensureAuth: async () => false,
+    ensureAuth: vi.fn().mockResolvedValue(false),
   }
 })
 
 import { ApiError, api, setUnauthorizedHandler } from '../lib/api'
-import { markLoggedOut } from '../lib/auth'
+import { ensureAuth, markLoggedOut } from '../lib/auth'
 import { createAppQueryClient } from '../lib/queryClient'
 
 describe('Login route', () => {
@@ -150,5 +166,31 @@ describe('Login route', () => {
     }
     // Footer: the version label only renders inside the Footer component.
     expect(document.querySelector('[data-testid="footer-version"]')).toBeNull()
+  })
+
+  it('redirects to /sites when the session is already valid', async () => {
+    vi.mocked(ensureAuth).mockResolvedValue(true)
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({ initialEntries: ['/login'] }),
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AntdApp>
+          <RouterProvider router={router} />
+        </AntdApp>
+      </QueryClientProvider>,
+    )
+
+    // The login guard must bounce an already-authenticated user to the app.
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/sites')
+    })
+    // The login page is the only route rendered without the global chrome
+    // (no `ant-layout-header`). Its presence proves the login form did not
+    // mount and we landed on the app shell instead.
+    await waitFor(() => {
+      expect(document.querySelector('.ant-layout-header')).toBeTruthy()
+    })
   })
 })

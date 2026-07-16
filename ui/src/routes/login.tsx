@@ -1,13 +1,23 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { App, Button, Input } from 'antd'
 import { ArrowRight, Lock } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ApiError } from '../lib/api'
-import { markLoggedIn } from '../lib/auth'
+import { ensureAuth, isAuthenticated, markLoggedIn } from '../lib/auth'
 import { useLogin } from '../lib/hooks'
 
 export const Route = createFileRoute('/login')({
+  // If the session cookie is already valid, there's nothing to log into —
+  // bounce straight back to the app so a logged-in user never sees the form.
+  beforeLoad: async () => {
+    if (isAuthenticated()) {
+      throw redirect({ to: '/sites' })
+    }
+    if (await ensureAuth()) {
+      throw redirect({ to: '/sites' })
+    }
+  },
   component: Login,
 })
 
