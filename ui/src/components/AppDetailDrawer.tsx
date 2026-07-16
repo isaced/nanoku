@@ -223,21 +223,30 @@ function OverviewTab({
   volumes: Volume[]
 }) {
   const { t } = useTranslation('apps')
+  // Image + internal port only apply to docker-mode apps. Compose
+  // apps pull images from the compose YAML and route to per-service
+  // ports via exposed_ports — the App-level image/port fields stay
+  // empty and would render as confusing blanks, so we hide them.
+  const isCompose = app.deployMethod === 'compose'
   return (
     <div className="space-y-4 text-sm">
       <div className="space-y-3">
-        <Field
-          label={t('detail.image')}
-          value={app.image}
-          mono
-          icon={<Box size={14} />}
-        />
-        <Field
-          label={t('detail.internalPort')}
-          value={String(app.port)}
-          mono
-          icon={<Network size={14} />}
-        />
+        {!isCompose && (
+          <>
+            <Field
+              label={t('detail.image')}
+              value={app.image}
+              mono
+              icon={<Box size={14} />}
+            />
+            <Field
+              label={t('detail.internalPort')}
+              value={String(app.port)}
+              mono
+              icon={<Network size={14} />}
+            />
+          </>
+        )}
         <Field
           label={t('detail.created')}
           value={app.createdAt}

@@ -95,13 +95,18 @@ describe('AppDetailDrawer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(api.getApp).mockResolvedValue(makeApp())
-    vi.mocked(api.listAppEnv).mockResolvedValue(baseEnv)
-    vi.mocked(api.listAppVolumes).mockResolvedValue(baseVolumes)
-    vi.mocked(api.listAppDeploys).mockResolvedValue([
-      makeDeploy({ status: 'success', commitSha: 'abc1234' }),
-    ])
-    vi.mocked(api.appLogs).mockResolvedValue('// logs')
+    // Each test gets a fresh queryClient + fresh mocks so the
+    // compose-mode test below doesn't leak its `compose` mock
+    // into the docker-mode test (or vice versa).
+    vi.mocked(api.getApp).mockReset().mockResolvedValue(makeApp())
+    vi.mocked(api.listAppEnv).mockReset().mockResolvedValue(baseEnv)
+    vi.mocked(api.listAppVolumes).mockReset().mockResolvedValue(baseVolumes)
+    vi.mocked(api.listAppDeploys)
+      .mockReset()
+      .mockResolvedValue([
+        makeDeploy({ status: 'success', commitSha: 'abc1234' }),
+      ])
+    vi.mocked(api.appLogs).mockReset().mockResolvedValue('// logs')
 
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, refetchInterval: false } },
@@ -165,5 +170,54 @@ describe('AppDetailDrawer', () => {
     await waitFor(() => {
       expect(getByText('pull access denied')).not.toBeNull()
     })
+  })
+
+  it('shows image + internal port on the overview tab for docker apps', async () => {
+    primeCache(queryClient, 1, [])
+
+    const { getByText, queryByText } = render(
+      <Providers queryClient={queryClient}>
+        <AppDetail appId={1} onClose={() => {}} onChanged={() => {}} />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      // Field label is i18n'd; we only assert the values show up.
+      expect(getByText('nginx:1.27')).not.toBeNull()
+      expect(getByText('80')).not.toBeNull()
+    })
+    // The compose-mode hint stays hidden for docker apps.
+    expect(queryByText(/compose/i)).toBeNull()
+  })
+
+  it('hides image + internal port on the overview tab for compose apps', async () => {
+    // The mock is set up in beforeEach to return the docker-mode
+    // default; we override it for this test so the background
+    // refetch (staleTime defaults to 0 in this queryClient) doesn't
+    // overwrite the cache with a docker app.
+    const composeApp = makeApp({ deployMethod: 'compose', image: '', port: 0 })
+    vi.mocked(api.getApp).mockResolvedValue(composeApp)
+    queryClient.setQueryData(queryKeys.apps.detail(1), composeApp)
+    queryClient.setQueryData(queryKeys.apps.env(1), baseEnv)
+    queryClient.setQueryData(queryKeys.apps.volumes(1), baseVolumes)
+    queryClient.setQueryData(queryKeys.apps.deploys(1), [])
+
+    const { container } = render(
+      <Providers queryClient={queryClient}>
+        <AppDetail appId={1} onClose={() => {}} onChanged={() => {}} />
+      </Providers>,
+    )
+
+    // Wait for the suspense to resolve. The createdAt row is
+    // always present; use it as a readiness signal so the
+    // assertions below are against the rendered tree, not the
+    // suspense fallback.
+    await waitFor(() => {
+      expect(container.textContent).toContain('2024-01-01')
+    })
+
+    // For compose apps the image + port fields are omitted. The
+    // image/port literal values from a docker app are absent.
+    expect(container.textContent).not.toContain('nginx:1.27')
   })
 })
