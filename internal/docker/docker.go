@@ -293,6 +293,26 @@ func (m *Manager) ReloadCaddy(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("caddy reload exec create: %w", err)
 	}
+	// Attach BEFORE start so the hijacked connection receives the
+	// exec output as it streams. start kicks the command off; the
+	// goroutine drains stdout/stderr concurrently via stdcopy so
+	// the engine's 8-byte-framed stream doesn't deadlock the buffer.
+	hijacked, err := m.cli.ContainerExecAttach(ctx, exec.ID, container.ExecAttachOptions{})
+	if err != nil {
+		return fmt.Errorf("caddy reload exec attach: %w", err)
+	}
+	defer hijacked.Close()
+	var stdout, stderr bytes.Buffer
+	streamDone := make(chan struct{})
+	go func() {
+		defer close(streamDone)
+		// StdCopy returns nil on normal EOF; any error here is
+		// logged at debug-level elsewhere — for the reload path
+		// we just want the demuxed output if the engine produced
+		// any. A failure to demux shouldn't mask the actual
+		// caddy error from ContainerExecInspect below.
+		_, _ = stdcopy.StdCopy(&stdout, &stderr, hijacked.Conn)
+	}()
 	if err := m.cli.ContainerExecStart(ctx, exec.ID, container.ExecStartOptions{}); err != nil {
 		return fmt.Errorf("caddy reload exec start: %w", err)
 	}
@@ -301,7 +321,21 @@ func (m *Manager) ReloadCaddy(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("caddy reload exec inspect: %w", err)
 	}
+	// Wait for the demux goroutine to finish reading the conn
+	// before we format the error — otherwise stderr can be empty
+	// for commands that print-and-exit quickly.
+	<-streamDone
 	if inspect.ExitCode != 0 {
+		// Trim trailing whitespace (caddy adds a newline) and
+		// collapse the message to one line for the API response,
+		// but keep the full text in the wrap so logs have it.
+		detail := strings.TrimSpace(stderr.String())
+		if detail == "" {
+			detail = strings.TrimSpace(stdout.String())
+		}
+		if detail != "" {
+			return fmt.Errorf("caddy reload exited with code %d: %s", inspect.ExitCode, detail)
+		}
 		return fmt.Errorf("caddy reload exited with code %d", inspect.ExitCode)
 	}
 	return nil

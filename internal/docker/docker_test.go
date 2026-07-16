@@ -29,6 +29,12 @@ type fakeDaemon struct {
 	calls    []fakeCall
 	hosts    map[string]bool // container names currently known
 	dispatch func(w http.ResponseWriter, r *http.Request, body string)
+	// hijack, when non-nil, gets a chance to hijack the underlying
+	// connection for any request (used to simulate the engine's
+	// raw-stream /exec/{id}/attach response). Returning true means
+	// the hijack fully handled the request; returning false lets
+	// the regular dispatch run.
+	hijack func(w http.ResponseWriter, r *http.Request) bool
 }
 
 type fakeCall struct {
@@ -58,7 +64,11 @@ func newFakeDaemon() *fakeDaemon {
 		fd.mu.Lock()
 		fd.calls = append(fd.calls, fakeCall{method: r.Method, path: r.URL.Path, body: bodyStr})
 		handler := fd.dispatch
+		hijack := fd.hijack
 		fd.mu.Unlock()
+		if hijack != nil && hijack(w, r) {
+			return
+		}
 		if handler != nil {
 			handler(w, r, bodyStr)
 		}
@@ -1337,6 +1347,110 @@ func TestReloadCaddy_NotRunning(t *testing.T) {
 	err := m.ReloadCaddy(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "exited") {
 		t.Errorf("err = %v, want 'exited' status", err)
+	}
+}
+
+// TestReloadCaddy_PropagatesStderr covers the path where caddy exits
+// non-zero (e.g. Caddyfile syntax error) and writes to stderr. We
+// fake a hijacked /exec/{id}/start response that streams the
+// engine's framed stderr payload, then have /exec/{id}/json
+// return exit code 1. The Manager must surface the stderr text
+// in the returned error so operators don't have to re-run caddy
+// in a shell to find out what was wrong with the Caddyfile.
+//
+// Docker SDK v28 unified attach+start onto the same endpoint
+// (POST /exec/{id}/start; the attach variant is a hijacked request,
+// the start variant is a plain POST), and the attach path goes
+// through cli.dialer() which uses the host URL's scheme as the
+// dialer proto. We need the proto to be "tcp" for net.Dial to
+// succeed, so we rewrite the fake daemon's http:// URL to
+// tcp:// when constructing the client for this test only.
+func TestReloadCaddy_PropagatesStderr(t *testing.T) {
+	fd := newFakeDaemon()
+	defer fd.Close()
+	fd.hijack = func(w http.ResponseWriter, r *http.Request) bool {
+		// Docker SDK v28 unified attach+start onto POST /exec/{id}/start
+		// (the attach variant is a hijacked request, the start variant
+		// is a plain POST with a JSON body). Only hijack when the
+		// request has the Upgrade header — that's how the SDK
+		// signals "upgrade to raw stream". Plain start has no
+		// Upgrade header and falls through to dispatch for a
+		// 200 JSON response.
+		if !(strings.HasPrefix(r.URL.Path, "/exec/") && strings.HasSuffix(r.URL.Path, "/start")) {
+			return false
+		}
+		if r.Header.Get("Upgrade") == "" {
+			return false
+		}
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			return true
+		}
+		conn, bufrw, err := hj.Hijack()
+		if err != nil {
+			return true
+		}
+		defer conn.Close()
+		// Respond with HTTP/1.1 101 Switching Protocols (the
+		// status the docker SDK's hijack dialer requires) plus
+		// raw-stream headers, then stream the framed stderr
+		// payload. StdCopy on the receiving end demuxes this
+		// back to plain text.
+		_, _ = bufrw.WriteString("HTTP/1.1 101 Switching Protocols\r\nContent-Type: application/vnd.docker.raw-stream\r\nConnection: Upgrade\r\nUpgrade: tcp\r\n\r\n")
+		var frame bytes.Buffer
+		stdcopy.NewStdWriter(&frame, stdcopy.Stderr).Write([]byte("ERROR: adapting config '/etc/caddy/Caddyfile': unsupported directive 'upstream_pool'"))
+		_, _ = bufrw.Write(frame.Bytes())
+		_ = bufrw.Flush()
+		return true
+	}
+	fd.dispatch = func(w http.ResponseWriter, r *http.Request, _ string) {
+		switch {
+		case r.URL.Path == "/containers/json" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode([]container.Summary{
+				{ID: "id1", Names: []string{"/nanoku-caddy"}, State: "running"},
+			})
+		case strings.HasSuffix(r.URL.Path, "/exec") && r.Method == http.MethodPost:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{"Id": "exec-stderr-test"})
+		case strings.HasSuffix(r.URL.Path, "/start") && r.Method == http.MethodPost:
+			// Plain start (non-hijack) — only reached when
+			// the request has no Upgrade header, which the
+			// hijack handler above uses to demux the two.
+			w.WriteHeader(http.StatusOK)
+		case strings.HasSuffix(r.URL.Path, "/json") && r.Method == http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"ExitCode": 1, "Running": false})
+		default:
+			http.NotFound(w, r)
+		}
+	}
+	// Build a client with tcp:// host so the SDK's dialer dials
+	// the fake daemon's TCP listener instead of trying to dial
+	// a network named "http". Non-hijack calls still go through
+	// fd.Client().Transport, which routes to fd.URL directly.
+	tcpHost := "tcp://" + strings.TrimPrefix(fd.URL, "http://")
+	cli, err := client.NewClientWithOpts(
+		client.WithHost(tcpHost),
+		client.WithHTTPClient(fd.Client()),
+		client.WithVersion("1.40"),
+	)
+	if err != nil {
+		t.Fatalf("NewClientWithOpts: %v", err)
+	}
+	m := newManagerWithClient(Config{ContainerName: "nanoku-caddy"}, cli)
+	reloadErr := m.ReloadCaddy(context.Background())
+	if reloadErr == nil {
+		t.Fatal("expected error from caddy reload exit 1")
+	}
+	// Both pieces must be in the message: the exit code (so log
+	// scanners can pattern-match) AND the actual stderr text
+	// (so the operator can read what caddy said without
+	// shelling into the container).
+	if !strings.Contains(reloadErr.Error(), "exited with code 1") {
+		t.Errorf("err = %q, want it to mention exit code 1", reloadErr)
+	}
+	if !strings.Contains(reloadErr.Error(), "adapting config") {
+		t.Errorf("err = %q, want it to surface caddy stderr", reloadErr)
 	}
 }
 
