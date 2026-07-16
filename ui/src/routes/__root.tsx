@@ -5,7 +5,7 @@ import {
   useLocation,
   useNavigate,
 } from '@tanstack/react-router'
-import { App as AntdApp, ConfigProvider } from 'antd'
+import { App as AntdApp, ConfigProvider, theme as antdTheme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import enUS from 'antd/locale/en_US'
 import { Globe, LayoutDashboard, Package, Settings } from 'lucide-react'
@@ -18,6 +18,7 @@ import { RouteError } from '../components/RouteError'
 import { TopNav } from '../components/TopNav'
 import { useKeyCombo } from '../lib/keys'
 import { useStatus, useSystemStatus } from '../lib/hooks'
+import { useThemeState } from '../lib/theme'
 
 export const Route = createRootRoute({
   head: () => ({
@@ -38,6 +39,7 @@ function RootLayout() {
   const systemStatusQuery = useSystemStatus()
   const location = useLocation()
   const navigate = useNavigate()
+  const theme = useThemeState()
   // On the login page we drop the global chrome for an immersive full-screen
   // experience — no TopNav, no Footer.
   const chrome = location.pathname !== '/login'
@@ -61,7 +63,23 @@ function RootLayout() {
   return (
     <>
       <HeadContent />
-      <ConfigProvider locale={locale}>
+      <ConfigProvider
+        locale={locale}
+        // Pick the right antd algorithm based on the current theme.
+        // This is the canonical way (antd v5) to switch themes: the
+        // algorithm generates the full token table for every
+        // component (Tag, Table, Drawer, Modal, ...) so we don't
+        // have to chase each surface with CSS overrides. Our
+        // CSS variables (--bg, --fg, --border) are still the
+        // source of truth for our own custom components and the
+        // chrome around antd (header bg, footer bg, code blocks).
+        theme={{
+          algorithm:
+            theme === 'dark'
+              ? antdTheme.darkAlgorithm
+              : antdTheme.defaultAlgorithm,
+        }}
+      >
         <AntdApp>
           <div className="min-h-screen flex flex-col bg-[var(--bg)]">
             {chrome && <RootShell />}
