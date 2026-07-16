@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { LogLine } from '../lib/useLogStream'
+import { parseAnsi } from '../lib/ansi'
+import { splitTimestamp } from '../lib/logLine'
 
 /**
  * LogScroller is the autoscroll + jump-to-bottom primitive that
@@ -29,6 +31,13 @@ import type { LogLine } from '../lib/useLogStream'
  *     progress update (same key, new text) reuses the same DOM node
  *     and only re-renders its text - no reflow of the surrounding
  *     list. Keyless rows fall back to the array index.
+ *   - Each row is split into a muted timestamp column (the RFC3339Nano
+ *     prefix the Docker engine adds with `Timestamps: true`) and a
+ *     body column. The body is run through an ANSI SGR parser so
+ *     container coloring renders as styled spans instead of visible
+ *     escape-sequence garbage. Lines without a Docker timestamp
+ *     prefix (deploy logs, app-emitted formats) render body-only
+ *     with no timestamp column, preserving their original layout.
  */
 export function LogScroller({
   lines,
@@ -89,9 +98,22 @@ export function LogScroller({
         {displayPlaceholder ? (
           <div className="text-xs">{displayPlaceholder}</div>
         ) : (
-          lines.map((line, i) => (
-            <div key={line.key ?? i}>{line.text}</div>
-          ))
+          lines.map((line, i) => {
+            const { ts, body } = splitTimestamp(line.text)
+            return (
+              <div
+                key={line.key ?? i}
+                className="flex gap-2 -mx-3 px-3 rounded hover:bg-black/[0.04] transition-colors"
+              >
+                {ts !== null && (
+                  <span className="text-[var(--fg-muted)] opacity-60 select-none shrink-0 tabular-nums">
+                    {ts}
+                  </span>
+                )}
+                <span className="flex-1 min-w-0">{parseAnsi(body)}</span>
+              </div>
+            )
+          })
         )}
       </div>
       {showJump && (

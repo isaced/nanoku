@@ -133,4 +133,64 @@ describe('LogScroller', () => {
     expect(screen.queryByText('2dd7 Downloading 48.5kB [1%]')).toBeNull()
     expect(screen.queryByText('Image alpine Pulling')).toBeTruthy()
   })
+
+  // ---- ANSI color + timestamp rendering (added with the ansi.ts /
+  // logLine.ts log-rendering improvements) ----
+
+  it('renders ANSI-colored text without showing escape-sequence garbage', () => {
+    const ESC = '\x1b'
+    render(<LogScroller lines={[{ text: `${ESC}[32mOK${ESC}[0m done` }]} />)
+    // The colored segment renders as a styled span with its text intact.
+    expect(screen.getByText('OK')).toBeTruthy()
+    // The plain trailing text is present (use a substring match since it
+    // shares a parent <span> with the colored segment).
+    expect(screen.getByText(/done/)).toBeTruthy()
+    // No escape artifacts should be visible anywhere.
+    expect(screen.queryByText(/\[32m/)).toBeNull()
+    expect(screen.queryByText(/\[0m/)).toBeNull()
+  })
+
+  it('renders a Docker timestamp prefix as a separate muted column', () => {
+    render(
+      <LogScroller
+        lines={[{ text: '2026-07-16T03:49:56.661898467Z hello world' }]}
+      />,
+    )
+    // The HH:MM:SS timestamp column is rendered as its own text node.
+    expect(screen.getByText('03:49:56')).toBeTruthy()
+    // The body is still present and queryable.
+    expect(screen.getByText('hello world')).toBeTruthy()
+    // The full RFC3339Nano prefix should NOT appear as a single text
+    // node (it was split into the timestamp column + body).
+    expect(
+      screen.queryByText('2026-07-16T03:49:56.661898467Z hello world'),
+    ).toBeNull()
+  })
+
+  it('renders the Uptime Kuma bug-report line with split timestamp and ANSI colors', () => {
+    const ESC = '\x1b'
+    // Real-world shape from the bug report: a plain Docker engine
+    // timestamp prefix (added by ContainerLogs with Timestamps: true),
+    // followed by the app's own ANSI-colored timestamp + [SERVER] tag +
+    // INFO: label. The Docker prefix must be split into the timestamp
+    // column; the app's colored content must render without escape garbage.
+    const line = `2026-07-16T03:49:56.781345839Z ${ESC}[36m2026-07-16T03:49:56Z${ESC}[0m [${ESC}[32mSERVER${ESC}[0m] ${ESC}[36mINFO:${ESC}[0m Env: production`
+    render(<LogScroller lines={[{ text: line }]} />)
+    // Docker timestamp column (from the plain prefix).
+    expect(screen.getByText('03:49:56')).toBeTruthy()
+    // The app's own timestamp is part of the body, rendered as colored text.
+    expect(screen.getByText('2026-07-16T03:49:56Z')).toBeTruthy()
+    expect(screen.getByText('SERVER')).toBeTruthy()
+    expect(screen.getByText('INFO:')).toBeTruthy()
+    // No escape artifacts anywhere.
+    expect(screen.queryByText(/\[36m/)).toBeNull()
+    expect(screen.queryByText(/\[32m/)).toBeNull()
+  })
+
+  it('does not render a timestamp column for lines without a Docker prefix', () => {
+    render(<LogScroller lines={[{ text: 'plain deploy log line' }]} />)
+    expect(screen.getByText('plain deploy log line')).toBeTruthy()
+    // No timestamp column element should be present.
+    expect(screen.queryByText(/^\d{2}:\d{2}:\d{2}$/)).toBeNull()
+  })
 })
