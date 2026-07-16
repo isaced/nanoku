@@ -64,15 +64,36 @@ export function useAppDeploys(
   })
 }
 
+/**
+ * splitLogLines turns the newline-joined string the log endpoints
+ * return into the array of lines useLogStream expects. We drop a
+ * single trailing empty row (the common "tail ends with \n" case)
+ * so the seed doesn't render a blank line at the bottom of the
+ * panel.
+ */
+function splitLogLines(s: string): string[] {
+  if (s === '') return []
+  const lines = s.split('\n')
+  if (lines.length > 0 && lines[lines.length - 1] === '') {
+    lines.pop()
+  }
+  return lines
+}
+
 export function useAppLogs(
   id: number | null | undefined,
   tail: number,
   container?: string,
   opts: { enabled?: boolean } = {},
-): UseQueryResult<string> {
+): UseQueryResult<string[]> {
   return useQuery({
     queryKey: queryKeys.apps.logs(id ?? -1, tail, container),
     queryFn: () => api.appLogs(id as number, tail, container),
+    // Decode the newline-joined payload once, in the query layer,
+    // so callers receive `string[]` directly. The `select` runs
+    // after the queryFn resolves; `useLogStream` then takes the
+    // array as-is for its `initialLines` seed.
+    select: splitLogLines,
     enabled: (opts.enabled ?? false) && id != null,
   })
 }
@@ -119,10 +140,13 @@ export function useSystemLogs(
   source: 'caddy' | 'nanoku',
   tail: number,
   opts: { enabled?: boolean } = {},
-): UseQueryResult<string> {
+): UseQueryResult<string[]> {
   return useQuery({
     queryKey: queryKeys.system.logs(source, tail),
     queryFn: () => api.systemLogs(source, tail),
+    // See useAppLogs — callers want the lines already split so
+    // useLogStream can seed its buffer without an extra useMemo.
+    select: splitLogLines,
     enabled: opts.enabled ?? false,
   })
 }

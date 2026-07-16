@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button, Drawer, Select, Tabs, Tag } from 'antd'
 import {
   Bell,
@@ -483,11 +483,10 @@ function LogsTab({
   // GET, so the user sees history the moment the tab opens. While
   // the GET is in flight the stream is already open at "now" and
   // the panel shows a connecting indicator - when the GET resolves
-  // the seed lands and live lines append on top of it.
-  const initialLines = useMemo(() => {
-    if (!logsQuery.data) return undefined
-    return logsQuery.data.split('\n')
-  }, [logsQuery.data])
+  // the seed lands and live lines append on top of it. The query
+  // layer does the newline split (see useAppLogs), so we hand the
+  // array straight to useLogStream.
+  const initialLines = logsQuery.data
   if (!hasContainer) {
     return (
       <div className="mono text-xs text-[var(--fg-muted)] py-6 text-center">

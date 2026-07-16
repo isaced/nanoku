@@ -69,14 +69,8 @@ function SystemPageContent() {
   const selfLogs = useSystemLogs('nanoku', tail, {
     enabled: systemStatusQuery.data.nanokuContainerConfigured === true,
   })
-  const caddyInitial = useMemo(
-    () => (caddyLogs.data ? caddyLogs.data.split('\n') : undefined),
-    [caddyLogs.data],
-  )
-  const selfInitial = useMemo(
-    () => (selfLogs.data ? selfLogs.data.split('\n') : undefined),
-    [selfLogs.data],
-  )
+  const caddyInitial = caddyLogs.data
+  const selfInitial = selfLogs.data
   // When the user changes `tail`, force a fresh GET (which becomes
   // a fresh SSE connection from the new url). We use a key bump
   // trick: bumping a counter is enough to invalidate the seed memo

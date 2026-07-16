@@ -1,13 +1,51 @@
+// @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react'
-import { I18nextProvider } from 'react-i18next'
+import { I18nextProvider, initReactI18next } from 'react-i18next'
 import i18n from 'i18next'
-import { afterEach, describe, expect, it } from 'vitest'
-// The shared `../i18n` module initializes the i18next instance as a
-// side effect; using the same instance keeps this test isolated from
-// the rest of the suite (re-calling `i18n.init()` races with the
-// shared init and breaks translations in unrelated tests).
-import '../i18n'
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { StatusTag } from './StatusTag'
+
+let i18nReady = false
+async function ensureI18n() {
+  if (i18nReady) return
+  // We intentionally init a dedicated instance instead of importing
+  // `../i18n` (which initialises a singleton): a singleton would
+  // leak translations from this test into unrelated route tests
+  // (the dashboard / sites / apps tests all `import '../i18n'` and
+  // share one instance — racing their init from this file made 60+
+  // other tests time out).
+  await i18n.use(initReactI18next).init({
+    lng: 'en',
+    fallbackLng: 'en',
+    defaultNS: 'common',
+    ns: ['common'],
+    resources: {
+      en: {
+        common: {
+          status: {
+            running: 'running',
+            exited: 'exited',
+            notDeployed: 'not deployed',
+            configured: 'configured',
+            notFound: 'not found',
+            restarting: 'restarting',
+            paused: 'paused',
+          },
+        },
+      },
+    },
+    interpolation: { escapeValue: false },
+  })
+  i18nReady = true
+}
+
+beforeAll(async () => {
+  await ensureI18n()
+})
+
+afterEach(() => {
+  cleanup()
+})
 
 afterEach(() => {
   cleanup()
