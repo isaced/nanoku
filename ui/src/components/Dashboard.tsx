@@ -13,9 +13,6 @@ import {
 } from 'antd'
 import {
   Activity,
-  CircleCheck,
-  CircleDashed,
-  CircleX,
   Container as ContainerIcon,
   Cpu,
   Globe,
@@ -28,10 +25,12 @@ import {
 import { Suspense, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../lib/api'
+import { containerStatusMeta } from '../lib/containerStatus'
 import { queryKeys } from '../lib/queryKeys'
 import type { Dashboard, Status } from '../lib/types'
 import { RouteFallback } from './RouteFallback'
 import { SiteStatusBadge } from './SiteStatusBadge'
+import { StatusTag } from './StatusTag'
 
 const AUTO_REFRESH_MS = 5000
 
@@ -437,7 +436,6 @@ function AppCard({
   const { t } = useTranslation('dashboard')
   const c = app.container
   const stats = app.stats
-  const status = c?.status ?? t('common:status.notDeployed', { ns: 'common' })
   return (
     <div className="border border-[var(--border)] rounded-lg bg-[var(--bg-elevated)] p-4">
       <div className="flex items-start justify-between mb-3">
@@ -446,7 +444,10 @@ function AppCard({
             <span className="mono text-sm font-medium text-[var(--accent)]">
               {app.name}
             </span>
-            <StatusPill status={status} />
+            <StatusTag
+              {...containerStatusMeta(c?.status)}
+              size="small"
+            />
           </div>
           <div className="mono text-xs text-[var(--fg-muted)] mt-0.5 truncate">
             {app.image}
@@ -521,39 +522,5 @@ function AppCard({
         </div>
       )}
     </div>
-  )
-}
-
-function StatusPill({ status }: { status: string }) {
-  const { t } = useTranslation('common')
-  if (status === 'running') {
-    return (
-      <Tag color="green" className="!m-0">
-        <span className="inline-flex items-center gap-1">
-          <CircleCheck size={10} /> {t('status.running')}
-        </span>
-      </Tag>
-    )
-  }
-  if (status === 'exited' || status === 'created' || status === 'not deployed') {
-    return (
-      <Tag className="!m-0">
-        <span className="inline-flex items-center gap-1">
-          <CircleDashed size={10} />{' '}
-          {status === 'exited'
-            ? t('status.exited')
-            : status === 'created'
-              ? t('status.created')
-              : t('status.notDeployed')}
-        </span>
-      </Tag>
-    )
-  }
-  return (
-    <Tag color="red" className="!m-0">
-      <span className="inline-flex items-center gap-1">
-        <CircleX size={10} /> {status}
-      </span>
-    </Tag>
   )
 }

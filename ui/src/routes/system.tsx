@@ -10,9 +10,6 @@ import {
   Tooltip,
 } from 'antd'
 import {
-  CircleCheck,
-  CircleDashed,
-  CircleX,
   Container as ContainerIcon,
   Info,
   RefreshCw,
@@ -20,6 +17,7 @@ import {
 } from 'lucide-react'
 import { Trans, useTranslation } from 'react-i18next'
 import { ensureAuth, isAuthenticated } from '../lib/auth'
+import { serviceStatusMeta } from '../lib/serviceStatus'
 import {
   useCleanupStatus,
   useSuspenseStatus,
@@ -29,6 +27,7 @@ import {
 import { RouteError } from '../components/RouteError'
 import { RouteFallback } from '../components/RouteFallback'
 import { LogViewer } from '../components/LogViewer'
+import { StatusTag } from '../components/StatusTag'
 
 export const Route = createFileRoute('/system')({
   beforeLoad: async () => {
@@ -314,24 +313,24 @@ function CleanupSection() {
                 render: (_: unknown, row) =>
                   row.lastErr ? (
                     <Tooltip title={row.lastErr}>
-                      <Tag color="red" className="!m-0">
-                        <span className="inline-flex items-center gap-1">
-                          <CircleX size={10} /> {t('cleanup.statusError')}
-                        </span>
-                      </Tag>
+                      <StatusTag
+                        variant="danger"
+                        label={t('cleanup.statusError')}
+                        size="small"
+                      />
                     </Tooltip>
                   ) : row.runCount > 0 ? (
-                    <Tag color="green" className="!m-0">
-                      <span className="inline-flex items-center gap-1">
-                        <CircleCheck size={10} /> {t('cleanup.statusOk')}
-                      </span>
-                    </Tag>
+                    <StatusTag
+                      variant="success"
+                      label={t('cleanup.statusOk')}
+                      size="small"
+                    />
                   ) : (
-                    <Tag className="!m-0">
-                      <span className="inline-flex items-center gap-1">
-                        <CircleDashed size={10} /> {t('cleanup.statusIdle')}
-                      </span>
-                    </Tag>
+                    <StatusTag
+                      variant="muted"
+                      label={t('cleanup.statusIdle')}
+                      size="small"
+                    />
                   ),
               },
             ]}
@@ -399,7 +398,9 @@ function LogCard({
           {containerName && (
             <Tag className="!m-0 mono text-[10px]">{containerName}</Tag>
           )}
-          {status && <StatusTag status={status} />}
+          {status && (
+            <StatusTag {...serviceStatusMeta(status)} size="small" />
+          )}
         </div>
       </div>
       <div className="flex-1 min-h-0 p-3">
@@ -417,31 +418,5 @@ function LogCard({
   )
 }
 
-function StatusTag({ status }: { status: string }) {
-  if (status === 'running' || status === 'configured') {
-    const color = status === 'running' ? 'green' : 'blue'
-    return (
-      <Tag color={color} className="!m-0">
-        <span className="inline-flex items-center gap-1">
-          <CircleCheck size={10} /> {status}
-        </span>
-      </Tag>
-    )
-  }
-  if (status === 'not_found' || status === 'skipped') {
-    return (
-      <Tag className="!m-0">
-        <span className="inline-flex items-center gap-1">
-          <CircleDashed size={10} /> {status}
-        </span>
-      </Tag>
-    )
-  }
-  return (
-    <Tag color="red" className="!m-0">
-      <span className="inline-flex items-center gap-1">
-        <CircleX size={10} /> {status}
-      </span>
-    </Tag>
-  )
-}
+// StatusTag is now imported from `../components/StatusTag` and
+// receives its visual contract from `serviceStatusMeta()` above.

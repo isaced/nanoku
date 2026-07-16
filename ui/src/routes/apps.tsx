@@ -2,9 +2,6 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import { Suspense, useState } from 'react'
 import { App, Button, Space, Table, Tag, Tooltip } from 'antd'
 import {
-  CircleCheck,
-  CircleDashed,
-  CircleX,
   Container as ContainerIcon,
   Pencil,
   Play,
@@ -16,6 +13,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ensureAuth, isAuthenticated } from '../lib/auth'
+import { containerStatusMeta } from '../lib/containerStatus'
 import {
   appLifecycle,
   useDeleteApp,
@@ -31,6 +29,7 @@ import { AppDetail } from '../components/AppDetailDrawer'
 import { AppEditorModal, type AppEditorSaveResult } from '../components/AppEditor'
 import { RouteError } from '../components/RouteError'
 import { RouteFallback } from '../components/RouteFallback'
+import { StatusTag } from '../components/StatusTag'
 
 export const Route = createFileRoute('/apps')({
   beforeLoad: async () => {
@@ -380,53 +379,15 @@ function AppsPageContent() {
 }
 
 function StatusCell({ app }: { app: AppType }) {
-  const { t } = useTranslation('common')
-  const translate = (s: string) =>
-    s === 'exited'
-      ? t('status.exited')
-      : s === 'created'
-        ? t('status.created')
-        : s === 'not deployed'
-          ? t('status.notDeployed')
-          : s
-  if (!app.container) {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-[var(--fg-muted)]">
-        <CircleDashed size={12} className="shrink-0" />
-        <span className="text-xs">{t('status.notDeployed')}</span>
-      </span>
-    )
-  }
-  const s = app.container.status
-  if (s === 'running') {
-    return (
-      <span className="inline-flex items-center gap-1.5">
-        <CircleCheck size={12} className="text-[var(--success)] shrink-0" />
-        <span className="text-xs text-[var(--fg)]">{t('status.running')}</span>
+  const meta = containerStatusMeta(app.container?.status)
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <StatusTag {...meta} size="small" />
+      {app.container && (
         <span className="mono text-[11px] text-[var(--fg-muted)] max-w-[8rem] truncate">
           {app.container.name}
         </span>
-      </span>
-    )
-  }
-  if (s === 'exited' || s === 'created') {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-[var(--fg-muted)]">
-        <CircleDashed size={12} className="shrink-0" />
-        <span className="text-xs">{translate(s)}</span>
-        <span className="mono text-[11px] max-w-[8rem] truncate">
-          {app.container.name}
-        </span>
-      </span>
-    )
-  }
-  return (
-    <span className="inline-flex items-center gap-1.5 text-[var(--danger)]">
-      <CircleX size={12} className="shrink-0" />
-      <span className="text-xs">{s}</span>
-      <span className="mono text-[11px] max-w-[8rem] truncate">
-        {app.container.name}
-      </span>
+      )}
     </span>
   )
 }

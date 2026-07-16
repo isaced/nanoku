@@ -20,35 +20,17 @@ import {
   useAppContainers,
   useAppLogs,
 } from '../lib/hooks'
+import { containerStatusMeta } from '../lib/containerStatus'
 import { queryKeys } from '../lib/queryKeys'
 import { useQueryClient } from '@tanstack/react-query'
 import type { App as AppType, Deploy, EnvVar, Volume } from '../lib/types'
 import { RouteFallback } from './RouteFallback'
 import { LogViewer } from './LogViewer'
+import { StatusTag } from './StatusTag'
 
 const DEPLOY_POLL_INTERVAL_MS = 3000
 
 type TabKey = 'overview' | 'deploys' | 'logs'
-
-// Map a Docker container status string to an antd Tag color. Used
-// both in the drawer title and the apps list status cell — keeping
-// the same palette everywhere so the eye learns the mapping.
-function statusColor(status: string): string {
-  switch (status) {
-    case 'running':
-      return 'green'
-    case 'restarting':
-      return 'blue'
-    case 'paused':
-      return 'orange'
-    case 'dead':
-      return 'red'
-    case 'exited':
-    case 'created':
-    default:
-      return 'default'
-  }
-}
 
 export function AppDetail({
   appId,
@@ -113,9 +95,10 @@ function AppDetailTitle({
       <ContainerIcon size={16} className="text-[var(--fg-muted)]" />
       <span className="mono text-base">{app.name}</span>
       {app.container && (
-        <Tag className="!m-0" color={statusColor(app.container.status)}>
-          {app.container.status}
-        </Tag>
+        <StatusTag
+          {...containerStatusMeta(app.container.status)}
+          size="small"
+        />
       )}
     </div>
   )

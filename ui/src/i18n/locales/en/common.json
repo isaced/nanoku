@@ -16,6 +16,8 @@
     "loading": "Loading…",
     "empty": "Empty",
     "running": "running",
+    "restarting": "restarting",
+    "paused": "paused",
     "exited": "exited",
     "created": "created",
     "configured": "configured",
