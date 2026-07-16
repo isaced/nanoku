@@ -140,14 +140,20 @@ to both Docker Hub and GHCR on every release tag.
 
 ### First boot
 
-1. Open `http://<host>:8080` and log in with the credentials from your
-   `.env` (`NANOKU_ADMIN_USER` / `NANOKU_ADMIN_PASSWORD`). The seed
-   only runs on a fresh DB; change the password from the UI afterwards.
+1. Open `http://<host>:8080` and log in with the admin credentials.
+   The seed only runs on a fresh DB; change the password from the UI
+   afterwards.
+   - **Installer path** — credentials are at `/etc/nanoku/.env`
+     (`NANOKU_ADMIN_USER` / `NANOKU_ADMIN_PASSWORD`). The installer
+     prints them at the end of its run.
+   - **Static binary / `docker compose` path** — credentials live in
+     the `.env` file you prepared before first start.
 2. nanoku auto-creates its managed Caddy container (`nanoku-caddy`) on
    first start. Sites served through Caddy will get automatic HTTPS
    via Let's Encrypt once a domain is pointed at the host. To enable
-   auto-HTTPS, set `NANOKU_CADDY_AUTO_HTTPS=true` in `/etc/nanoku/.env`
-   and run `sudo systemctl restart nanoku`.
+   auto-HTTPS, set `NANOKU_CADDY_AUTO_HTTPS=true` in the same `.env`
+   file and restart nanoku (`sudo systemctl restart nanoku` for the
+   installer path, `docker compose restart` otherwise).
 3. `NANOKU_SECRET_KEY` is **required** — it derives the AES-256-GCM
    key that encrypts registry passwords, trigger tokens, and env var
    values at rest. Lost key = permanently lost secrets.
@@ -160,7 +166,7 @@ Design, and Tailwind 4. All routes are session-authenticated (except
 
 | Page        | What it does                                                       |
 | ----------- | ------------------------------------------------------------------ |
-| `/sites`    | Manage domains: one domain = one upstream, link to an app or free  |
+| `/sites`    | Manage domains: one domain = one upstream; link to an app or stand alone |
 | `/apps`     | Create / edit apps, configure deploys, rotate trigger tokens      |
 | `/dashboard`| Aggregate view: sites, running apps, live container stats (CPU/mem) |
 | `/system`   | Caddy / nanoku logs, orphan container reconcile, version info     |
@@ -382,6 +388,7 @@ and testing conventions.
   container stats, log streaming)
 - `ui/` — React 19 + Vite 8 + TanStack Router + Ant Design + Tailwind 4
 - `composes/` — example compose apps used by the Docker Compose deploy path
+- `scripts/` — install / upgrade / uninstall shell scripts (one-line installer, systemd-backed)
 - `docs/` — design records (proposals, schema, reviews)
 
 ## 🤝 Contributing
@@ -398,5 +405,4 @@ cd ui && npm test
 
 ## 📄 License
 
-Released under the MIT License. See `LICENSE` (add one if you're
-forking for distribution — none is currently committed).
+Released under the MIT License. See [`LICENSE`](./LICENSE).
