@@ -49,19 +49,73 @@ reload the proxy, and stream the logs back.
 
 ## 🚀 Quick Start
 
-### Option A — Download the binary
+### Install with one command (recommended)
+
+The installer pulls the latest image, writes `/etc/nanoku/`, generates
+a fresh `NANOKU_SECRET_KEY` + admin password, drops a systemd unit,
+starts nanoku, and prints the access URL.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/isaced/nanoku/main/scripts/install.sh | sudo bash
+```
+
+Useful overrides:
+
+| Variable                   | Default       | Notes                                                  |
+| -------------------------- | ------------- | ------------------------------------------------------ |
+| `NANOKU_VERSION`           | `latest`      | Pin a specific tag, e.g. `v0.1.0`                      |
+| `NANOKU_ADMIN_USER`        | `admin`       | Seed admin username                                    |
+| `NANOKU_ADMIN_PASSWORD`    | *(generated)* | Set your own to skip the one-time print at the end     |
+| `NANOKU_SECRET_KEY`        | *(generated)* | AES-256-GCM passphrase; **back up** after install      |
+| `NANOKU_LISTEN`            | `:8080`       | nanoku UI listen address                               |
+| `NANOKU_IMAGE_REGISTRY`    | `dockerhub`   | Set to `ghcr` to use `ghcr.io/isaced/nanoku`           |
+
+After install:
+
+```bash
+# Upgrade
+sudo /etc/nanoku/upgrade.sh
+
+# Tail logs
+journalctl -u nanoku -f
+
+# Uninstall (keeps data)
+sudo bash scripts/uninstall.sh
+# or wipe everything
+sudo bash scripts/uninstall.sh --purge
+```
+
+### Download a static binary (alternative)
+
+If you'd rather skip Docker for nanoku itself, grab a single binary.
+Note: this still requires Docker on the host — nanoku manages
+containers, so the docker socket must be reachable via `DOCKER_HOST`
+(defaults to `/var/run/docker.sock`).
 
 ```bash
 # Grab the latest release
 curl -L -o nanoku https://github.com/isaced/nanoku/releases/latest/download/nanoku_$(uname -s)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz
 tar -xzf nanoku*.tar.gz
 chmod +x nanoku
+
+# Generate a secret key
+export NANOKU_SECRET_KEY=$(openssl rand -base64 32)
+
+# Required on first boot only
+export NANOKU_ADMIN_USER=admin
+export NANOKU_ADMIN_PASSWORD=changeme
+
+./nanoku
 ```
 
 Or grab a specific asset from the
 [Releases page](https://github.com/isaced/nanoku/releases/latest).
+You'll need to wire up your own systemd unit / launchd plist if you
+want auto-start on boot.
 
-### Option B — `docker compose`
+### `docker compose` from source (alternative)
+
+For development or if you prefer to run from a local checkout:
 
 ```bash
 git clone https://github.com/isaced/nanoku.git
@@ -81,7 +135,9 @@ to both Docker Hub and GHCR on every release tag.
    only runs on a fresh DB; change the password from the UI afterwards.
 2. nanoku auto-creates its managed Caddy container (`nanoku-caddy`) on
    first start. Sites served through Caddy will get automatic HTTPS
-   via Let's Encrypt once a domain is pointed at the host.
+   via Let's Encrypt once a domain is pointed at the host. To enable
+   auto-HTTPS, set `NANOKU_CADDY_AUTO_HTTPS=true` in `/etc/nanoku/.env`
+   and run `sudo systemctl restart nanoku`.
 3. `NANOKU_SECRET_KEY` is **required** — it derives the AES-256-GCM
    key that encrypts registry passwords, trigger tokens, and env var
    values at rest. Lost key = permanently lost secrets.
