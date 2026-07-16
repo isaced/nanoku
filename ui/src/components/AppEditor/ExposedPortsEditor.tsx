@@ -2,7 +2,7 @@ import { App, Button, Input, InputNumber, Tooltip } from 'antd'
 import { Plus, Trash2, Wand2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useFieldArray } from '../../lib/hooks/useFieldArray'
-import { useImportExposedPorts } from '../../lib/hooks'
+import { useAction, useImportExposedPorts } from '../../lib/hooks'
 import type { ExposedPort } from '../../lib/types'
 
 // ExposedPortsEditor is the compose-mode-only editor that lets the
@@ -33,6 +33,7 @@ export function ExposedPortsEditor({
 }) {
   const { t } = useTranslation('apps')
   const { message } = App.useApp()
+  const action = useAction()
   const importMutation = useImportExposedPorts()
   const { set, add, remove } = useFieldArray<ExposedPort>(rows, onChange)
   const count = rows.length
@@ -40,12 +41,11 @@ export function ExposedPortsEditor({
   // doImport runs the server-side parser and replaces the current
   // draft with the result. The user is expected to review before
   // submitting — the import is scaffolding, not a commit. The
-  // message gives a quick "X imported, Y need a port" summary
-  // drawn from the same hint the server returns, so the operator
-  // knows whether to look at the port column.
+  // toast gives a quick "X imported, Y need a port" summary so
+  // the operator knows whether to look at the port column.
   function doImport() {
     if (appId == null) return
-    importMutation.mutate(appId, {
+    void action.run(importMutation.mutateAsync(appId), {
       onSuccess: (resp) => {
         onChange(resp.exposedPorts)
         const needPort = resp.exposedPorts.filter((p) => p.port <= 0).length
@@ -61,9 +61,6 @@ export function ExposedPortsEditor({
             t('editor.exposedPortImportOk', { count: resp.exposedPorts.length }),
           )
         }
-      },
-      onError: (err) => {
-        message.error(err.message)
       },
     })
   }

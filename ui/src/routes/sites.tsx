@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next'
 import { ensureAuth, isAuthenticated } from '../lib/auth'
 import { isValidDomain } from '../lib/domain-validation'
 import {
+  useAction,
   useCreateSite,
   useDeleteSite,
   useSuspenseApps,
@@ -129,7 +130,7 @@ export function computeUpstreamForAppUI(
 }
 
 function SitesPageContent() {
-  const { message, modal } = App.useApp()
+  const { modal } = App.useApp()
   const { t } = useTranslation('sites')
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<Site | null>(null)
@@ -142,6 +143,7 @@ function SitesPageContent() {
   const updateSite = useUpdateSite()
   const deleteSite = useDeleteSite()
   const toggleSite = useToggleSite()
+  const action = useAction()
 
   const sites = sitesQuery.data
   const status = statusQuery.data
@@ -257,9 +259,6 @@ function SitesPageContent() {
       const onOk = () => {
         setEditorOpen(false)
       }
-      const onErr = (err: Error) => {
-        message.error(err.message)
-      }
       if (editing) {
         // If the user clears the app linkage on an edit, route through
         // the explicit clearApp flag so the server doesn't have to
@@ -268,34 +267,23 @@ function SitesPageContent() {
           payload.clearApp = true
           delete payload.appId
         }
-        updateSite.mutate(
-          { id: editing.id, input: payload },
-          { onSuccess: onOk, onError: onErr },
-        )
+        void action.run(updateSite.mutateAsync({ id: editing.id, input: payload }), {
+          onSuccess: onOk,
+        })
       } else {
-        createSite.mutate(payload, {
-          onSuccess: (created) => {
-            onOk()
-            message.success(t('toast.added', { domain: created.domain }))
-          },
-          onError: onErr,
+        void action.run(createSite.mutateAsync(payload), {
+          success: t('toast.added', { domain: 'PLACEHOLDER' }),
+          successVars: (created) => ({ domain: created.domain }),
+          onSuccess: onOk,
         })
       }
     })
   }
 
   function onToggle(s: Site) {
-    toggleSite.mutate(s.id, {
-      onSuccess: (updated) => {
-        message.success(
-          s.enabled
-            ? t('toast.disabled', { domain: updated.domain })
-            : t('toast.enabled', { domain: updated.domain }),
-        )
-      },
-      onError: (err) => {
-        message.error(err.message)
-      },
+    void action.run(toggleSite.mutateAsync(s.id), {
+      success: s.enabled ? t('toast.disabled', { domain: 'P' }) : t('toast.enabled', { domain: 'P' }),
+      successVars: (updated) => ({ domain: updated.domain }),
     })
   }
 
@@ -306,18 +294,9 @@ function SitesPageContent() {
       okText: t('actions.delete', { ns: 'common' }),
       okType: 'danger',
       onOk: () =>
-        new Promise<void>((resolve, reject) => {
-          deleteSite.mutate(s.id, {
-            onSuccess: () => {
-              message.success(t('toast.deleted', { domain: s.domain }))
-              resolve()
-            },
-            onError: (err) => {
-              message.error(err.message)
-              reject(err)
-            },
-          })
-        }),
+        action.run(deleteSite.mutateAsync(s.id), {
+          success: t('toast.deleted', { domain: s.domain }),
+        }).then(() => undefined),
     })
   }
 

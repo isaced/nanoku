@@ -16,6 +16,7 @@ import { ensureAuth, isAuthenticated } from '../lib/auth'
 import { containerStatusMeta } from '../lib/containerStatus'
 import {
   appLifecycle,
+  useAction,
   useDeleteApp,
   useDeployApp,
   useRestartApp,
@@ -65,6 +66,7 @@ function AppsPageContent() {
   const stopApp = useStopApp()
   const restartApp = useRestartApp()
   const deleteApp = useDeleteApp()
+  const action = useAction()
 
   const apps = appsQuery.data
   const status = statusQuery.data
@@ -89,10 +91,14 @@ function AppsPageContent() {
   function handleSaved({ saved, previous, isNew }: AppEditorSaveResult) {
     setEditorOpen(false)
     if (isNew) {
-      message.success(t('toast.added', { name: saved.name }))
+      void action.run(Promise.resolve(saved), {
+        success: t('toast.added', { name: saved.name }),
+      })
       return
     }
-    message.success(t('toast.updated', { name: saved.name }))
+    void action.run(Promise.resolve(saved), {
+      success: t('toast.updated', { name: saved.name }),
+    })
     const appForRedeploy: AppType = { ...previous!, ...saved }
     modal.confirm({
       title: t('redeployPrompt.title', { name: appForRedeploy.name }),
@@ -104,6 +110,10 @@ function AppsPageContent() {
   }
 
   function triggerDeploy(app: AppType) {
+    // Note: deployApp.mutate (not mutateAsync) because the success
+    // payload is the API's DeployResponse which carries a custom
+    // `accepted: false` signal that we surface as a warning toast
+    // rather than a generic error.
     deployApp.mutate(app.id, {
       onSuccess: (resp) => {
         if (!resp.accepted) {
@@ -117,19 +127,17 @@ function AppsPageContent() {
         setDetailInitialTab('deploys')
       },
       onError: (err) => {
-        message.error(err.message)
+        if (!(err instanceof Error && err.message === 'Unauthorized')) {
+          message.error(err.message)
+        }
       },
     })
   }
 
   function runAction(app: AppType, name: string, fn: () => Promise<unknown>) {
-    return fn()
-      .then(() => {
-        message.success(t('toast.' + name, { name: app.name }))
-      })
-      .catch((err: Error) => {
-        message.error(err.message)
-      })
+    void action.run(fn(), {
+      success: t('toast.' + name, { name: app.name }),
+    })
   }
 
   function confirmDelete(app: AppType) {
@@ -139,18 +147,9 @@ function AppsPageContent() {
       okText: t('actions.delete', { ns: 'common' }),
       okType: 'danger',
       onOk: () =>
-        new Promise<void>((resolve, reject) => {
-          deleteApp.mutate(app.id, {
-            onSuccess: () => {
-              message.success(t('toast.deleted', { name: app.name }))
-              resolve()
-            },
-            onError: (err) => {
-              message.error(err.message)
-              reject(err)
-            },
-          })
-        }),
+        action.run(deleteApp.mutateAsync(app.id), {
+          success: t('toast.deleted', { name: app.name }),
+        }).then(() => undefined),
     })
   }
 

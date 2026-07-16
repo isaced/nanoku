@@ -1,6 +1,7 @@
 import { App, Form } from 'antd'
 import { useEffect, useState } from 'react'
 import {
+  useAction,
   useAppEnv,
   useAppVolumes,
   useCreateApp,
@@ -43,6 +44,7 @@ export function useAppEditorForm({
   onSaved: (result: AppEditorSaveResult) => void
 }) {
   const { message } = App.useApp()
+  const action = useAction()
   const [form] = Form.useForm<AppInput>()
   const [envDraft, setEnvDraft] = useState<EnvVar[]>([])
   const [volumeDraft, setVolumeDraft] = useState<VolumeInput[]>([])
@@ -169,19 +171,18 @@ export function useAppEditorForm({
       const saveMutation = isNew
         ? createApp.mutateAsync(payload)
         : updateApp.mutateAsync({ id: editing!.id, input: payload })
-      try {
-        const saved = await saveMutation
-        await replaceEnv.mutateAsync({ id: saved.id, vars: cleanedEnv() })
-        if (!isCompose) {
-          await replaceVolumes.mutateAsync({
+      const saved = await action.run(saveMutation)
+      if (!saved) return
+      await action.run(replaceEnv.mutateAsync({ id: saved.id, vars: cleanedEnv() }))
+      if (!isCompose) {
+        await action.run(
+          replaceVolumes.mutateAsync({
             id: saved.id,
             vols: cleanedVolumes(),
-          })
-        }
-        onSaved({ saved, previous: editing, isNew })
-      } catch (err) {
-        message.error((err as Error).message)
+          }),
+        )
       }
+      onSaved({ saved, previous: editing, isNew })
     })
   }
 
@@ -202,29 +203,25 @@ export function useAppEditorForm({
 
   function onGenerate() {
     if (!editing) return
-    rotateToken.mutate(editing.id, {
+    void action.run(rotateToken.mutateAsync(editing.id), {
       onSuccess: (updated) => {
         setTriggerEnabled(true)
         if (updated.triggerToken) {
           setRevealedToken(updated.triggerToken)
         }
       },
-      onError: (err) => {
-        message.error(err.message)
-      },
     })
   }
 
   function onDisable() {
     if (!editing) return
-    updateApp.mutate(
-      { id: editing.id, input: { enableTrigger: false } },
+    void action.run(
+      updateApp.mutateAsync({ id: editing.id, input: { enableTrigger: false } }),
       {
         onSuccess: () => {
           setTriggerEnabled(false)
           setRevealedToken(null)
         },
-        onError: (err) => message.error(err.message),
       },
     )
   }
