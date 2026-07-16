@@ -1,17 +1,16 @@
 # Nanoku
 
-> **The ultra-lightweight self-hosted deployment hub for modern frontends.**
+> **The nano Heroku / Vercel for your own server.**
 
 A single Go binary that ships with an embedded React admin UI, pulls
-pre-built container images, manages a Caddy reverse proxy for HTTPS,
-and gives you a Vercel-style "git push → deployed" experience on your
-own server. Think of it as a nano Coolify / Dokploy.
+pre-built container images, and manages a Caddy reverse proxy for
+HTTPS. CI builds your image, nanoku pulls and ships it — "git push
+→ deployed" on your own machine.
 
 ## ✨ Features
 
 - **Single binary** — Go server + embedded React admin UI in one executable
 - **SQLite powered** — zero external database; state lives in a single file
-- **Pull, don't build** — nanoku pulls pre-built images from your CI
 - **HTTP-trigger deploys** — provider-agnostic: works with GitHub Actions,
   GitLab CI, Drone, or any system that can POST JSON
 - **Docker & Docker Compose apps** — single-image apps or multi-service
@@ -19,7 +18,7 @@ own server. Think of it as a nano Coolify / Dokploy.
 - **Caddy integration** — managed Caddy container, automatic Caddyfile
   regeneration, ACME / Let's Encrypt TLS out of the box
 - **Sites & domains** — one domain = one upstream; sites can be linked
-  to an app (auto-resolved) or stand alone with a free upstream
+  to an app (auto-resolved) or stand alone with a placeholder upstream
 - **Per-app secrets** — env vars, registry credentials, and trigger
   tokens are AES-256-GCM encrypted at rest
 - **Private registry support** — `docker login` on demand with logout
@@ -40,12 +39,22 @@ own server. Think of it as a nano Coolify / Dokploy.
 ## 🧭 Philosophy
 
 Coolify and Dokploy are great, but sometimes you just want something
-**truly lightweight**. Nanoku is the nano version: fewer features, less
-overhead, but the same core joy of "push → deployed".
+**truly lightweight**. nanoku is the nano version: pull images, swap
+containers, reload the proxy, stream logs. Nothing more.
 
-Builds live in your CI where they belong. nanoku only does the parts
-that have to live on the host: pull the image, swap the container,
-reload the proxy, and stream the logs back.
+What nanoku **doesn't** do (and why):
+
+- **No build server.** Builds belong in your CI — GitHub Actions,
+  GitLab CI, Drone, or any system that can push an image. nanoku only
+  pulls. This is the single biggest size reduction vs. Coolify / Dokploy.
+- **No template marketplace.** Coolify ships 300+ one-click apps;
+  nanoku treats every deployment as "point at an image you built."
+- **No multi-server / swarm.** nanoku runs on one host. Scale that host,
+  not the control plane.
+- **No Cloud / SaaS tier.** Self-hosted only, by design.
+
+If you need any of those, Coolify / Dokploy are the right call.
+If you don't, nanoku is a single binary and a single SQLite file.
 
 ## 🚀 Quick Start
 
@@ -289,7 +298,7 @@ Everything is configured through `NANOKU_*` environment variables
 | `NANOKU_LISTEN`               | `--listen`            | `:8080`                       | HTTP listen address                                                          |
 | `NANOKU_DB`                   | `--db`                | `./nanoku.db`                 | SQLite database file path                                                    |
 | `NANOKU_CADDYFILE`            | `--caddyfile`         | `./Caddyfile`                 | Generated Caddyfile path (host filesystem)                                   |
-| `NANOKU_CADDY_MODE`           | —                     | `managed`                     | Caddy integration mode (v1 only supports `managed`)                          |
+| `NANOKU_CADDY_MODE`           | —                     | `managed`                     | Caddy integration mode (only `managed` is supported)                         |
 | `NANOKU_CADDY_IMAGE`          | —                     | `caddy:2`                     | Caddy image used by the managed container                                    |
 | `NANOKU_CADDY_CONTAINER`      | —                     | `nanoku-caddy`                | Managed Caddy container name                                                 |
 | `NANOKU_CADDY_VOLUME`         | —                     | `nanoku-caddy-data`           | Caddy data volume name                                                       |
