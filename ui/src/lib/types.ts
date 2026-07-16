@@ -1,11 +1,6 @@
 export type ExposedPort = {
   name: string;
   port: number;
-  // Actual docker container name when it differs from the compose
-  // default nanoku-<app>-<name>-1. Sourced from the compose file's
-  // container_name: field at import time, or set by hand. Empty
-  // means "use the default".
-  containerName?: string;
 };
 
 export type Site = {

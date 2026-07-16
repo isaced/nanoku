@@ -83,7 +83,6 @@
     "exposedPortsTitle": "对外暴露的服务（可选）",
     "exposedPortsHint": "声明 Caddy 可以反向代理的 compose 服务。不填写时，站点只能使用自定义上游。",
     "exposedPortNamePlaceholder": "服务名（需与 services: 下的 key 一致）",
-    "exposedPortContainerNamePlaceholder": "容器名（可选，覆盖默认）",
     "exposedPortExtra": "容器内端口。Caddy 上游会使用容器名 + 该端口。",
     "exposedPortAdd": "添加服务",
     "exposedPortImport": "从 compose 导入",

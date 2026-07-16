@@ -141,17 +141,15 @@ export function useAppEditorForm({
       .filter((r) => r.target !== '')
   }
   // cleanedExposedPorts trims + drops rows with no service name. The
-  // server is the final validator (port range, regex, duplicate name
-  // detection, containerName pattern) but we strip empty rows here
-  // so a half-typed "add row" doesn't ship as { name: "", port: 0 }
-  // in the PATCH and bounce. containerName is optional and passes
-  // through untouched; the server treats empty as "use the default".
+  // server is the final validator (port range, regex, duplicate
+  // name detection) but we strip empty rows here so a half-typed
+  // "add row" doesn't ship as { name: "", port: 0 } in the PATCH
+  // and bounce.
   function cleanedExposedPorts(): ExposedPort[] {
     return exposedPortsDraft
       .map((r) => ({
         name: r.name.trim(),
         port: Number(r.port),
-        containerName: (r.containerName ?? '').trim(),
       }))
       .filter((r) => r.name !== '' && r.port > 0)
   }

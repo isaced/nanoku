@@ -83,7 +83,6 @@
     "exposedPortsTitle": "Exposed services (optional)",
     "exposedPortsHint": "Declare which compose services Caddy should be able to reverse-proxy to. Without this, sites can only use a custom upstream.",
     "exposedPortNamePlaceholder": "service-name (must match services: key)",
-    "exposedPortContainerNamePlaceholder": "container name (optional, overrides default)",
     "exposedPortExtra": "Container-side port. Caddy upstream uses the container name + this port.",
     "exposedPortAdd": "Add service",
     "exposedPortImport": "Import from compose",

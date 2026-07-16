@@ -115,14 +115,6 @@ export function ExposedPortsEditor({
               value={row.port}
               onChange={(v) => setRow(i, { port: Number(v) || 0 })}
             />
-            <Input
-              className="!w-48 mono text-xs"
-              placeholder={t('editor.exposedPortContainerNamePlaceholder')}
-              value={row.containerName ?? ''}
-              onChange={(e) =>
-                setRow(i, { containerName: e.target.value })
-              }
-            />
             <span className="text-[10px] text-[var(--fg-muted)] flex-1">
               {t('editor.exposedPortExtra')}
             </span>

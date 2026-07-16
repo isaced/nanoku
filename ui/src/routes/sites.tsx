@@ -99,20 +99,18 @@ export function serviceOptionLabel(name: string, port: number): string {
   return `${name} · port ${port}`
 }
 
-// computeUpstreamForAppUI mirrors the server's computeUpstreamForApp
-// (internal/api/sites.go) so the form can preview the locked upstream
-// the moment the operator picks an app. Without it, the disabled
-// upstream input stays empty after `appId` changes — the user sees a
-// blank field, has no way to verify the value the server will compute
-// on submit, and for multi-service compose the server would 400 on
-// `appService` until they noticed. The compose branch picks the
-// user-set ExposedPort.ContainerName (when present) and otherwise
-// falls back to the canonical `nanoku-<app>-<service>-1:<port>`
-// shape compose assigns by default; the docker branch needs the
-// app's current container name (carried on the App DTO as
-// `container.name`) to reconstruct the legacy `<container>:<port>`
-// upstream. Returns "" when the inputs are insufficient — callers
-// should render that as "not yet determined", not as an error.
+// computeUpstreamForAppUI mirrors the server's upstreamFor
+// (internal/api/sites.go) so the form can preview the locked
+// upstream the moment the operator picks an app. Without it,
+// the disabled upstream input stays empty after `appId` changes
+// — the user sees a blank field, has no way to verify the value
+// the server will compute on submit, and for multi-service compose
+// the server would 400 on `appService` until they noticed.
+//
+// The compose branch uses the network alias `nanoku-<app>-<service>`
+// (no -1 suffix, no container name dependency) — the alias is the
+// stable routing identity and is what Caddy's reverse_proxy entry
+// will resolve to via Docker network DNS.
 export function computeUpstreamForAppUI(
   app: AppType | undefined,
   appService: string | undefined,
@@ -123,15 +121,11 @@ export function computeUpstreamForAppUI(
     const ports = app.exposedPorts ?? []
     const ep = ports.find((p) => p.name === appService)
     if (!ep) return ''
-    const containerName = (ep.containerName ?? '').trim()
-    const host = containerName
-      ? containerName
-      : `nanoku-${app.name}-${appService}-1`
-    return `${host}:${ep.port}`
+    return `nanoku-${app.name}-${appService}:${ep.port}`
   }
-  // docker mode
-  if (!app.container) return ''
-  return `${app.container.name}:${app.port}`
+  // docker mode: the alias is the app name; the actual container
+  // doesn't appear in the upstream.
+  return `nanoku-${app.name}:${app.port}`
 }
 
 function SitesPageContent() {
