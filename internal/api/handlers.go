@@ -36,7 +36,7 @@ type Handlers struct {
 	SelfContainer   string
 	ComposeBaseDir  string
 	DeployLock      *DeployLock
-	DeployLogs      *deployLogHub
+	DeployLogs      *deployLogStore
 	Sessions        *SessionStore
 	Secret          *secret.Sealer
 	Version         string
@@ -169,4 +169,24 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func writeErr(w http.ResponseWriter, code int, err error) {
 	writeJSON(w, code, map[string]string{"error": err.Error()})
+}
+
+// IsDeployInFlight reports whether a deploy goroutine is currently
+// running for the given deployID. Used by the SSE handler to decide
+// whether to keep tailing the deploy log file: when the worker is
+// no longer in flight, one more read of the file is enough to
+// guarantee the stream is complete (the writer has closed its
+// file descriptor on exit, so no further lines will appear).
+//
+// Returns false when the inflight map hasn't been initialized
+// yet (defensive — should not happen in production but makes
+// unit tests easier to write).
+func (h *Handlers) IsDeployInFlight(deployID int) bool {
+	h.inflightMu.Lock()
+	defer h.inflightMu.Unlock()
+	if h.inflight == nil {
+		return false
+	}
+	_, ok := h.inflight[deployID]
+	return ok
 }

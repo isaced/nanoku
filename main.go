@@ -122,6 +122,12 @@ func main() {
 		}
 	}()
 
+	deployLogStore, err := api.NewDeployLogStore(cfg.DeployLogDir)
+	if err != nil {
+		log.Fatalf("deploy log store: %v", err)
+	}
+	log.Printf("deploy log dir: %s", cfg.DeployLogDir)
+
 	var deployWG sync.WaitGroup
 	handlers := &api.Handlers{
 		DB:              database,
@@ -132,7 +138,7 @@ func main() {
 		SelfContainer:   cfg.SelfContainer,
 		ComposeBaseDir:  cfg.ComposeBaseDir,
 		DeployLock:      api.NewDeployLock(),
-		DeployLogs:      api.NewDeployLogHub(),
+		DeployLogs:      deployLogStore,
 		Sessions:        sessions,
 		Secret:          sealer,
 		Version:         version,

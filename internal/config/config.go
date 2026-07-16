@@ -23,6 +23,7 @@ type Config struct {
 	SkipCaddyReload  bool
 	SelfContainer    string // nanoku's own container name (for log viewing); empty if not containerized
 	ComposeBaseDir   string // where nanoku stores generated docker-compose.yml files
+	DeployLogDir     string // where per-deploy log files live; defaults to ./data/deploy-logs
 	// TrustProxy makes clientIP honor X-Forwarded-For (leftmost hop).
 	// Only enable when nanoku sits behind a reverse proxy that sanitizes
 	// the header; otherwise an attacker can spoof IPs to bypass the
@@ -47,6 +48,7 @@ func Load() (*Config, error) {
 	SkipCaddyReload:  false,
 	SelfContainer:    os.Getenv("NANOKU_SELF_CONTAINER"),
 	ComposeBaseDir:   getEnv("NANOKU_COMPOSE_DIR", "./composes"),
+	DeployLogDir:     getEnv("NANOKU_DEPLOY_LOG_DIR", "./data/deploy-logs"),
 	TrustProxy:       parseBool("NANOKU_TRUST_PROXY"),
 }
 

@@ -25,11 +25,15 @@ import (
 // one where needed.
 func newLogsHandlers(t *testing.T) *Handlers {
 	t.Helper()
+	store, err := newDeployLogStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("deploy log store: %v", err)
+	}
 	return &Handlers{
 		DB:              newTestDB(t),
 		SkipCaddyReload: true,
 		DeployLock:      NewDeployLock(),
-		DeployLogs:      newDeployLogHub(),
+		DeployLogs:      store,
 		Secret:          newTestSealer(t),
 	}
 }
@@ -305,33 +309,48 @@ func TestDeployLogStream_AppMismatch_Returns404(t *testing.T) {
 }
 
 // TestDeployLogStream_ReplaysHistory_AfterTerminal covers the "user
-// opened the panel after the deploy finished" path: history is replayed
-// from the bounded buffer, then the stream exits.
+// opened the panel after the deploy finished" path: the log file
+// already has the full history, the worker is no longer in flight,
+// so the handler replays the file and emits the terminal `end`
+// event so the EventSource closes (rather than auto-reconnecting
+// into a replay loop).
 func TestDeployLogStream_ReplaysHistory_AfterTerminal(t *testing.T) {
 	h := newLogsHandlers(t)
 	appID := seedAppWithContainer(t, h, "blog", "nginx:1.27")
 	depID := seedDeploy(t, h, appID, deploy.StatusSuccess)
-	h.DeployLogs.publish(depID, "→ pull nginx:1.27")
-	h.DeployLogs.publish(depID, "→ pull nginx:1.27: ok")
-	h.DeployLogs.publish(depID, "→ deploy started (image=nginx:1.27)")
-	h.DeployLogs.markTerminal(depID)
+	w, err := h.DeployLogs.openWriter(depID)
+	if err != nil {
+		t.Fatalf("open writer: %v", err)
+	}
+	for _, line := range []string{
+		"→ pull nginx:1.27",
+		"→ pull nginx:1.27: ok",
+		"→ deploy started (image=nginx:1.27)",
+	} {
+		if err := w.appendLine(line); err != nil {
+			t.Fatalf("append %q: %v", line, err)
+		}
+	}
+	if err := w.close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet,
 		"/api/apps/"+strconv.Itoa(appID)+"/deployments/"+strconv.Itoa(depID)+"/logs/stream", nil)
 	req.SetPathValue("id", strconv.Itoa(appID))
 	req.SetPathValue("did", strconv.Itoa(depID))
-	w := httptest.NewRecorder()
-	h.DeployLogStream(w, req)
+	w2 := httptest.NewRecorder()
+	h.DeployLogStream(w2, req)
 
-	if got := w.Header().Get("Content-Type"); got != "text/event-stream" {
+	if got := w2.Header().Get("Content-Type"); got != "text/event-stream" {
 		t.Errorf("Content-Type = %q, want text/event-stream", got)
 	}
-	body := w.Body.String()
+	body := w2.Body.String()
 	for _, want := range []string{
 		"data: → pull nginx:1.27",
 		"data: → pull nginx:1.27: ok",
 		"data: → deploy started (image=nginx:1.27)",
-		": nanoku deploy log stream end",
+		"event: end",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q\nbody:\n%s", want, body)

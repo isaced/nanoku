@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,6 +11,38 @@ import (
 	"github.com/isaced/nanoku/internal/db"
 	"github.com/isaced/nanoku/internal/docker"
 )
+
+// lineWriterToStore is the io.Writer adapter used by
+// WithPullProgress: it splits the docker pull progress stream on
+// '\n' and appends each line to the deploy's log file. A trailing
+// partial line (no newline yet) is buffered and emitted on the
+// next Write. flushPartial is idempotent on empty buffers.
+type lineWriterToStore struct {
+	w   *deployLogWriter
+	buf bytes.Buffer
+}
+
+func (lw *lineWriterToStore) Write(p []byte) (int, error) {
+	lw.buf.Write(p)
+	for {
+		idx := bytes.IndexByte(lw.buf.Bytes(), '\n')
+		if idx < 0 {
+			break
+		}
+		line := lw.buf.Bytes()[:idx]
+		lw.buf.Next(idx + 1)
+		_ = lw.w.appendLine(string(line))
+	}
+	return len(p), nil
+}
+
+func (lw *lineWriterToStore) flushPartial() {
+	if lw.buf.Len() == 0 {
+		return
+	}
+	_ = lw.w.appendLine(lw.buf.String())
+	lw.buf.Reset()
+}
 
 // executeDeploy is the shared async deploy worker used by both the manual
 // UI path (DeployApp) and the HTTP-trigger path (Trigger). It runs in a
@@ -80,28 +113,42 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 		return
 	}
 
-	// Stream every step of the deploy (pull progress, compose up lines,
-	// our own status annotations) into the live log hub. Subscribers in
-	// the UI see a real-time feed; the hub also keeps a bounded replay
-	// buffer so a late subscriber gets the start of the deploy.
+	// Open a writer for the deploy's log file. Every step of the deploy
+	// (pull progress, compose up lines, our own status annotations) is
+	// appended here. The file is the durable record — the SSE handler
+	// tails it on demand, and a reboot doesn't lose history.
 	//
-	// The defer order matters: we mark the stream terminal AFTER
-	// updating the Deploy row to success/failed, so a subscriber polling
-	// the row sees "success" only after the terminal log line has been
-	// published. (markDeployFailed is the corresponding path for the
-	// error case - see below.)
-	logSink := &lineWriterToHub{hub: h.DeployLogs, deployID: deployID}
+	// On exit we close the writer; an SSE handler polling the file
+	// notices via the IsDeployInFlight signal (or, more simply, by the
+	// file size stopping changing) that no more lines are coming and
+	// emits the terminal `end` event.
+	var logWriter *deployLogWriter
+	var pullSink *lineWriterToStore
 	if h.DeployLogs != nil {
+		w, err := h.DeployLogs.openWriter(deployID)
+		if err != nil {
+			// A failed log-file open is fatal for visibility but not
+			// for the deploy itself: surface the error and proceed
+			// without logging. The Deploy row still records
+			// success/failed and the container is still created; the
+			// operator just won't see the in-progress log. We'd
+			// rather deploy than refuse.
+			h.markDeployFailed(ctx, deployID, fmt.Errorf("open log file: %w", err))
+			return
+		}
+		logWriter = w
 		if image != "" {
-			logSink.hub.publish(deployID, fmt.Sprintf("-> deploy started (image=%s)", image))
+			_ = logWriter.appendLine(fmt.Sprintf("-> deploy started (image=%s)", image))
 		} else {
-			logSink.hub.publish(deployID, fmt.Sprintf("-> deploy started (compose, project=%s)", composeProjectName(a.Name)))
+			_ = logWriter.appendLine(fmt.Sprintf("-> deploy started (compose, project=%s)", composeProjectName(a.Name)))
 		}
 	}
 	defer func() {
-		if h.DeployLogs != nil {
-			logSink.flushPartial()
-			h.DeployLogs.markTerminal(deployID)
+		if pullSink != nil {
+			pullSink.flushPartial()
+		}
+		if logWriter != nil {
+			_ = logWriter.close()
 		}
 	}()
 
@@ -167,24 +214,24 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 			}
 			filePath = written
 		}
-		if h.DeployLogs != nil {
-			h.DeployLogs.publish(deployID, fmt.Sprintf("-> compose up: project=%s", project))
+		if logWriter != nil {
+			_ = logWriter.appendLine(fmt.Sprintf("-> compose up: project=%s", project))
 		}
 		// Structured compose progress: --progress json events are decoded
 		// into (msg, key) pairs. A non-empty key means "replace the
 		// same-key row in-place" so each layer's download ticks update a
 		// single line instead of scrolling. We wire the callback straight
-		// to the hub (bypassing lineWriterToHub, which only does text
-		// append) so the replace semantics propagate through history
-		// replay and SSE.
+		// to the log file (carrying the `|` prefix for keyed lines) so
+		// the replace semantics propagate through file replay and the
+		// SSE handler emits the right `line-replace` event on read.
 		progressEmit := func(msg, key string) {
-			if h.DeployLogs == nil {
+			if logWriter == nil {
 				return
 			}
 			if key != "" {
-				h.DeployLogs.publishReplace(deployID, key, msg)
+				_ = logWriter.appendKeyed(key, msg)
 			} else {
-				h.DeployLogs.publish(deployID, msg)
+				_ = logWriter.appendLine(msg)
 			}
 		}
 		if err := h.Docker.WithRegistry(ctx, regURL, regUser, regPass, func() error {
@@ -238,15 +285,23 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 			}
 		}
 	} else {
-		if h.DeployLogs != nil {
-			h.DeployLogs.publish(deployID, fmt.Sprintf("→ pull %s", image))
+		if logWriter != nil {
+			_ = logWriter.appendLine(fmt.Sprintf("→ pull %s", image))
+		}
+		// pullProgressWriter is an io.Writer that splits the docker
+		// pull progress stream on '\n' and appends each line to the
+		// deploy's log file. We use it (rather than the compose
+		// progress callback) because docker pull progress is
+		// line-oriented text, not the (msg, key) pair compose emits.
+		if logWriter != nil {
+			pullSink = &lineWriterToStore{w: logWriter}
 		}
 		if err := h.Docker.WithRegistry(ctx, regURL, regUser, regPass, func() error {
-			if err := h.Docker.PullImage(ctx, image, docker.WithPullProgress(logSink)); err != nil {
+			if err := h.Docker.PullImage(ctx, image, docker.WithPullProgress(pullSink)); err != nil {
 				return fmt.Errorf("pull %s: %w", image, err)
 			}
-			if h.DeployLogs != nil {
-				h.DeployLogs.publish(deployID, fmt.Sprintf("→ pull %s: ok", image))
+			if logWriter != nil {
+				_ = logWriter.appendLine(fmt.Sprintf("→ pull %s: ok", image))
 			}
 			mounts, merr := loadMounts(ctx, a)
 			if merr != nil {

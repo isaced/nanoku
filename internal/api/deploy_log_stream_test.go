@@ -4,53 +4,45 @@ import (
 	"context"
 	"net/http/httptest"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
 
-// TestStreamDeployLog_ReplaysHistoryThenLivePublishesLines is the
-// happy path: history lines come out first, then a live line published
-// after subscribe is forwarded before the deploy is marked terminal.
-func TestStreamDeployLog_ReplaysHistoryThenLivePublishesLines(t *testing.T) {
-	hub := newDeployLogHub()
-	hub.publish(1, "first-history")
-	hub.publish(1, "second-history")
-
-	hist, live, done, unsub, _ := hub.subscribe(context.Background(), 1)
-	defer unsub()
-
-	// Allow the 5ms pre-drain window to elapse without publishing
-	// anything — we want to test the history path alone first.
-	time.Sleep(20 * time.Millisecond)
-
-	w := httptest.NewRecorder()
-	streamDone := make(chan struct{})
-	go func() {
-		streamDeployLog(context.Background(), w, hist, live, done, "running")
-		close(streamDone)
-	}()
-
-	// While the stream is in its select loop, publish a live line.
-	time.Sleep(5 * time.Millisecond)
-	hub.publish(1, "live-line")
-
-	// Now mark the deploy terminal so streamDeployLog exits.
-	hub.markTerminal(1)
-
-	select {
-	case <-streamDone:
-	case <-time.After(2 * time.Second):
-		t.Fatal("streamDeployLog did not return after markTerminal")
+// TestStreamDeployLog_TerminalReplayAndEnd covers the "user
+// opened the panel after the deploy finished" path: the file
+// already has the full log, the worker is no longer in flight,
+// so the stream replays the file and exits. The end event
+// prevents the EventSource auto-reconnect loop.
+func TestStreamDeployLog_TerminalReplayAndEnd(t *testing.T) {
+	h := &Handlers{
+		DB:         newTestDB(t),
+		DeployLogs: mustStore(t),
 	}
+	depID := seedDeployForLog(t, h, 1, "nginx:1.27")
+	w := mustWriteLog(t, h, depID, []string{
+		"-> deploy started (image=nginx:1.27)",
+		"→ pull nginx:1.27",
+		"→ pull nginx:1.27: ok",
+	})
+	_ = w
 
-	body := w.Body.String()
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		streamDeployLog(context.Background(), rec, h, depID)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("streamDeployLog did not return for terminal deploy")
+	}
+	body := rec.Body.String()
 	for _, want := range []string{
-		"data: first-history",
-		"data: second-history",
-		"data: live-line",
-		": nanoku deploy log stream end",
+		"data: -> deploy started (image=nginx:1.27)",
+		"data: → pull nginx:1.27",
+		"data: → pull nginx:1.27: ok",
+		"event: end",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q\nbody:\n%s", want, body)
@@ -58,142 +50,176 @@ func TestStreamDeployLog_ReplaysHistoryThenLivePublishesLines(t *testing.T) {
 	}
 }
 
-// TestStreamDeployLog_TerminalAtSubscribeExitsImmediately documents the
-// "user opened the panel after the deploy finished" path: we replay
-// history and emit the `end` event so the browser's EventSource
-// closes itself rather than auto-reconnecting into a replay loop.
-//
-// The end marker MUST be a real `event: end` (not a `: comment`) —
-// a comment is ignored by EventSource, the connection closes, the
-// browser reconnects per the server's `retry: 2000` directive, and
-// the operator sees the same history repeating every 2s forever.
-// The matching frontend handler is in useLogStream.ts; this test
-// guards the wire contract.
-func TestStreamDeployLog_TerminalAtSubscribeExitsImmediately(t *testing.T) {
-	hub := newDeployLogHub()
-	hub.publish(1, "history-1")
-	hub.markTerminal(1)
-
-	// Important: subscribe *after* markTerminal so the stream is
-	// already terminal. The hist snapshot still has the line because
-	// publish was called before markTerminal.
-	hist, live, _, unsub, _ := hub.subscribe(context.Background(), 1)
-	defer unsub()
-	time.Sleep(10 * time.Millisecond) // allow drainPre
-
-	w := httptest.NewRecorder()
-	streamDone := make(chan struct{})
-	go func() {
-		streamDeployLog(context.Background(), w, hist, live, make(chan struct{}), "success")
-		close(streamDone)
+// TestStreamDeployLog_LiveTailSeesNewLines covers the "user
+// opened the panel while the deploy is still running" path:
+// the file is seeded with a few lines, the worker is marked
+// in-flight, the stream dumps the seed then tails for new
+// lines until the worker exits. We simulate "still writing"
+// by adding the deployID to the inflight map and "done" by
+// removing it after writing more lines.
+func TestStreamDeployLog_LiveTailSeesNewLines(t *testing.T) {
+	h := &Handlers{
+		DB:         newTestDB(t),
+		DeployLogs: mustStore(t),
+	}
+	depID := seedDeployForLog(t, h, 1, "nginx:1.27")
+	mustWriteLog(t, h, depID, []string{
+		"-> deploy started (image=nginx:1.27)",
+		"→ pull nginx:1.27",
+	})
+	// Mark this deploy in-flight so the stream enters the live
+	// tail loop instead of exiting immediately.
+	h.inflightMu.Lock()
+	if h.inflight == nil {
+		h.inflight = make(map[int]int)
+	}
+	h.inflight[depID] = 1
+	h.inflightMu.Unlock()
+	defer func() {
+		h.inflightMu.Lock()
+		delete(h.inflight, depID)
+		h.inflightMu.Unlock()
 	}()
-	select {
-	case <-streamDone:
-	case <-time.After(2 * time.Second):
-		t.Fatal("streamDeployLog did not return for terminal-at-subscribe")
-	}
-	body := w.Body.String()
-	if !strings.Contains(body, "data: history-1") {
-		t.Errorf("body missing history-1: %q", body)
-	}
-	// The `end` event — the whole point of the fix. An older comment
-	// form (`: nanoku deploy log stream end`) was indistinguishable
-	// from a keepalive and caused infinite replay loops.
-	if !strings.Contains(body, "event: end") {
-		t.Errorf("body missing `event: end` marker (would cause replay loop): %q", body)
-	}
-}
 
-// TestStreamDeployLog_TerminalAfterSubscribeEmitsEnd covers the live
-// path: the deploy was running when the user opened the panel, the
-// subscriber is hooked up to the done channel, and we expect the
-// end-event after markTerminal fires.
-func TestStreamDeployLog_TerminalAfterSubscribeEmitsEnd(t *testing.T) {
-	hub := newDeployLogHub()
-	hist, live, done, unsub, _ := hub.subscribe(context.Background(), 1)
-	defer unsub()
-
-	// Simulate a still-running deploy that publishes lines, then
-	// reaches a terminal state.
-	hub.publish(1, "live-1")
-	hub.publish(1, "live-2")
-	hub.markTerminal(1)
-
-	w := httptest.NewRecorder()
-	streamDone := make(chan struct{})
+	rec := httptest.NewRecorder()
+	streamCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
 	go func() {
-		streamDeployLog(context.Background(), w, hist, live, done, "running")
-		close(streamDone)
+		streamDeployLog(streamCtx, rec, h, depID)
+		close(done)
 	}()
+
+	// Write a few more lines after a short delay so the live
+	// tail picks them up. We bypass the SSE writer and write
+	// directly to the log file via the store.
+	go func() {
+		// Give the stream a moment to consume the seed and
+		// enter the tail loop.
+		time.Sleep(150 * time.Millisecond)
+		w, err := h.DeployLogs.openWriter(depID)
+		if err != nil {
+			return
+		}
+		_ = w.appendLine("→ pull nginx:1.27: ok")
+		_ = w.close()
+		// Worker "finishes" — remove from inflight. The next
+		// 1s tick will see this, do one more read, and exit.
+		time.Sleep(100 * time.Millisecond)
+		h.inflightMu.Lock()
+		delete(h.inflight, depID)
+		h.inflightMu.Unlock()
+	}()
+
 	select {
-	case <-streamDone:
-	case <-time.After(2 * time.Second):
-		t.Fatal("streamDeployLog did not return after markTerminal")
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("streamDeployLog did not return after worker exit")
 	}
-	body := w.Body.String()
-	for _, want := range []string{"data: live-1", "data: live-2", "event: end"} {
+	body := rec.Body.String()
+	for _, want := range []string{
+		"data: -> deploy started (image=nginx:1.27)",
+		"data: → pull nginx:1.27",
+		"data: → pull nginx:1.27: ok",
+		"event: end",
+	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("body missing %q: %q", want, body)
+			t.Errorf("body missing %q\nbody:\n%s", want, body)
 		}
 	}
 }
 
-// TestStreamDeployLog_ClientDisconnectTriggersUnsub ensures that when
-// the request context is canceled, streamDeployLog returns and the
-// hub no longer pushes new lines to the disconnected subscriber
-// (the bridge goroutine in subscribe() fires unsub). We don't read
-// s.subs directly (that would race with the bridge goroutine);
-// instead we publish a line post-disconnect and observe whether the
-// original subscriber's \ channel still receives it.
-func TestStreamDeployLog_ClientDisconnectTriggersUnsub(t *testing.T) {
-	hub := newDeployLogHub()
-	ctx, cancelCtx := context.WithCancel(context.Background())
-	_, live, done, unsub, _ := hub.subscribe(ctx, 1)
-	defer unsub()
+// TestStreamDeployLog_KeyedLineEmitsLineReplaceEvent pins the
+// wire shape: a keyed line (| prefix in the file) is emitted as
+// `event: line-replace` with data = "key\tmsg"; a plain line is
+// emitted as `event: line`. The frontend dedupes by key.
+func TestStreamDeployLog_KeyedLineEmitsLineReplaceEvent(t *testing.T) {
+	h := &Handlers{
+		DB:         newTestDB(t),
+		DeployLogs: mustStore(t),
+	}
+	depID := seedDeployForLog(t, h, 1, "nginx:1.27")
+	// Write one plain line and one keyed line.
+	w, err := h.DeployLogs.openWriter(depID)
+	if err != nil {
+		t.Fatalf("open writer: %v", err)
+	}
+	if err := w.appendLine("compose up started"); err != nil {
+		t.Fatalf("append plain: %v", err)
+	}
+	if err := w.appendKeyed("layer-abc", "abc Pull complete"); err != nil {
+		t.Fatalf("append keyed: %v", err)
+	}
+	if err := w.close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
 
-	w := httptest.NewRecorder()
-	streamDone := make(chan struct{})
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
 	go func() {
-		streamDeployLog(ctx, w, []deployLogLine{}, live, done, "running")
-		close(streamDone)
+		streamDeployLog(context.Background(), rec, h, depID)
+		close(done)
 	}()
-	time.Sleep(20 * time.Millisecond)
-	cancelCtx()
 	select {
-	case <-streamDone:
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("streamDeployLog did not return")
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: line\ndata: compose up started") {
+		t.Errorf("body missing plain `line` event:\n%s", body)
+	}
+	if !strings.Contains(body, "event: line-replace\ndata: layer-abc\tabc Pull complete") {
+		t.Errorf("body missing keyed `line-replace` event:\n%s", body)
+	}
+	if !strings.Contains(body, "event: end") {
+		t.Errorf("body missing terminal `end` event:\n%s", body)
+	}
+}
+
+// TestStreamDeployLog_ContextCancelStopsTail ensures the live
+// tail loop respects the request context: if the client
+// disconnects, the stream returns and the deploy worker can
+// proceed unblocked.
+func TestStreamDeployLog_ContextCancelStopsTail(t *testing.T) {
+	h := &Handlers{
+		DB:         newTestDB(t),
+		DeployLogs: mustStore(t),
+	}
+	depID := seedDeployForLog(t, h, 1, "nginx:1.27")
+	if err := mustOpenWriter(t, h, depID).appendLine("seed"); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	h.inflightMu.Lock()
+	if h.inflight == nil {
+		h.inflight = make(map[int]int)
+	}
+	h.inflight[depID] = 1
+	h.inflightMu.Unlock()
+	defer func() {
+		h.inflightMu.Lock()
+		delete(h.inflight, depID)
+		h.inflightMu.Unlock()
+	}()
+
+	rec := httptest.NewRecorder()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		streamDeployLog(ctx, rec, h, depID)
+		close(done)
+	}()
+	time.Sleep(100 * time.Millisecond) // let it enter the tail loop
+	cancel()
+	select {
+	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("streamDeployLog did not return on ctx cancel")
 	}
-	// Give the bridge goroutine time to react to cancelCtx.
-	time.Sleep(100 * time.Millisecond)
-
-	// Publish a line; the original subscriber's \ should
-	// NOT receive it. A fresh probe subscriber should.
-	probeCtx, probeCancel := context.WithCancel(context.Background())
-	defer probeCancel()
-	_, probeLive, _, _, _ := hub.subscribe(probeCtx, 1)
-	hub.publish(1, "post-disconnect")
-
-	select {
-	case <-probeLive:
-	case <-time.After(time.Second):
-		t.Fatal("probe subscriber never received the test line")
-	}
-	select {
-	case _, ok := <-live:
-		if ok {
-			t.Error("original subscriber received a line after disconnect - bridge did not run")
-		}
-	case <-time.After(50 * time.Millisecond):
-		// The "did not receive" case is what we want.
-	}
-	_ = atomic.LoadInt32
 }
 
-
-// TestIsTerminalStatus pins the terminal set so a future status rename
-// doesn't silently change the SSE behavior (e.g. starting to wait on
-// `done` for an "indeterminate" status).
+// TestIsTerminalStatus pins the terminal set so a future status
+// rename doesn't silently change stream behavior.
 func TestIsTerminalStatus(t *testing.T) {
 	cases := []struct {
 		in   string
@@ -214,146 +240,72 @@ func TestIsTerminalStatus(t *testing.T) {
 	}
 }
 
-// TestStreamDeployLog_LineWriterToHub exercises the io.Writer adapter
-// that executeDeploy uses to tee docker pull / compose up output into
-// the hub. It must split on '\n' and emit each line verbatim.
-func TestStreamDeployLog_LineWriterToHub(t *testing.T) {
-	hub := newDeployLogHub()
-	w := &lineWriterToHub{hub: hub, deployID: 1}
-	// Three lines in one Write, one trailing partial without newline.
-	_, _ = w.Write([]byte("alpha\nbeta\ngamma\ndelt"))
-	_, _ = w.Write([]byte("a\n"))
-	// Flush the trailing partial.
-	w.flushPartial()
-	// The partial "delta" is only published on flushPartial.
-	w.flushPartial() // idempotent: nothing buffered
-
-	// Subscribe and drain the history.
-	hist, _, _, unsub, _ := hub.subscribe(context.Background(), 1)
-	defer unsub()
-	got := historyMessages(hist)
-	want := []string{"alpha", "beta", "gamma", "delta"}
-	if len(got) != len(want) {
-		t.Fatalf("history = %v, want %v", got, want)
+// mustStore returns a deployLogStore rooted at t.TempDir().
+func mustStore(t *testing.T) *deployLogStore {
+	t.Helper()
+	s, err := newDeployLogStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
 	}
-	for i, w := range want {
-		if got[i] != w {
-			t.Errorf("history[%d] = %q, want %q", i, got[i], w)
-		}
-	}
+	return s
 }
 
-// TestStreamDeployLog_PublishIsConcurrencySafe runs the lineWriter
-// and the hub subscribe/publish against each other in parallel, with
-// the race detector enabled, to catch any lock-free mutation.
-func TestStreamDeployLog_PublishIsConcurrencySafe(t *testing.T) {
-	hub := newDeployLogHub()
-	var wg sync.WaitGroup
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			lw := &lineWriterToHub{hub: hub, deployID: 1}
-			for j := 0; j < 50; j++ {
-				_, _ = lw.Write([]byte("tick\n"))
-			}
-		}()
+// seedDeployForLog creates an App + Deploy row and returns the
+// deployID. The app is created from scratch (we don't share
+// across tests because each test has its own DB), so callers
+// don't need to seed an app first.
+func seedDeployForLog(t *testing.T, h *Handlers, appID int, image string) int {
+	t.Helper()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	a, err := h.DB.App.Create().
+		SetName("log-test-app").
+		SetImage(image).
+		SetPort(80).
+		SetDeployMethod("docker").
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("seed app: %v", err)
 	}
-	wg.Wait()
-	hub.markTerminal(1)
-	hist, _, _, unsub, _ := hub.subscribe(context.Background(), 1)
-	defer unsub()
-	if len(hist) == 0 {
-		t.Error("history empty after concurrent publishes")
+	d, err := h.DB.Deploy.Create().
+		SetAppID(a.ID).
+		SetTrigger("manual").
+		SetStatus("success").
+		SetStartedAt(now).
+		SetFinishedAt(now).
+		SetImage(image).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("seed deploy: %v", err)
 	}
+	return d.ID
 }
 
-// TestStreamDeployLog_LineWriterToHubFlushPartial asserts that
-// flushPartial pushes a trailing partial line (no newline). The
-// deploy worker calls this in defer, so a partial line emitted by
-// the docker CLI but not yet terminated by '\n' still reaches the
-// hub. We assert the call is idempotent: a second flushPartial with
-// nothing buffered is a no-op, not a duplicate publish.
-func TestStreamDeployLog_LineWriterToHubFlushPartial(t *testing.T) {
-	hub := newDeployLogHub()
-	w := &lineWriterToHub{hub: hub, deployID: 1}
-	// No newline at the end of this write — buffered, not yet
-	// published.
-	_, _ = w.Write([]byte("trailing partial"))
-	// Pre-flush: the partial is in the writer's buffer (not in the
-	// hub's history yet). We use the writer's own state to assert
-	// this, since the hub entry is lazily created on first publish.
-	if w.buf.Len() == 0 {
-		t.Fatal("pre-flush: writer buffer is empty, expected the partial line")
+// mustOpenWriter opens a writer for a deploy's log file. Used
+// by tests that need to seed lines without going through a
+// real deploy worker.
+func mustOpenWriter(t *testing.T, h *Handlers, deployID int) *deployLogWriter {
+	t.Helper()
+	w, err := h.DeployLogs.openWriter(deployID)
+	if err != nil {
+		t.Fatalf("open writer: %v", err)
 	}
-	// Subscribe BEFORE flushing so the partial line reaches us
-	// (we want the published version, not the un-published buffer).
-	_, live, _, unsub, _ := hub.subscribe(context.Background(), 1)
-	defer unsub()
-	w.flushPartial()
-	select {
-	case l := <-live:
-		if l.msg != "trailing partial" {
-			t.Errorf("got %q, want trailing partial", l.msg)
-		}
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("subscriber did not receive the partial line")
-	}
-	// Second flush: nothing buffered, no duplicate. The live channel
-	// would receive a second copy if flushPartial weren't
-	// idempotent on empty buffers.
-	w.flushPartial()
-	select {
-	case l, ok := <-live:
-		if ok {
-			t.Errorf("idempotent flush produced duplicate: got %q", l.msg)
-		}
-	case <-time.After(50 * time.Millisecond):
-		// Expected: no second copy.
-	}
+	return w
 }
 
-// TestStreamDeployLog_KeyedLineEmitsLineReplaceEvent verifies the SSE
-// protocol extension: a history line carrying a replacement key is
-// emitted as `event: line-replace` with data "key\tmsg", while a
-// keyless line is still emitted as `event: line`. This is what lets the
-// frontend update a compose download row in place.
-func TestStreamDeployLog_KeyedLineEmitsLineReplaceEvent(t *testing.T) {
-	hub := newDeployLogHub()
-	// One keyless line, one keyed line (e.g. a compose pull milestone).
-	hub.publish(1, "compose up started")
-	hub.publishReplace(1, "layer-abc", "abc Pull complete")
-
-	hist, live, done, unsub, _ := hub.subscribe(context.Background(), 1)
-	defer unsub()
-
-	// Elapse the pre-drain window.
-	time.Sleep(20 * time.Millisecond)
-
-	w := httptest.NewRecorder()
-	streamDone := make(chan struct{})
-	go func() {
-		streamDeployLog(context.Background(), w, hist, live, done, "success")
-		close(streamDone)
-	}()
-
-	select {
-	case <-streamDone:
-	case <-time.After(2 * time.Second):
-		t.Fatal("streamDeployLog did not return")
+// mustWriteLog seeds a deploy's log file with the given lines
+// (one appendLine per entry, in order) and returns the writer
+// (caller is responsible for closing it).
+func mustWriteLog(t *testing.T, h *Handlers, deployID int, lines []string) *deployLogWriter {
+	t.Helper()
+	w := mustOpenWriter(t, h, deployID)
+	for _, l := range lines {
+		if err := w.appendLine(l); err != nil {
+			t.Fatalf("append %q: %v", l, err)
+		}
 	}
-
-	body := w.Body.String()
-	// Keyless line: ordinary `line` event.
-	if !strings.Contains(body, "event: line\ndata: compose up started") {
-		t.Errorf("body missing keyless `line` event:\n%s", body)
+	if err := w.close(); err != nil {
+		t.Fatalf("close: %v", err)
 	}
-	// Keyed line: `line-replace` event with "key\tmsg" data.
-	if !strings.Contains(body, "event: line-replace\ndata: layer-abc\tabc Pull complete") {
-		t.Errorf("body missing keyed `line-replace` event:\n%s", body)
-	}
-	// The terminal `end` event must still fire.
-	if !strings.Contains(body, "event: end") {
-		t.Errorf("body missing `end` event:\n%s", body)
-	}
+	return w
 }
