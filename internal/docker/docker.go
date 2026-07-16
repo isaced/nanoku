@@ -98,63 +98,141 @@ func (m *Manager) Ping(ctx context.Context) error {
 func (m *Manager) CaddyContainerName() string { return m.containerName }
 func (m *Manager) NetworkName() string         { return m.networkName }
 
-// AttachComposeProjectToNetwork walks every container that belongs to
-// the given compose project and connects it to nanoku's managed
-// network. Compose creates a per-project default network (named
-// `<project>_default`) and stops there — without this hook, the
-// Caddy container (which only lives on `nanoku-net`) cannot resolve
-// the stack's containers by name, so every `reverse_proxy
-// <container>:port` block in the Caddyfile returns 502 even though
-// the compose stack itself is healthy.
+// ApplyAppAliases is the post-`docker compose up` hook that gives
+// every service a stable network alias on nanoku-net, so Caddy
+// can reverse-proxy via Docker DNS without ever needing to know
+// the actual container name.
 //
-// We list the project's containers via the
-// `com.docker.compose.project=<project>` label that compose sets
-// automatically, then NetworkConnect each one. The check against
-// `c.NetworkSettings.Networks[m.networkName]` makes the call
-// idempotent — a stack that already has the wiring is a no-op, so
-// repeated deploys don't error out. Connect failures are returned
-// to the caller as a hard error: a partial attach (some containers
-// on the network, others not) is preferable to silently dropping
-// the affected services, since the next deploy's idempotency pass
-// picks up the survivors and re-tries the stragglers.
+// Two aliases are attached to every container in the project:
 //
-// Called from the deploy executor right after `docker compose up`
-// returns success, before the Caddyfile is regenerated. At that
-// point the containers exist and have settled their names, so a
-// single label-based list is enough — no need to parse the
-// compose YAML again.
-func (m *Manager) AttachComposeProjectToNetwork(ctx context.Context, project string) error {
+//   - the project-level alias (e.g. `nanoku-myapp`) — the
+//     docker-mode app's stable identity
+//   - the per-service alias (e.g. `nanoku-myapp-web`) — the
+//     compose-mode service identity Caddy actually points at
+//
+// Containers already on the network with the right alias set
+// are skipped (idempotent on re-deploy). Connect failures are
+// returned as a hard error: a partial attachment produces
+// intermittent 502s that are much harder to debug than a clean
+// failed deploy.
+func (m *Manager) ApplyAppAliases(ctx context.Context, project string) error {
 	if project == "" {
 		return errors.New("compose project name is required")
 	}
+	services, err := m.composeServiceNames(ctx, project)
+	if err != nil {
+		return err
+	}
+	want := map[string]struct{}{project: {}}
+	for svc := range services {
+		want[project+"-"+svc] = struct{}{}
+	}
 	args := filters.NewArgs()
 	args.Add("label", fmt.Sprintf("com.docker.compose.project=%s", project))
-	containers, err := m.cli.ContainerList(ctx, container.ListOptions{
+	list, err := m.cli.ContainerList(ctx, container.ListOptions{
 		All:     true,
 		Filters: args,
 	})
 	if err != nil {
 		return fmt.Errorf("list compose project %q containers: %w", project, err)
 	}
-	for _, c := range containers {
-		// c.NetworkSettings is nil for a freshly-created container
-		// whose inspect response hasn't been read; the map dereference
-		// would panic. Default to "not yet attached" in that case.
-		if c.NetworkSettings != nil {
-			if _, ok := c.NetworkSettings.Networks[m.networkName]; ok {
-				continue
-			}
-		}
-		if err := m.cli.NetworkConnect(ctx, m.networkName, c.ID, nil); err != nil {
+	for _, c := range list {
+		if err := m.attachAliasesForContainer(ctx, c, want); err != nil {
 			name := strings.TrimPrefix(strings.Join(c.Names, ","), "/")
 			id := c.ID
 			if len(id) > 12 {
 				id = id[:12]
 			}
-			return fmt.Errorf("connect container %s (id=%s) to %s: %w", name, id, m.networkName, err)
+			return fmt.Errorf("attach aliases for container %s (id=%s): %w", name, id, err)
 		}
 	}
 	return nil
+}
+
+// composeServiceNames returns the set of service names that
+// `docker compose ps` reports for the project. The service name
+// comes from the `com.docker.compose.service` label compose sets
+// on every container it creates — much more reliable than parsing
+// the container name.
+func (m *Manager) composeServiceNames(ctx context.Context, project string) (map[string]struct{}, error) {
+	out := map[string]struct{}{}
+	args := filters.NewArgs()
+	args.Add("label", fmt.Sprintf("com.docker.compose.project=%s", project))
+	list, err := m.cli.ContainerList(ctx, container.ListOptions{
+		All:     true,
+		Filters: args,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list compose project %q: %w", project, err)
+	}
+	for _, c := range list {
+		svc := c.Labels["com.docker.compose.service"]
+		if svc == "" {
+			continue
+		}
+		out[svc] = struct{}{}
+	}
+	return out, nil
+}
+
+// attachAliasesForContainer connects c to nanoku-net (idempotent)
+// and applies every alias in want that isn't already attached.
+func (m *Manager) attachAliasesForContainer(ctx context.Context, c container.Summary, want map[string]struct{}) error {
+	insp, err := m.cli.ContainerInspect(ctx, c.ID)
+	if err != nil {
+		return fmt.Errorf("inspect %s: %w", c.ID, err)
+	}
+	endpoint, attached := insp.NetworkSettings.Networks[m.networkName]
+	var existingAliases map[string]struct{}
+	if attached {
+		existingAliases = make(map[string]struct{}, len(endpoint.Aliases))
+		for _, a := range endpoint.Aliases {
+			existingAliases[a] = struct{}{}
+		}
+	}
+	var missing []string
+	for a := range want {
+		if _, ok := existingAliases[a]; !ok {
+			missing = append(missing, a)
+		}
+	}
+	if attached && len(missing) == 0 {
+		return nil
+	}
+	if !attached {
+		if err := m.cli.NetworkConnect(ctx, m.networkName, c.ID, &network.EndpointSettings{
+			Aliases: aliasSlice(want),
+		}); err != nil {
+			return fmt.Errorf("network connect: %w", err)
+		}
+		return nil
+	}
+	merged := mergeAliases(existingAliases, want)
+	if err := m.cli.NetworkConnect(ctx, m.networkName, c.ID, &network.EndpointSettings{
+		Aliases: aliasSlice(merged),
+	}); err != nil {
+		return fmt.Errorf("network connect (merge aliases): %w", err)
+	}
+	return nil
+}
+
+func aliasSlice(m map[string]struct{}) []string {
+	out := make([]string, 0, len(m))
+	for a := range m {
+		out = append(out, a)
+	}
+	return out
+}
+
+func mergeAliases(existing, want map[string]struct{}) map[string]struct{} {
+	out := make(map[string]struct{}, len(existing)+len(want))
+	for a := range existing {
+		out[a] = struct{}{}
+	}
+	for a := range want {
+		out[a] = struct{}{}
+	}
+	return out
 }
 
 func (m *Manager) EnsureNetwork(ctx context.Context) error {
@@ -685,7 +763,15 @@ func (m *Manager) CreateAppContainer(ctx context.Context, namePrefix, imageRef s
 	}
 	networking := &network.NetworkingConfig{
 		EndpointsConfig: map[string]*network.EndpointSettings{
-			m.networkName: {},
+			// Stable network alias: the Caddyfile reverse_proxy
+			// entry points at `nanoku-<app>:<port>` and Docker
+			// DNS resolves it to whichever container is
+			// currently up. The literal container name (set
+			// above) is purely informational; it can change on
+			// every deploy without breaking routing.
+			m.networkName: {
+				Aliases: []string{"nanoku-" + namePrefix},
+			},
 		},
 	}
 

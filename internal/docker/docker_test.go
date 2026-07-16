@@ -1765,19 +1765,17 @@ func TestStatsResponseToStats_OpVariants(t *testing.T) {
 	}
 }
 
-// AttachComposeProjectToNetwork — covers the deploy-time hook that
-// connects a freshly-`compose up`'d stack to nanoku-net so Caddy
-// can resolve the project containers by name. The pattern is:
-// the manager calls ContainerList filtered by the
-// `com.docker.compose.project=<project>` label, then NetworkConnect
-// each container that isn't already on the target network.
+// ApplyAppAliases — covers the post-`compose up` hook that attaches
+// a stable network alias (project + per-service) to every container
+// in the project, so Caddy can resolve `nanoku-<app>-<service>` via
+// Docker DNS without knowing the actual container name.
 
 // Empty project name: the manager rejects the call before talking
 // to Docker. A missing-name call would otherwise fall through to
 // the ContainerList filter and either match everything in the
 // daemon (catastrophic) or nothing (silently broken); the explicit
 // error is the safer failure mode.
-func TestAttachComposeProjectToNetwork_RejectsEmptyProject(t *testing.T) {
+func TestApplyAppAliases_RejectsEmptyProject(t *testing.T) {
 	fd := newFakeDaemon()
 	defer fd.Close()
 	fd.dispatch = func(w http.ResponseWriter, r *http.Request, _ string) {
@@ -1787,17 +1785,16 @@ func TestAttachComposeProjectToNetwork_RejectsEmptyProject(t *testing.T) {
 		http.Error(w, "should not be called", http.StatusInternalServerError)
 	}
 	m := newTestManager(t, fd, Config{NetworkName: "nanoku-net"})
-	if err := m.AttachComposeProjectToNetwork(context.Background(), ""); err == nil {
+	if err := m.ApplyAppAliases(context.Background(), ""); err == nil {
 		t.Fatal("expected error for empty project name, got nil")
 	}
 }
 
-// No containers in the project: ComposeList returns an empty array,
-// the manager returns nil without calling NetworkConnect. This is
-// the no-op success path that protects the call from
-// `docker compose up` failures that leave a project label
-// dangling.
-func TestAttachComposeProjectToNetwork_NoContainers(t *testing.T) {
+// No containers in the project: the manager returns nil without
+// calling NetworkConnect. This is the no-op success path that
+// protects the call from `docker compose up` failures that leave
+// a project label dangling.
+func TestApplyAppAliases_NoContainers(t *testing.T) {
 	fd := newFakeDaemon()
 	defer fd.Close()
 	fd.dispatch = func(w http.ResponseWriter, r *http.Request, _ string) {
@@ -1809,8 +1806,8 @@ func TestAttachComposeProjectToNetwork_NoContainers(t *testing.T) {
 		http.Error(w, "should not be called", http.StatusInternalServerError)
 	}
 	m := newTestManager(t, fd, Config{NetworkName: "nanoku-net"})
-	if err := m.AttachComposeProjectToNetwork(context.Background(), "nanoku-ddd"); err != nil {
-		t.Fatalf("AttachComposeProjectToNetwork: %v", err)
+	if err := m.ApplyAppAliases(context.Background(), "nanoku-ddd"); err != nil {
+		t.Fatalf("ApplyAppAliases: %v", err)
 	}
 	if got := fd.callsOf("/networks/nanoku-net/connect"); len(got) != 0 {
 		t.Errorf("expected 0 network connect calls, got %d", len(got))
@@ -1818,29 +1815,39 @@ func TestAttachComposeProjectToNetwork_NoContainers(t *testing.T) {
 }
 
 // Two containers in the project, neither on nanoku-net: the manager
-// must call NetworkConnect for each. This is the production
-// "first deploy after a fresh stack" path — without these calls,
-// Caddy would 502 every request to the stack.
-func TestAttachComposeProjectToNetwork_ConnectsAllUnattached(t *testing.T) {
+// must call NetworkConnect for each, attaching the project alias
+// AND the per-service alias. The "first deploy" path — without
+// these calls, Caddy would 502 every request to the stack.
+func TestApplyAppAliases_ConnectsAllUnattached(t *testing.T) {
 	fd := newFakeDaemon()
 	defer fd.Close()
-	connected := map[string]bool{}
+	connected := map[string][]string{} // containerID -> aliases
 	fd.dispatch = func(w http.ResponseWriter, r *http.Request, _ string) {
 		switch {
 		case r.URL.Path == "/containers/json" && r.Method == http.MethodGet:
 			_ = json.NewEncoder(w).Encode([]container.Summary{
-				{ID: "id-web-1234567890ab", Names: []string{"/nanoku-ddd-web-1"}},
-				{ID: "id-worker-1234567890", Names: []string{"/nanoku-ddd-worker-1"}},
+				{ID: "id-web-1234567890ab", Names: []string{"/nanoku-ddd-web-1"}, Labels: map[string]string{"com.docker.compose.service": "web"}},
+				{ID: "id-worker-1234567890", Names: []string{"/nanoku-ddd-worker-1"}, Labels: map[string]string{"com.docker.compose.service": "worker"}},
 			})
+		case strings.HasPrefix(r.URL.Path, "/containers/") && strings.HasSuffix(r.URL.Path, "/json") && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(container.InspectResponse{
+				ContainerJSONBase: &container.ContainerJSONBase{},
+				NetworkSettings: &container.NetworkSettings{}},
+			)
 		case strings.HasPrefix(r.URL.Path, "/networks/") && strings.HasSuffix(r.URL.Path, "/connect") && r.Method == http.MethodPost:
 			var body struct {
-				Container string `json:"Container"`
+				Container      string `json:"Container"`
+				EndpointConfig *network.EndpointSettings
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				http.Error(w, "bad json", http.StatusBadRequest)
 				return
 			}
-			connected[body.Container] = true
+			var aliases []string
+			if body.EndpointConfig != nil {
+				aliases = body.EndpointConfig.Aliases
+			}
+			connected[body.Container] = aliases
 			w.WriteHeader(http.StatusOK)
 		default:
 			t.Errorf("unexpected Docker call: %s %s", r.Method, r.URL.Path)
@@ -1848,28 +1855,47 @@ func TestAttachComposeProjectToNetwork_ConnectsAllUnattached(t *testing.T) {
 		}
 	}
 	m := newTestManager(t, fd, Config{NetworkName: "nanoku-net"})
-	if err := m.AttachComposeProjectToNetwork(context.Background(), "nanoku-ddd"); err != nil {
-		t.Fatalf("AttachComposeProjectToNetwork: %v", err)
+	if err := m.ApplyAppAliases(context.Background(), "nanoku-ddd"); err != nil {
+		t.Fatalf("ApplyAppAliases: %v", err)
 	}
-	if !connected["id-web-1234567890ab"] {
-		t.Errorf("web container was not connected")
+	if len(connected) != 2 {
+		t.Fatalf("expected 2 connected containers, got %d (%v)", len(connected), connected)
 	}
-	if !connected["id-worker-1234567890"] {
-		t.Errorf("worker container was not connected")
+	for id, aliases := range connected {
+		// Both must include the project alias and the
+		// per-service alias matching this container.
+		wantSvc := ""
+		switch id {
+		case "id-web-1234567890ab":
+			wantSvc = "nanoku-ddd-web"
+		case "id-worker-1234567890":
+			wantSvc = "nanoku-ddd-worker"
+		}
+		foundProj, foundSvc := false, false
+		for _, a := range aliases {
+			if a == "nanoku-ddd" {
+				foundProj = true
+			}
+			if a == wantSvc {
+				foundSvc = true
+			}
+		}
+		if !foundProj {
+			t.Errorf("container %s missing project alias; got %v", id, aliases)
+		}
+		if !foundSvc {
+			t.Errorf("container %s missing %s alias; got %v", id, wantSvc, aliases)
+		}
 	}
 }
 
-// One container already on the network (returned by ContainerList
-// with the network in its NetworkSettings.Networks map): the
-// manager must skip it. A second container still needs the
-// connect. This is the "redeploy of a stack the previous run
-// already wired" case — idempotency is the whole point of the
-// pre-check, otherwise a re-deploy would 403 the
-// already-connected container and fail the deploy.
-func TestAttachComposeProjectToNetwork_SkipsAlreadyAttached(t *testing.T) {
+// One container already on the network with all wanted aliases:
+// the manager must skip the NetworkConnect call. This is the
+// "redeploy of a stack the previous run already wired" case —
+// idempotency is the whole point of the pre-check.
+func TestApplyAppAliases_SkipsAlreadyAttached(t *testing.T) {
 	fd := newFakeDaemon()
 	defer fd.Close()
-	connected := map[string]bool{}
 	fd.dispatch = func(w http.ResponseWriter, r *http.Request, _ string) {
 		switch {
 		case r.URL.Path == "/containers/json" && r.Method == http.MethodGet:
@@ -1877,58 +1903,50 @@ func TestAttachComposeProjectToNetwork_SkipsAlreadyAttached(t *testing.T) {
 				{
 					ID:    "id-already-1234567890",
 					Names: []string{"/nanoku-ddd-web-1"},
-					NetworkSettings: &container.NetworkSettingsSummary{
-						Networks: map[string]*network.EndpointSettings{
-							"nanoku-net": {},
+					Labels: map[string]string{"com.docker.compose.service": "web"},
+				},
+			})
+		case strings.HasPrefix(r.URL.Path, "/containers/") && strings.HasSuffix(r.URL.Path, "/json") && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(container.InspectResponse{
+				ContainerJSONBase: &container.ContainerJSONBase{},
+				NetworkSettings: &container.NetworkSettings{
+					Networks: map[string]*network.EndpointSettings{
+						"nanoku-net": {
+							Aliases: []string{"nanoku-ddd", "nanoku-ddd-web"},
 						},
 					},
 				},
-				{
-					ID:    "id-new-1234567890ab",
-					Names: []string{"/nanoku-ddd-worker-1"},
-				},
 			})
-		case strings.HasPrefix(r.URL.Path, "/networks/") && strings.HasSuffix(r.URL.Path, "/connect") && r.Method == http.MethodPost:
-			var body struct {
-				Container string `json:"Container"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				http.Error(w, "bad json", http.StatusBadRequest)
-				return
-			}
-			connected[body.Container] = true
-			w.WriteHeader(http.StatusOK)
 		default:
 			t.Errorf("unexpected Docker call: %s %s", r.Method, r.URL.Path)
 			http.Error(w, "should not be called", http.StatusInternalServerError)
 		}
 	}
 	m := newTestManager(t, fd, Config{NetworkName: "nanoku-net"})
-	if err := m.AttachComposeProjectToNetwork(context.Background(), "nanoku-ddd"); err != nil {
-		t.Fatalf("AttachComposeProjectToNetwork: %v", err)
+	if err := m.ApplyAppAliases(context.Background(), "nanoku-ddd"); err != nil {
+		t.Fatalf("ApplyAppAliases: %v", err)
 	}
-	if connected["id-already-1234567890"] {
-		t.Errorf("already-attached container should not be re-connected")
-	}
-	if !connected["id-new-1234567890ab"] {
-		t.Errorf("new container was not connected")
-	}
-	if got := fd.callsOf("/networks/nanoku-net/connect"); len(got) != 1 {
-		t.Errorf("expected 1 connect call (skip + connect), got %d", len(got))
+	if got := fd.callsOf("/networks/nanoku-net/connect"); len(got) != 0 {
+		t.Errorf("expected 0 connect calls (already fully wired), got %d", len(got))
 	}
 }
 
 // NetworkConnect returns a 5xx: the manager must surface the
 // failure as an error naming the offending container so the
 // operator can see which service is blocking the attach.
-func TestAttachComposeProjectToNetwork_PropagatesConnectError(t *testing.T) {
+func TestApplyAppAliases_PropagatesConnectError(t *testing.T) {
 	fd := newFakeDaemon()
 	defer fd.Close()
 	fd.dispatch = func(w http.ResponseWriter, r *http.Request, _ string) {
 		switch {
 		case r.URL.Path == "/containers/json" && r.Method == http.MethodGet:
 			_ = json.NewEncoder(w).Encode([]container.Summary{
-				{ID: "id-fail-1234567890ab", Names: []string{"/nanoku-ddd-bad-1"}},
+				{ID: "id-fail-1234567890ab", Names: []string{"/nanoku-ddd-bad-1"}, Labels: map[string]string{"com.docker.compose.service": "bad"}},
+			})
+		case strings.HasPrefix(r.URL.Path, "/containers/") && strings.HasSuffix(r.URL.Path, "/json") && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(container.InspectResponse{
+				ContainerJSONBase: &container.ContainerJSONBase{},
+				NetworkSettings: &container.NetworkSettings{},
 			})
 		case strings.HasSuffix(r.URL.Path, "/connect"):
 			http.Error(w, `{"message":"forbidden"}`, http.StatusForbidden)
@@ -1937,14 +1955,11 @@ func TestAttachComposeProjectToNetwork_PropagatesConnectError(t *testing.T) {
 		}
 	}
 	m := newTestManager(t, fd, Config{NetworkName: "nanoku-net"})
-	err := m.AttachComposeProjectToNetwork(context.Background(), "nanoku-ddd")
+	err := m.ApplyAppAliases(context.Background(), "nanoku-ddd")
 	if err == nil {
 		t.Fatal("expected error from connect failure, got nil")
 	}
 	if !strings.Contains(err.Error(), "nanoku-ddd-bad-1") {
 		t.Errorf("error %q should name the offending container", err)
-	}
-	if !strings.Contains(err.Error(), "nanoku-net") {
-		t.Errorf("error %q should name the target network", err)
 	}
 }

@@ -4,13 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/isaced/nanoku/internal/db"
-	"github.com/isaced/nanoku/internal/db/app"
-	"github.com/isaced/nanoku/internal/db/container"
 	"github.com/isaced/nanoku/internal/docker"
 )
 
@@ -108,64 +105,21 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 		}
 	}()
 
-	// Schema has UNIQUE(containers.name). A prior deploy on the
-	// same app left a row with the same name; the new deploy's
-	// Create would otherwise fail with a UNIQUE-constraint
-	// violation. Retire every live row owned by THIS app so a
-	// fresh deploy can re-use the canonical name. We do this
-	// BEFORE the docker availability check, so a stale row
-	// never blocks a fresh deploy — even when Docker is
-	// unreachable. (The retired name is recorded in the audit
-	// trail; the row stays around for rollback tooling to read
-	// by deploy_id.)
+	// The previous deploy's row still points at this app via the
+	// App→Container O2O reverse edge. If we don't clear the
+	// relationship before creating the new row, the new row's
+	// SetCurrentContainerID below will fail with a UNIQUE
+	// violation (only one container row may carry a given app's
+	// current_container FK at a time). Container names are no
+	// longer UNIQUE — the alias is the routing identity now — so
+	// the retire-by-rename dance is gone. A previous deploy's
+	// container row just sits around with status=exited and a
+	// stable name until the operator (or a future cleanup pass)
+	// removes it.
 	//
-	// Scoping by the app edge (not by a name pattern) is
-	// critical for compose-mode apps with multiple services:
-	// each service has its own container name
-	// (nanoku-<app>-<service>-1), and a HasPrefix("nanoku-<app>")
-	// match would also retire sibling apps (e.g. an app named
-	// "blog" would collide with "blog-staging"). The FK
-	// relationship is exact, so a per-app scope is both
-	// sufficient and safe.
-	//
-	// Each row is renamed to <original-name>-retired-<id>. The
-	// row id is unique and stable (unlike UnixNano, which would
-	// collide across multiple services retired in the same
-	// batch — a real risk for multi-service compose stacks).
-	// First-time deploys match zero rows and the loop is a
-	// no-op.
-	liveContainers, err := h.DB.Container.Query().
-		Where(
-			container.HasAppWith(app.IDEQ(a.ID)),
-			container.StatusNEQ(container.StatusRetired),
-		).
-		All(ctx)
-	if err != nil {
-		h.markDeployFailed(ctx, deployID, fmt.Errorf("query live container rows: %w", err))
-		return
-	}
-	for _, c := range liveContainers {
-		if _, err := h.DB.Container.UpdateOneID(c.ID).
-			SetName(fmt.Sprintf("%s-retired-%d", c.Name, c.ID)).
-			SetStatus(container.StatusRetired).
-			Save(ctx); err != nil {
-			h.markDeployFailed(ctx, deployID, fmt.Errorf("retire prior container row %d: %w", c.ID, err))
-			return
-		}
-	}
-
-	// Schema has UNIQUE(containers.app_current_container) — the
-	// App→Container O2O reverse edge is stored as a column on the
-	// container side. The previous deploy's row still points at
-	// this app; if we don't clear the relationship before creating
-	// the new row, the new row's SetCurrentContainerID below will
-	// fail with a UNIQUE violation (only one container row may
-	// carry a given app's current_container FK at a time).
-	//
-	// Done in the same window as the `name` retire so a stale row
-	// never blocks a fresh deploy — even when Docker is
-	// unreachable. (Both operations are no-ops on a first-time
-	// deploy.)
+	// Done BEFORE the docker availability check so a stale
+	// current_container never blocks a fresh deploy — even when
+	// Docker is unreachable. (No-op on a first-time deploy.)
 	if err := h.DB.App.UpdateOneID(a.ID).
 		ClearCurrentContainer().
 		Exec(ctx); err != nil {
@@ -239,17 +193,18 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 			h.markDeployFailed(ctx, deployID, err)
 			return
 		}
-		// Attach the just-spun-up stack to nanoku's managed network so
-		// Caddy can resolve the project containers by name. Without this
+		// Attach the just-spun-up stack to nanoku's managed network and
+		// give each service a stable network alias (`nanoku-<app>-<svc>`)
+		// that Caddy can reverse-proxy to via Docker DNS. Without this
 		// step the Caddyfile reverse_proxy entries return 502: Caddy is
 		// only on `nanoku-net`, but `docker compose up` parks the stack
 		// on its own `<project>_default` network. The attach is
 		// idempotent (containers already on the network are skipped), so
-		// re-deploys are a no-op. We do it before ComposePSNames so the
-		// follow-up exposed_ports validation sees the same container set
-		// the Caddyfile will.
-		if err := h.Docker.AttachComposeProjectToNetwork(ctx, project); err != nil {
-			h.markDeployFailed(ctx, deployID, fmt.Errorf("attach compose project to nanoku network: %w", err))
+		// re-deploys are a no-op. We do it before ComposePSServices so
+		// the follow-up exposed_ports validation sees the same
+		// container set the Caddyfile will.
+		if err := h.Docker.ApplyAppAliases(ctx, project); err != nil {
+			h.markDeployFailed(ctx, deployID, fmt.Errorf("apply app aliases: %w", err))
 			return
 		}
 		names, _ := h.Docker.ComposePSNames(ctx, project, "")
@@ -258,21 +213,22 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 		} else {
 			containerName = composeProjectName(a.Name) + "-1"
 		}
-		// Validate declared exposed_ports against the actual running stack.
-		// A service listed in exposed_ports but missing from `compose ps`
-		// is a misconfiguration (typo, removed from compose file, depends_on
-		// failed) — Caddy would route traffic to a non-existent container
-		// if we let it through. Fail loudly with the offending service name
-		// so the operator can fix the YAML and re-deploy.
+		// Validate declared exposed_ports against the actual running
+		// stack by service name. A service listed in exposed_ports but
+		// missing from `compose ps` is a misconfiguration (typo,
+		// removed from compose file, depends_on failed) — Caddy would
+		// route traffic to a non-existent alias if we let it through.
+		// Fail loudly with the offending service name so the operator
+		// can fix the YAML and re-deploy.
 		if ports, perr := ParseExposedPorts(a.ExposedPorts); perr == nil && len(ports) > 0 {
-			running := make(map[string]struct{}, len(names))
-			for _, n := range names {
-				running[n] = struct{}{}
+			services, serr := h.Docker.ComposePSServices(ctx, project, "")
+			if serr != nil {
+				h.markDeployFailed(ctx, deployID, fmt.Errorf("compose ps --services: %w", serr))
+				return
 			}
 			var missing []string
 			for _, ep := range ports {
-				expected := resolveServiceContainerName(a.Name, ep.Name, ep.ContainerName)
-				if _, ok := running[expected]; !ok {
+				if _, ok := services[ep.Name]; !ok {
 					missing = append(missing, ep.Name)
 				}
 			}
@@ -380,16 +336,11 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 	// Refresh stored upstreams for every site linked to this app. The
 	// Caddyfile is already up to date (regenerateAndReloadCtx above
 	// recomputes on the fly), but the per-site Site.Upstream column is
-	// what the UI list view shows. After a deploy the upstream may have
-	// legitimately changed (new container name for docker mode; service
-	// rename for compose); write the new value back so the API and
-	// Caddyfile stay in lockstep. Best-effort: a write failure here
-	// doesn't fail the deploy, since the Caddyfile is the source of
-	// truth for routing and a stale Site row just means the list view
-	// will refresh on the next app/site update.
-	if err := h.RefreshSitesForApp(ctx, a.ID); err != nil {
-		log.Printf("refresh sites for app %s: %v", a.Name, err)
-	}
+	// The Caddyfile was already regenerated above; nothing else to do
+	// here. App-linked sites compute their upstream at render time
+	// from (app, app_service), so they don't need a row update after
+	// a deploy — the next regenerate will pick up the new container
+	// state via Docker network DNS without any DB writes.
 }
 
 // registryCreds safely dereferences an app's registry credential pointers.

@@ -162,6 +162,26 @@ func (m *Manager) ComposePSNames(ctx context.Context, project, filePath string) 
 	return names, nil
 }
 
+// ComposePSServices returns the set of service names that
+// `docker compose ps --services` reports for the project. The
+// service name (not the container name) is what the api layer
+// validates exposed_ports against — the alias attached to a
+// running service is keyed on the service name, so a service
+// not in this set would 502 in Caddy.
+func (m *Manager) ComposePSServices(ctx context.Context, project, filePath string) (map[string]struct{}, error) {
+	out, err := m.runCLI(ctx, composeArgs(project, filePath, "ps", false, "--services")...)
+	if err != nil {
+		return nil, fmt.Errorf("compose ps --services: %w: %s", err, strings.TrimSpace(out))
+	}
+	services := map[string]struct{}{}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			services[line] = struct{}{}
+		}
+	}
+	return services, nil
+}
+
 // runCLI shells out to the docker CLI for subcommands not exposed by the
 // Engine API (notably `docker compose`). stdout and stderr are kept
 // separate; stderr is folded into the error on failure so diagnostics
