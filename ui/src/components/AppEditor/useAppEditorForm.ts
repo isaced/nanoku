@@ -7,7 +7,6 @@ import {
   useCreateApp,
   useReplaceAppEnv,
   useReplaceAppVolumes,
-  useRotateTriggerToken,
   useUpdateApp,
 } from '../../lib/hooks'
 import type {
@@ -17,6 +16,7 @@ import type {
   ExposedPort,
   VolumeInput,
 } from '../../lib/types'
+import { useTriggerToken } from './useTriggerToken'
 
 export interface AppEditorSaveResult {
   saved: AppType
@@ -60,7 +60,6 @@ export function useAppEditorForm({
   const updateApp = useUpdateApp()
   const replaceEnv = useReplaceAppEnv()
   const replaceVolumes = useReplaceAppVolumes()
-  const rotateToken = useRotateTriggerToken()
 
   const envQuery = useAppEnv(editing?.id ?? null)
   const volumesQuery = useAppVolumes(editing?.id ?? null)
@@ -186,45 +185,16 @@ export function useAppEditorForm({
     })
   }
 
-  const [revealedToken, setRevealedToken] = useState<string | null>(null)
-  // Mirrors `editing.triggerConfigured` but is updated locally on
-  // generate/disable so the Trigger tab reflects the new state immediately,
-  // without waiting for the editor to be closed and reopened.
-  const [triggerEnabled, setTriggerEnabled] = useState<boolean>(false)
-
-  // A freshly generated/rotated token lives only in this React state — it
-  // is never persisted client-side and is cleared as soon as the editor
-  // closes or a different app is opened, matching the "shown once" contract.
-  // The trigger-enabled flag is re-derived from the app on (re)open.
-  useEffect(() => {
-    setRevealedToken(null)
-    setTriggerEnabled(!!editing?.triggerConfigured)
-  }, [open, editing?.id])
-
-  function onGenerate() {
-    if (!editing) return
-    void action.run(rotateToken.mutateAsync(editing.id), {
-      onSuccess: (updated) => {
-        setTriggerEnabled(true)
-        if (updated.triggerToken) {
-          setRevealedToken(updated.triggerToken)
-        }
-      },
-    })
-  }
-
-  function onDisable() {
-    if (!editing) return
-    void action.run(
-      updateApp.mutateAsync({ id: editing.id, input: { enableTrigger: false } }),
-      {
-        onSuccess: () => {
-          setTriggerEnabled(false)
-          setRevealedToken(null)
-        },
-      },
-    )
-  }
+  // Trigger section is its own hook — see useTriggerToken. It owns
+  // the transient revealedToken + the local "is the trigger
+  // configured?" mirror so the form's submit/env/volumes path
+  // doesn't carry rotateToken / updateApp dependencies for the
+  // trigger alone.
+  const trigger = useTriggerToken({
+    open,
+    appId: editing?.id,
+    initialConfigured: !!editing?.triggerConfigured,
+  })
 
   const isPending =
     createApp.isPending ||
@@ -242,10 +212,10 @@ export function useAppEditorForm({
     exposedPortsDraft,
     setExposedPortsDraft,
     handleSubmit,
-    revealedToken,
-    triggerEnabled,
-    onGenerate,
-    onDisable,
+    revealedToken: trigger.revealedToken,
+    triggerEnabled: trigger.triggerEnabled,
+    onGenerate: trigger.onGenerate,
+    onDisable: trigger.onDisable,
     isPending,
   }
 }
