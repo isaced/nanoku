@@ -46,8 +46,9 @@ func (App) Fields() []ent.Field {
 
 		// Private registry credentials. Logged in to before pull / compose pull
 		// and logged out after, so credentials are not left in
-		// ~/.docker/config.json permanently.
-		// TODO: encrypt at rest before any real deployment.
+		// ~/.docker/config.json permanently. Encrypted at rest via the
+		// secret package; MigrateEncryption re-writes any legacy plaintext
+		// row on boot.
 		field.String("registry_url").
 			Optional().
 			Nillable().
