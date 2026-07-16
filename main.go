@@ -152,83 +152,25 @@ func main() {
 	handlers.RunBootReconcile(bootReconCtx)
 	cancelRecon()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/me", handlers.Me)
-	mux.HandleFunc("POST /api/me/password", handlers.ChangePassword)
-	mux.HandleFunc("GET /api/sites", handlers.ListSites)
-	mux.HandleFunc("POST /api/sites", handlers.CreateSite)
-	mux.HandleFunc("PUT /api/sites/{id}", handlers.UpdateSite)
-	mux.HandleFunc("DELETE /api/sites/{id}", handlers.DeleteSite)
-	mux.HandleFunc("POST /api/sites/{id}/toggle", handlers.ToggleSite)
-	mux.HandleFunc("GET /api/status", handlers.Status)
-	mux.HandleFunc("GET /api/caddyfile", handlers.CaddyfilePreview)
-
-	mux.HandleFunc("GET /api/apps", handlers.ListApps)
-	mux.HandleFunc("POST /api/apps", handlers.CreateApp)
-	mux.HandleFunc("GET /api/apps/{id}", handlers.GetApp)
-	mux.HandleFunc("PUT /api/apps/{id}", handlers.UpdateApp)
-	mux.HandleFunc("DELETE /api/apps/{id}", handlers.DeleteApp)
-	mux.HandleFunc("POST /api/apps/{id}/deployments", handlers.DeployApp)
-	mux.HandleFunc("POST /api/apps/{id}/start", handlers.StartApp)
-	mux.HandleFunc("POST /api/apps/{id}/stop", handlers.StopApp)
-	mux.HandleFunc("POST /api/apps/{id}/restart", handlers.RestartApp)
-	mux.HandleFunc("GET /api/apps/{id}/logs", handlers.AppLogs)
-	mux.HandleFunc("GET /api/apps/{id}/logs/stream", handlers.AppLogsStream)
-	mux.HandleFunc("GET /api/apps/{id}/containers", handlers.AppContainers)
-	mux.HandleFunc("GET /api/apps/{id}/deployments/{did}/logs/stream", handlers.DeployLogStream)
-	mux.HandleFunc("GET /api/apps/{id}/env", handlers.ListAppEnvVars)
-	mux.HandleFunc("PUT /api/apps/{id}/env", handlers.ReplaceAppEnvVars)
-	mux.HandleFunc("GET /api/apps/{id}/volumes", handlers.ListAppVolumes)
-	mux.HandleFunc("PUT /api/apps/{id}/volumes", handlers.ReplaceAppVolumes)
-	mux.HandleFunc("GET /api/apps/{id}/deployments", handlers.ListAppDeploys)
-	mux.HandleFunc("POST /api/apps/{id}/rotate-trigger-token", handlers.RotateTriggerToken)
-	mux.HandleFunc("POST /api/apps/{id}/rollback", handlers.RollbackApp)
-	mux.HandleFunc("POST /api/apps/{id}/exposed-ports/import", handlers.ImportExposedPorts)
-
-	mux.HandleFunc("GET /api/system/status", handlers.SystemStatus)
-	mux.HandleFunc("GET /api/system/logs", handlers.SystemLogs)
-	mux.HandleFunc("GET /api/system/logs/stream", handlers.SystemLogsStream)
-	mux.HandleFunc("GET /api/system/reconcile", handlers.SystemReconcile)
-	mux.HandleFunc("POST /api/system/reconcile", handlers.SystemReconcileApply)
-	mux.HandleFunc("DELETE /api/system/orphans/{name}", handlers.SystemRemoveOrphan)
-
-	mux.HandleFunc("GET /api/dashboard", handlers.Dashboard)
-
-	// Routing layers, outer to inner:
+	// Routing layers, outer to inner (see internal/api/router.go for the
+	// full route table):
 	//   CORS
 	//   apiMux              — dispatches by URL pattern
 	//     ├ POST /api/login                 (no auth — issues session cookie)
 	//     ├ POST /api/logout                (no auth — clears cookie; safe to be open)
-	//     ├ GET  /api/me                    (auth — heartbeat check from UI)
-	//     ├ POST /api/me/password           (auth — change own password)
 	//     ├ POST /api/apps/{name}/trigger   (no auth, Bearer verified in handler)
 	//     ├ /api/                           (everything else: wrapped in SessionAuth)
 	//     └ /                               (UI: served as-is)
 	//
-	// SessionAuth replaces the old BasicAuth. Login is exposed at the top
-	// level so the auth check does not block the login attempt.
-	authedInternal := api.SessionAuth(sessions)(mux)
-
-	apiMux := http.NewServeMux()
-	apiMux.HandleFunc("POST /api/login", handlers.Login)
-	apiMux.HandleFunc("POST /api/logout", handlers.Logout)
-	apiMux.HandleFunc("POST /api/apps/{name}/trigger", handlers.Trigger)
-	apiMux.Handle("/api/", authedInternal)
-	apiMux.Handle("/", api.UIHandler())
-
-	root := api.CORS(apiMux)
-
-	// /healthz sits outside the auth + CORS chain so orchestrators (Docker
+	// /healthz sits outside this chain so orchestrators (Docker
 	// HEALTHCHECK, k8s readinessProbe, load balancers) can probe it without
-	// a session cookie or CORS negotiation. Built as a tiny dedicated mux
-	// rather than registered on root directly because root is already wrapped
-	// as an http.Handler by CORS.
-	healthMux := http.NewServeMux()
-	healthMux.HandleFunc("GET /healthz", handlers.Healthz)
+	// a session cookie or CORS negotiation.
+	root := api.Router(handlers, sessions)
+	healthMux := api.HealthRouter(handlers)
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,
-		Handler:           healthWrap(root, healthMux),
+		Handler:           api.HealthWrap(root, healthMux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -257,18 +199,4 @@ func main() {
 	drainCtx, cancelDrain := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelDrain()
 	handlers.DrainInflight(drainCtx, 30*time.Second)
-}
-
-// healthWrap layers /healthz in front of the rest of the handler so the
-// probe endpoint bypasses CORS + session auth + the UI handler. The order
-// matters: /healthz is matched first when the URL is exactly /healthz,
-// otherwise the request falls through to the primary handler.
-func healthWrap(primary http.Handler, health http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/healthz" {
-			health.ServeHTTP(w, r)
-			return
-		}
-		primary.ServeHTTP(w, r)
-	})
 }
