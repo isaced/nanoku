@@ -2,7 +2,18 @@
 
 @import "tailwindcss";
 
-:root {
+/*
+ * Theme tokens. We expose every visual surface as a CSS variable so
+ * components never hardcode colours — antd's algorithm can't reach
+ * every shadow / hover state we need, and we want a single place to
+ * change the look.
+ *
+ * Dark mode is opt-in via the `[data-theme="dark"]` attribute on the
+ * <html> element. The ThemeToggle (TopNav) writes that attribute and
+ * mirrors it to localStorage. The default is light.
+ */
+:root,
+:root[data-theme="light"] {
   color-scheme: light;
   --bg: #ffffff;
   --bg-elevated: #fafafa;
@@ -15,6 +26,21 @@
   --accent-soft: #f0f7ff;
   --danger: #ef4444;
   --success: #16a34a;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b0d10;
+  --bg-elevated: #15181c;
+  --bg-input: #1c2026;
+  --border: #2a2f36;
+  --border-strong: #3a4049;
+  --fg: #e6e8eb;
+  --fg-muted: #8a8f99;
+  --accent: #4f9eff;
+  --accent-soft: #15243a;
+  --danger: #f87171;
+  --success: #4ade80;
 }
 
 * {
@@ -39,6 +65,7 @@ body {
     'ss01';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background 150ms ease, color 150ms ease;
 }
 
 code,
@@ -68,11 +95,16 @@ footer a:hover {
 /* TopNav menu fills the 64px header height. */
 header .ant-menu-horizontal {
   height: 100%;
+  background: transparent !important;
 }
 header .ant-menu-horizontal > .ant-menu-item,
 header .ant-menu-horizontal > .ant-menu-submenu {
   height: 100%;
   line-height: 64px;
+}
+
+header.ant-layout-header {
+  background: transparent;
 }
 
 /* TopNav: force selected-item underline to the accent color. */
@@ -111,4 +143,66 @@ header .ant-menu-horizontal > .ant-menu-item-selected:hover::after {
   .nk-apps-table .ant-table-tbody > tr:hover > td {
     background: var(--accent-soft);
   }
+}
+
+/* antd dark mode: drive ConfigProvider's algorithm via the same
+   `data-theme` attribute so antd-managed surfaces (Tag, Modal,
+   Drawer, Menu hover) follow the system. We don't pass algorithm:
+   'dark' to ConfigProvider because that would also force a dark
+   body background — keeping it CSS-driven lets the user toggle
+   without a re-render. */
+[data-theme="dark"] .ant-tag {
+  border-color: var(--border);
+}
+[data-theme="dark"] .ant-modal-content,
+[data-theme="dark"] .ant-drawer-content {
+  background: var(--bg-elevated);
+  color: var(--fg);
+}
+[data-theme="dark"] .ant-modal-header {
+  background: transparent;
+  border-bottom-color: var(--border);
+}
+[data-theme="dark"] .ant-tabs-tab {
+  color: var(--fg-muted);
+}
+[data-theme="dark"] .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--fg) !important;
+}
+[data-theme="dark"] .ant-table {
+  background: transparent;
+  color: var(--fg);
+}
+[data-theme="dark"] .ant-table-thead > tr > th {
+  background: transparent !important;
+  color: var(--fg-muted);
+  border-bottom-color: var(--border);
+}
+[data-theme="dark"] .ant-table-tbody > tr > td {
+  border-bottom-color: var(--border);
+}
+[data-theme="dark"] .ant-input,
+[data-theme="dark"] .ant-input-affix-wrapper,
+[data-theme="dark"] .ant-input-number,
+[data-theme="dark"] .ant-select-selector,
+[data-theme="dark"] .ant-picker {
+  background: var(--bg-input) !important;
+  border-color: var(--border) !important;
+  color: var(--fg) !important;
+}
+[data-theme="dark"] .ant-empty-description {
+  color: var(--fg-muted);
+}
+[data-theme="dark"] .ant-skeleton {
+  background: var(--bg-input);
+}
+[data-theme="dark"] .ant-skeleton-active .ant-skeleton-content .ant-skeleton-title,
+[data-theme="dark"] .ant-skeleton-active .ant-skeleton-content .ant-skeleton-paragraph > li {
+  background: linear-gradient(
+    90deg,
+    var(--bg-input) 25%,
+    var(--border) 37%,
+    var(--bg-input) 63%
+  );
+  background-size: 400% 100%;
 }

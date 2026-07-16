@@ -15,6 +15,7 @@ import type { Status } from '../lib/types'
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from '../i18n'
 import { api } from '../lib/api'
 import { markLoggedOut } from '../lib/auth'
+import { ThemeToggle } from './ThemeToggle'
 
 const navKeys = ['/dashboard', '/sites', '/apps', '/system'] as const
 type NavKey = (typeof navKeys)[number]
@@ -114,6 +115,8 @@ export function TopNav({
           </Dropdown>
         </Tooltip>
         <div className="w-px h-5 bg-(--border) mx-1" />
+        <ThemeToggle />
+        <div className="w-px h-5 bg-(--border) mx-1" />
         <Tooltip title={t('logout')}>
           <Button
             type="text"
@@ -121,6 +124,7 @@ export function TopNav({
             icon={<LogOut size={15} />}
             onClick={onLogout}
             className="!text-[var(--fg-muted)] hover:!text-[var(--fg)] hover:!bg-[var(--bg-elevated)]"
+            aria-label={t('logout')}
           />
         </Tooltip>
       </div>

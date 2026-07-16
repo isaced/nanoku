@@ -7,6 +7,7 @@ import './i18n'
 import { ensureAuth } from './lib/auth'
 import { setUnauthorizedHandler } from './lib/api'
 import { createAppQueryClient } from './lib/queryClient'
+import { applyTheme, readTheme } from './lib/theme'
 
 const router = createRouter({
   routeTree,
@@ -35,6 +36,12 @@ setUnauthorizedHandler(() => {
 // boot, so subsequent route guards and the UI shell render correctly without
 // an extra round-trip on the first nav.
 void ensureAuth()
+
+// Apply the stored theme before the first render so the user doesn't
+// see a light-mode flash on a dark-mode load. Read the choice from
+// localStorage (with OS preference fallback) and write the
+// data-theme attribute that the CSS variables read.
+applyTheme(readTheme())
 
 const rootElement = document.getElementById('app')!
 

@@ -9,5 +9,7 @@
   "dockerUnreachable": "Docker daemon unreachable",
   "refresh": "Refresh",
   "logout": "Sign out",
-  "loggedOut": "Signed out"
+  "loggedOut": "Signed out",
+  "darkMode": "Switch to dark mode",
+  "lightMode": "Switch to light mode"
 }
