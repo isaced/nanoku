@@ -45,8 +45,16 @@
   --bg: #09090b;
   --bg-elevated: #18181b;
   --bg-input: #27272a;
-  --border: #27272a;
-  --border-strong: #3f3f46;
+  /* The border sits one step lighter than --bg-input in dark mode
+     (the inverse of the light-mode relationship, where it's one
+     step darker). Anything equal to --bg-input vanishes — that
+     bit us on the AppDetail inset cards (trigger block, env
+     rows, deploy rows, volume rows), which all pair
+     `border-[--border]` with `bg-[--bg-input]`. The previous
+     `#27272a` matched the background, so the borders were
+     invisible. */
+  --border: #3f3f46;
+  --border-strong: #52525b;
   --fg: #fafafa;
   --fg-muted: #a1a1aa;
   --accent: #3b82f6;

@@ -93,9 +93,9 @@ function RootLayout() {
             colorBgLayout:
               theme === 'dark' ? '#09090b' : '#fafafa',
             colorBorder:
-              theme === 'dark' ? '#27272a' : '#ececef',
+              theme === 'dark' ? '#3f3f46' : '#ececef',
             colorBorderSecondary:
-              theme === 'dark' ? '#27272a' : '#ececef',
+              theme === 'dark' ? '#3f3f46' : '#ececef',
             colorText:
               theme === 'dark' ? '#fafafa' : '#09090b',
             colorTextSecondary:
