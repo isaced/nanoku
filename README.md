@@ -2,10 +2,11 @@
 
 > **The nano Heroku / Vercel for your own server.**
 
-A single Go binary that ships with an embedded React admin UI, pulls
-pre-built container images, and manages a Caddy reverse proxy for
-HTTPS. CI builds your image, nanoku pulls and ships it — "git push
-→ deployed" on your own machine.
+A single Go binary with an embedded React admin UI. Your CI (GitHub
+Actions, GitLab CI, Drone, …) builds the Docker image, pushes it
+to your registry, and POSTs the nanoku trigger endpoint — which
+pulls, swaps the container, and reloads Caddy for HTTPS. "git push
+→ deployed", on your own machine.
 
 ## ✨ Features
 
