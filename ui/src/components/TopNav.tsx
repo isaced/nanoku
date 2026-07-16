@@ -31,8 +31,15 @@ export function TopNav({
   const { message } = App.useApp()
 
   async function onLogout() {
+    // Cap the server logout at 3s so a hung request doesn't trap
+    // the user on the page. The local flag is what actually matters
+    // for the redirect (the cookie lives on the server and a
+    // network failure doesn't prevent the next request from being
+    // rejected), so we always fall through to markLoggedOut +
+    // navigate even if the POST hangs or errors.
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 3000))
     try {
-      await api.logout()
+      await Promise.race([api.logout(), timeout])
     } catch {
       // logout failures are non-fatal; the cookie is cleared server-side
       // regardless of network outcome because we drop the flag locally.

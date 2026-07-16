@@ -2,19 +2,26 @@
 // `ensureAuth()` reconciles the flag against `/api/me` whenever it might be
 // stale (route entry, app boot, explicit check). No credentials are stored
 // client-side.
+//
+// The flag lives on globalThis (rather than a module-level let) so that
+// Vite's HMR module replacement doesn't drop it back to false mid-session.
+// Without this, saving any file in dev resets the auth flag, the next
+// route guard runs isAuthenticated() → false, and the user gets bounced
+// to /login even though their session cookie is still valid.
 
-let authed = false;
+type AuthGlobal = typeof globalThis & { __nanoku_authed__?: boolean }
+const g = globalThis as AuthGlobal
 
 export function isAuthenticated(): boolean {
-  return authed;
+  return g.__nanoku_authed__ === true
 }
 
 export function markLoggedIn(): void {
-  authed = true;
+  g.__nanoku_authed__ = true
 }
 
 export function markLoggedOut(): void {
-  authed = false;
+  g.__nanoku_authed__ = false
 }
 
 // ensureAuth verifies the session cookie against the backend. Resolves true
@@ -22,14 +29,14 @@ export function markLoggedOut(): void {
 // result updates the in-memory flag.
 export async function ensureAuth(): Promise<boolean> {
   try {
-    const res = await fetch('/api/me', { credentials: 'include' });
+    const res = await fetch('/api/me', { credentials: 'include' })
     if (res.ok) {
-      authed = true;
-      return true;
+      markLoggedIn()
+      return true
     }
   } catch {
     // network error: keep previous flag, treat as not authed for routing
   }
-  authed = false;
-  return false;
+  markLoggedOut()
+  return false
 }
