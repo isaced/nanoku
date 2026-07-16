@@ -31,7 +31,6 @@ vi.mock('../lib/api', async () => {
       listAppDeploys: vi.fn(),
       listAppVolumes: vi.fn(),
       appLogs: vi.fn(),
-      rotateTriggerToken: vi.fn(),
     },
   }
 })

@@ -128,24 +128,10 @@ func (h *Handlers) CreateApp(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// HTTP trigger: when enabled on create, generate a fresh bearer token
-	// server-side and return it in the create response (single-shot).
-	// On update, EnableTrigger is a no-op for already-enabled apps.
-	var generatedToken string
-	if in.EnableTrigger != nil && *in.EnableTrigger {
-		tok, err := randomToken()
-		if err != nil {
-			writeInternalErr(w, fmt.Errorf("generate trigger token: %w", err))
-			return
-		}
-		encTok, err := h.Secret.EncryptString(tok)
-		if err != nil {
-			writeInternalErr(w, fmt.Errorf("encrypt trigger token: %w", err))
-			return
-		}
-		create.SetTriggerToken(encTok)
-		generatedToken = tok
-	}
+	// HTTP trigger tokens are generated on demand via POST
+	// /api/apps/{id}/rotate-trigger-token — never at create time. The
+	// trigger tab surfaces the token once, only when the operator
+	// generates (or rotates) it there.
 	if in.DeleteVolumesOnRemove != nil {
 		create.SetDeleteVolumesOnRemove(*in.DeleteVolumesOnRemove)
 	}
@@ -164,7 +150,6 @@ func (h *Handlers) CreateApp(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	dto := h.toAppDTO(r.Context(), a)
-	dto.TriggerToken = generatedToken // single-shot: only on this create response
 	writeJSON(w, http.StatusCreated, dto)
 }
 

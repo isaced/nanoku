@@ -97,7 +97,6 @@ export function useAppEditorForm({
       composeContent: editing.composeContent ?? '',
       registryUrl: editing.registryUrl ?? '',
       registryUsername: editing.registryUsername ?? '',
-      enableTrigger: editing.triggerConfigured,
       deleteVolumesOnRemove: editing.deleteVolumesOnRemove,
     })
   }, [open, editing, form])
@@ -186,22 +185,48 @@ export function useAppEditorForm({
     })
   }
 
-  function onRotate() {
+  const [revealedToken, setRevealedToken] = useState<string | null>(null)
+  // Mirrors `editing.triggerConfigured` but is updated locally on
+  // generate/disable so the Trigger tab reflects the new state immediately,
+  // without waiting for the editor to be closed and reopened.
+  const [triggerEnabled, setTriggerEnabled] = useState<boolean>(false)
+
+  // A freshly generated/rotated token lives only in this React state — it
+  // is never persisted client-side and is cleared as soon as the editor
+  // closes or a different app is opened, matching the "shown once" contract.
+  // The trigger-enabled flag is re-derived from the app on (re)open.
+  useEffect(() => {
+    setRevealedToken(null)
+    setTriggerEnabled(!!editing?.triggerConfigured)
+  }, [open, editing?.id])
+
+  function onGenerate() {
     if (!editing) return
     rotateToken.mutate(editing.id, {
       onSuccess: (updated) => {
+        setTriggerEnabled(true)
         if (updated.triggerToken) {
-          onSaved({
-            saved: updated,
-            previous: editing,
-            isNew: false,
-          })
+          setRevealedToken(updated.triggerToken)
         }
       },
       onError: (err) => {
         message.error(err.message)
       },
     })
+  }
+
+  function onDisable() {
+    if (!editing) return
+    updateApp.mutate(
+      { id: editing.id, input: { enableTrigger: false } },
+      {
+        onSuccess: () => {
+          setTriggerEnabled(false)
+          setRevealedToken(null)
+        },
+        onError: (err) => message.error(err.message),
+      },
+    )
   }
 
   const isPending =
@@ -220,7 +245,10 @@ export function useAppEditorForm({
     exposedPortsDraft,
     setExposedPortsDraft,
     handleSubmit,
-    onRotate,
+    revealedToken,
+    triggerEnabled,
+    onGenerate,
+    onDisable,
     isPending,
   }
 }

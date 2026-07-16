@@ -129,16 +129,19 @@
   "trigger": {
     "sectionTitle": "HTTP deploy trigger",
     "activeTag": "active",
+    "createHint": "After the app is created, open the Trigger tab and click Generate Token to enable the HTTP trigger.",
     "enableTitle": "Enable HTTP trigger",
     "enableHint": "Saving with this on generates a per-app token and trigger URL.",
     "enable": "Enable",
     "disable": "Disable",
+    "generate": "Generate token",
     "enableLabel": "Enable HTTP trigger on create",
     "enableExtra": "Generates a per-app bearer token. Any system that can produce a JSON POST and compute a Bearer header (GitHub Actions, GitLab CI, Drone, local scripts) can fire a deploy.",
     "disabledHint": "Trigger is not enabled. Re-create the app to enable it.",
     "collapsedHint": "Disabled. Turn on to enable on create, or to view the trigger URL (when already enabled).",
     "offWhileEnabledHint": "Turning off clears the trigger token. Turning it back on generates a new one.",
     "editNotEnabledHint": "Trigger is not enabled. Flip the switch on and save to enable — a new token will be generated.",
+    "notEnabledHint": "This app does not have the HTTP trigger enabled. Click the button below to generate a token and turn it on.",
     "disableHint": "Turning it off clears the token; turning it back on issues a new one (old token stops working immediately).",
     "rotateTitle": "Rotate trigger token?",
     "rotateDescription": "A new random token will be generated. The old token stops working immediately.",
@@ -155,7 +158,9 @@
     "usagePlaceholder": "The curl below reads the token from the env var <code>{{var}}</code> — set it in your CI's secret store. The workflow YAML references the same name as a GitHub Actions secret.",
     "curlTitle": "Generic shell snippet — works from any CI",
     "yamlTitle": "<code>.github/workflows/deploy.yml</code> — copy into your app repo",
-    "rotatedToast": "Rotated. New URL: {{url}}"
+    "rotatedToast": "Rotated. New URL: {{url}}",
+    "disableTitle": "Disable HTTP trigger?",
+    "disableDescription": "This will immediately clear the app's trigger token and stop accepting trigger requests."
   },
   "emptyState": {
     "title": "No apps yet",

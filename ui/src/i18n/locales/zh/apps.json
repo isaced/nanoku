@@ -129,16 +129,19 @@
   "trigger": {
     "sectionTitle": "HTTP 部署触发",
     "activeTag": "已激活",
+    "createHint": "应用创建后，在「触发器」标签页点击「生成 Token」即可开启 HTTP 触发。",
     "enableTitle": "启用 HTTP 触发",
     "enableHint": "开启后保存，会生成该应用专属的 token 与触发 URL。",
     "enable": "启用",
     "disable": "禁用",
+    "generate": "生成 Token",
     "enableLabel": "创建时启用 HTTP 触发",
     "enableExtra": "会为该应用生成一个专属的 bearer token。任何能发出 JSON POST 并附带 Bearer 头的系统（GitHub Actions、GitLab CI、Drone、本地脚本）都可以触发部署。",
     "disabledHint": "未启用触发。重新创建应用以启用。",
     "collapsedHint": "未启用。打开开关可在创建时启用，或查看触发 URL（已启用时）。",
     "offWhileEnabledHint": "关闭后该应用的 trigger token 会被清除，再次开启会生成新 token。",
     "editNotEnabledHint": "该应用尚未启用触发。打开开关并保存即可启用 — 会生成新 token。",
+    "notEnabledHint": "该应用尚未启用 HTTP 触发。点击下方按钮生成 token 并开启触发。",
     "disableHint": "关掉后 token 会被清除，再次开启会生成新 token（旧 token 立即失效）。",
     "rotateTitle": "重置触发 token？",
     "rotateDescription": "将生成新的随机 token，仅显示一次。旧 token 立即失效。",
@@ -155,7 +158,9 @@
     "usagePlaceholder": "下面的 curl 从环境变量 <code>{{var}}</code> 读 token — 在你的 CI secret 里设上即可。workflow YAML 里同样用这个名作为 GitHub Actions secret。",
     "curlTitle": "通用 shell 片段 — 任何 CI 都能用",
     "yamlTitle": "<code>.github/workflows/deploy.yml</code> — 复制到你的应用仓库",
-    "rotatedToast": "已重置。新 URL：{{url}}"
+    "rotatedToast": "已重置。新 URL：{{url}}",
+    "disableTitle": "禁用 HTTP 触发？",
+    "disableDescription": "将立即清除该应用的 trigger token 并停止接受触发请求。"
   },
   "emptyState": {
     "title": "暂无应用",

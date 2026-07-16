@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { App, Button, Drawer, Popconfirm, Tabs, Tag } from 'antd'
+import { Button, Drawer, Popconfirm, Tabs, Tag } from 'antd'
 import {
   Bell,
   Box,
@@ -9,11 +9,9 @@ import {
   Container as ContainerIcon,
   Network,
   Play,
-  RefreshCw,
   ScrollText,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { api } from '../lib/api'
 import {
   useSuspenseApp,
   useSuspenseAppDeploys,
@@ -132,7 +130,6 @@ function AppDetailContent({
   initialTab?: TabKey
   onChanged: () => void
 }) {
-  const { message } = App.useApp()
   const { t } = useTranslation('apps')
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab ?? 'overview')
   const queryClient = useQueryClient()
@@ -182,26 +179,7 @@ function AppDetailContent({
           key: 'overview',
           label: t('detail.tabOverview'),
           children: (
-            <OverviewTab
-              app={app}
-              env={env}
-              volumes={volumes}
-              onRotateTrigger={async () => {
-                try {
-                  await api.rotateTriggerToken(app.id)
-                  message.success(
-                    t('trigger.rotatedToast', {
-                      url: `${window.location.origin}/api/apps/${app.name}/trigger`,
-                    }),
-                  )
-                  void appQuery.refetch()
-                  void queryClient.invalidateQueries({ queryKey: queryKeys.apps.all() })
-                  onChanged()
-                } catch (err) {
-                  message.error((err as Error).message)
-                }
-              }}
-            />
+            <OverviewTab app={app} env={env} volumes={volumes} />
           ),
         },
         {
@@ -233,12 +211,10 @@ function OverviewTab({
   app,
   env,
   volumes,
-  onRotateTrigger,
 }: {
   app: AppType
   env: EnvVar[]
   volumes: Volume[]
-  onRotateTrigger: () => void
 }) {
   const { t } = useTranslation('apps')
   return (
@@ -293,18 +269,6 @@ function OverviewTab({
           </div>
           <div className="mono text-xs text-[var(--fg-muted)] break-all">
             POST {window.location.origin}/api/apps/{app.name}/trigger
-          </div>
-          <div className="mt-2">
-            <Popconfirm
-              title={t('trigger.rotateTitle')}
-              description={t('trigger.rotateDescriptionShort')}
-              okText={t('trigger.rotateButton')}
-              onConfirm={onRotateTrigger}
-            >
-              <Button size="small" icon={<RefreshCw size={12} />}>
-                {t('trigger.rotateButton')}
-              </Button>
-            </Popconfirm>
           </div>
         </div>
       )}

@@ -91,7 +91,9 @@ type AppInput struct {
 	// ClearRegistry wipes stored registry credentials.
 	ClearRegistry *bool `json:"clearRegistry"`
 	// EnableTrigger controls the HTTP trigger for the app.
-	//   Create: only a value of true mints a bearer token (returned once).
+	//   Create: accepted but intentionally ignored — tokens are NOT
+	//           minted at create time. They are generated on demand via
+	//           POST /api/apps/{id}/rotate-trigger-token once the app exists.
 	//   Update: nil leaves state alone; true mints a token if none exists;
 	//           false clears the token (trigger endpoint returns 404).
 	EnableTrigger *bool `json:"enableTrigger"`

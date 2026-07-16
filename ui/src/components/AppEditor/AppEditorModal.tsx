@@ -47,7 +47,10 @@ export function AppEditorModal({
     exposedPortsDraft,
     setExposedPortsDraft,
     handleSubmit,
-    onRotate,
+    revealedToken,
+    triggerEnabled,
+    onGenerate,
+    onDisable,
     isPending,
   } = useAppEditorForm({ open, editing, onSaved })
 
@@ -154,7 +157,13 @@ export function AppEditorModal({
           <p className="text-xs text-[var(--fg-muted)] mb-4">
             {t('editor.tabTriggerDesc')}
           </p>
-          <TriggerSection editing={editing} onRotate={onRotate} form={form} />
+          <TriggerSection
+            editing={editing}
+            triggerConfigured={triggerEnabled}
+            revealedToken={revealedToken}
+            onGenerate={onGenerate}
+            onDisable={onDisable}
+          />
         </div>
       ),
     },

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -376,4 +377,83 @@ func TestVerifyToken(t *testing.T) {
 func newDBClient(t *testing.T) *db.DB {
 	t.Helper()
 	return newTestDB(t)
+}
+
+// --- RotateTriggerToken (generate / rotate token) -----------------------
+
+func postRotate(t *testing.T, h *Handlers, id int) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/apps/"+strconv.Itoa(id)+"/rotate-trigger-token", nil)
+	req.SetPathValue("id", strconv.Itoa(id))
+	w := httptest.NewRecorder()
+	h.RotateTriggerToken(w, req)
+	return w
+}
+
+// TestRotateTriggerToken_GeneratesWhenAbsent confirms that a fresh app with
+// no trigger token can have one minted on demand — this is the new
+// "generate token" path that no longer happens at create time.
+func TestRotateTriggerToken_GeneratesWhenAbsent(t *testing.T) {
+	h, app := newTestHandlers(t, false) // seed with NO token
+	w := postRotate(t, h, app.ID)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+
+	var dto map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &dto); err != nil {
+		t.Fatalf("parse body: %v", err)
+	}
+	tok, _ := dto["triggerToken"].(string)
+	if tok == "" {
+		t.Fatalf("expected triggerToken in response, got %v", dto)
+	}
+
+	// The returned token is plaintext; the stored value must be encrypted.
+	got, err := h.DB.App.Get(context.Background(), app.ID)
+	if err != nil {
+		t.Fatalf("get app: %v", err)
+	}
+	if got.TriggerToken == nil || *got.TriggerToken == "" {
+		t.Fatal("expected stored (encrypted) token, got nil/empty")
+	}
+	if *got.TriggerToken == tok {
+		t.Error("stored token should be encrypted, not the returned plaintext")
+	}
+	if !strings.HasPrefix(*got.TriggerToken, "enc:") {
+		t.Errorf("stored token should carry the enc: prefix, got %q", *got.TriggerToken)
+	}
+}
+
+// TestRotateTriggerToken_RotatesExisting confirms that rotating an app that
+// already has a token replaces it with a fresh, different value.
+func TestRotateTriggerToken_RotatesExisting(t *testing.T) {
+	h, app := newTestHandlers(t, true) // seed with a token
+	before, err := h.DB.App.Get(context.Background(), app.ID)
+	if err != nil {
+		t.Fatalf("get app: %v", err)
+	}
+
+	w := postRotate(t, h, app.ID)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+	var dto map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &dto); err != nil {
+		t.Fatalf("parse body: %v", err)
+	}
+	if _, ok := dto["triggerToken"].(string); !ok {
+		t.Fatalf("expected triggerToken in response, got %v", dto)
+	}
+
+	after, err := h.DB.App.Get(context.Background(), app.ID)
+	if err != nil {
+		t.Fatalf("get app: %v", err)
+	}
+	if after.TriggerToken == nil {
+		t.Fatal("expected stored token after rotate")
+	}
+	if before.TriggerToken == nil || *after.TriggerToken == *before.TriggerToken {
+		t.Error("rotated token should differ from the previously stored token")
+	}
 }

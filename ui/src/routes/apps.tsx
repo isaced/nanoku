@@ -29,7 +29,6 @@ import {
 import type { App as AppType } from '../lib/types'
 import { AppDetail } from '../components/AppDetailDrawer'
 import { AppEditorModal, type AppEditorSaveResult } from '../components/AppEditor'
-import { TriggerTokenModal } from '../components/TriggerTokenModal'
 import { RouteError } from '../components/RouteError'
 import { RouteFallback } from '../components/RouteFallback'
 
@@ -59,7 +58,6 @@ function AppsPageContent() {
   const [editing, setEditing] = useState<AppType | null>(null)
   const [detailAppId, setDetailAppId] = useState<number | null>(null)
   const [detailInitialTab, setDetailInitialTab] = useState<'overview' | 'deploys' | 'logs'>('overview')
-  const [revealedToken, setRevealedToken] = useState<{ url: string; token: string; appName: string } | null>(null)
 
   const appsQuery = useSuspenseApps()
   const statusQuery = useSuspenseStatus()
@@ -90,21 +88,12 @@ function AppsPageContent() {
   }
 
   function handleSaved({ saved, previous, isNew }: AppEditorSaveResult) {
-    if (!isNew) {
-      message.success(t('toast.updated', { name: saved.name }))
-    }
     setEditorOpen(false)
     if (isNew) {
       message.success(t('toast.added', { name: saved.name }))
-      if (saved.triggerToken) {
-        setRevealedToken({
-          url: `${window.location.origin}/api/apps/${saved.name}/trigger`,
-          token: saved.triggerToken,
-          appName: saved.name,
-        })
-      }
       return
     }
+    message.success(t('toast.updated', { name: saved.name }))
     const appForRedeploy: AppType = { ...previous!, ...saved }
     modal.confirm({
       title: t('redeployPrompt.title', { name: appForRedeploy.name }),
@@ -373,15 +362,6 @@ function AppsPageContent() {
         onClose={() => setEditorOpen(false)}
         onSaved={handleSaved}
       />
-
-      {revealedToken && (
-        <TriggerTokenModal
-          appName={revealedToken.appName}
-          url={revealedToken.url}
-          token={revealedToken.token}
-          onClose={() => setRevealedToken(null)}
-        />
-      )}
 
       {detailAppId !== null && (
         <AppDetail

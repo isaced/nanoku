@@ -22,10 +22,12 @@ func randomToken() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-// RotateTriggerToken issues a new random token for the app's trigger
-// endpoint. The new token is returned in the response body — caller must
-// copy it before discarding the response; subsequent Get/List calls do
-// not return it.
+// RotateTriggerToken issues a fresh random token for the app's trigger
+// endpoint and returns it in the response body — the caller must copy it
+// before discarding the response; subsequent Get/List calls do not return
+// it. It doubles as the "generate" action: it mints a token whether or not
+// one already existed (rotating an existing token, or creating the first
+// one for a trigger that was enabled without a credential yet).
 func (h *Handlers) RotateTriggerToken(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {
@@ -39,10 +41,6 @@ func (h *Handlers) RotateTriggerToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeInternalErr(w, err)
-		return
-	}
-	if a.TriggerToken == nil || *a.TriggerToken == "" {
-		writeErr(w, http.StatusConflict, errors.New("trigger not configured for this app"))
 		return
 	}
 	tok, err := randomToken()
@@ -63,26 +61,6 @@ func (h *Handlers) RotateTriggerToken(w http.ResponseWriter, r *http.Request) {
 	dto := h.toAppDTO(r.Context(), a)
 	dto.TriggerToken = tok
 	writeJSON(w, http.StatusOK, dto)
-}
-
-// ensureAppTriggerToken generates a token for an app that doesn't have one
-// yet. Called from CreateApp / UpdateApp when an app first becomes
-// trigger-capable. Centralized so the generation rules (length, encoding)
-// live in one place and we never have to think about which path to take.
-func (h *Handlers) ensureAppTriggerToken(a *db.App) error {
-	if a.TriggerToken != nil && *a.TriggerToken != "" {
-		return nil
-	}
-	tok, err := randomToken()
-	if err != nil {
-		return fmt.Errorf("generate token: %w", err)
-	}
-	enc, err := h.Secret.EncryptString(tok)
-	if err != nil {
-		return fmt.Errorf("encrypt token: %w", err)
-	}
-	a.TriggerToken = &enc
-	return nil
 }
 
 // appHasToken is a small predicate used by DTO assembly to decide whether
