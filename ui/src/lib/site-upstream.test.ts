@@ -1,11 +1,10 @@
-// @vitest-environment jsdom
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   appOptionLabel,
   computeUpstreamForAppUI,
   serviceOptionLabel,
-} from './sites'
-import type { App } from '../lib/types'
+} from './site-upstream'
+import type { App } from './types'
 
 // These tests cover the App-select label rendering. The label
 // surfaces the app's mode + (for compose) how many services the

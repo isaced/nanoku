@@ -1,13 +1,8 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useState } from 'react'
 import {
   App,
   Button,
-  Form,
-  Input,
-  Modal,
-  Select,
-  Skeleton,
   Table,
   Tag,
   Tooltip,
@@ -15,30 +10,31 @@ import {
 import {
   Pencil,
   Plus,
-  RefreshCw,
   ToggleLeft,
   ToggleRight,
   Trash2,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ensureAuth, isAuthenticated } from '../lib/auth'
-import { isValidDomain } from '../lib/domain-validation'
 import {
   useAction,
   useCreateSite,
   useDeleteSite,
   useSuspenseApps,
-  useSuspenseCaddyfile,
   useSuspenseSites,
   useSuspenseStatus,
   useToggleSite,
   useUpdateSite,
 } from '../lib/hooks'
-import type { App as AppType, Site } from '../lib/types'
-import { QueryErrorBoundary } from '../components/QueryErrorBoundary'
-import { SiteStatusBadge } from '../components/SiteStatusBadge'
+import type { Site } from '../lib/types'
+import { CaddyfilePreview } from '../components/CaddyfilePreview'
 import { RouteError } from '../components/RouteError'
 import { RouteFallback } from '../components/RouteFallback'
+import {
+  SiteEditorModal,
+  type SiteEditorSubmitPayload,
+} from '../components/SiteEditorModal'
+import { SiteStatusBadge } from '../components/SiteStatusBadge'
 
 export const Route = createFileRoute('/sites')({
   beforeLoad: async () => {
@@ -59,82 +55,11 @@ function SitesPage() {
   )
 }
 
-// Form shape for the site editor. The upstream field is shown as
-// read-only when an app is linked (it gets auto-resolved server-side
-// at submit time), and editable when the user picked the "no app ·
-// custom upstream" route. appService is the compose-only service
-// selector; it's only validated server-side against the linked app's
-// exposed_ports, so the type stays loose.
-type SiteFormValues = {
-  domain: string
-  upstream: string
-  appId?: number
-  appService?: string
-  scheme: 'http' | 'https'
-}
-
-// appOptionLabel renders the row shown in the App select. Docker
-// apps get the legacy `name · image :port` shape; compose apps
-// describe themselves by service count so the operator can see at a
-// glance whether the stack has 1 service (auto-pick) or N services
-// (will need a service pick). The "(no app · use custom upstream)"
-// entry is appended as a sentinel with a special id of 0; the form
-// maps it to a clearApp / empty upstream.
-export function appOptionLabel(a: AppType): string {
-  if (a.deployMethod === 'docker') {
-    return `${a.name} · docker · ${a.image || '(no image)'} :${a.port}`
-  }
-  const n = a.exposedPorts?.length ?? 0
-  if (n === 0) {
-    return `${a.name} · compose · (no exposed ports)`
-  }
-  if (n === 1) {
-    return `${a.name} · compose · ${n} service: ${a.exposedPorts![0].name}:${a.exposedPorts![0].port}`
-  }
-  return `${a.name} · compose · ${n} services`
-}
-
-// serviceOptionLabel formats a single compose service for the
-// service select. Mirrors appOptionLabel's terseness.
-export function serviceOptionLabel(name: string, port: number): string {
-  return `${name} · port ${port}`
-}
-
-// computeUpstreamForAppUI mirrors the server's upstreamFor
-// (internal/api/sites.go) so the form can preview the locked
-// upstream the moment the operator picks an app. Without it,
-// the disabled upstream input stays empty after `appId` changes
-// — the user sees a blank field, has no way to verify the value
-// the server will compute on submit, and for multi-service compose
-// the server would 400 on `appService` until they noticed.
-//
-// The compose branch uses the network alias `nanoku-<app>-<service>`
-// (no -1 suffix, no container name dependency) — the alias is the
-// stable routing identity and is what Caddy's reverse_proxy entry
-// will resolve to via Docker network DNS.
-export function computeUpstreamForAppUI(
-  app: AppType | undefined,
-  appService: string | undefined,
-): string {
-  if (!app) return ''
-  if (app.deployMethod === 'compose') {
-    if (!appService) return ''
-    const ports = app.exposedPorts ?? []
-    const ep = ports.find((p) => p.name === appService)
-    if (!ep) return ''
-    return `nanoku-${app.name}-${appService}:${ep.port}`
-  }
-  // docker mode: the alias is the app name; the actual container
-  // doesn't appear in the upstream.
-  return `nanoku-${app.name}:${app.port}`
-}
-
 function SitesPageContent() {
   const { modal } = App.useApp()
   const { t } = useTranslation('sites')
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<Site | null>(null)
-  const [form] = Form.useForm<SiteFormValues>()
 
   const sitesQuery = useSuspenseSites()
   const statusQuery = useSuspenseStatus()
@@ -151,133 +76,29 @@ function SitesPageContent() {
 
   const fetching = sitesQuery.isFetching || statusQuery.isFetching
 
-  // Sync `upstream` (and the auto-picked `appService` for single-service
-  // compose) every time the operator picks a new app or service. The
-  // upstream field is disabled when linked, so the only way the user
-  // can see what value the server will compute on submit is to have
-  // us mirror it into the form here. We also auto-pick when a compose
-  // app has exactly one service: that case used to be hidden in the
-  // UI (the server's auto-pick did the work), but the user wants the
-  // select visible for consistency. We still pick the lone service
-  // on the user's behalf so the save path stays a one-click action.
-  //
-  // The "switched apps" branch is detected by comparing the current
-  // appId to the last one we synced for. Without that check, changing
-  // a service would clobber the user's pick; without skipping when
-  // nothing changed, setFieldsValue would loop the effect on every
-  // re-render.
-  const appIdWatched = Form.useWatch('appId', form)
-  const appServiceWatched = Form.useWatch('appService', form)
-  const lastSyncedAppIdRef = useRef<number | undefined>(undefined)
-  useEffect(() => {
-    if (appIdWatched === undefined) {
-      // free-upstream mode: no app linked, nothing to derive.
-      lastSyncedAppIdRef.current = undefined
-      return
-    }
-    const app = apps.find((a) => a.id === appIdWatched)
-    if (!app) return
-
-    // appId changed since last sync: re-derive appService.
-    // appId unchanged but appService changed: respect the user's pick.
-    let nextService = appServiceWatched
-    if (lastSyncedAppIdRef.current !== appIdWatched) {
-      if (app.deployMethod === 'compose') {
-        const ports = app.exposedPorts ?? []
-        // Keep the existing selection only if it's still valid for
-        // this app. Otherwise auto-pick (single service) or clear
-        // (multi-service, let the user pick).
-        if (appServiceWatched && ports.some((p) => p.name === appServiceWatched)) {
-          nextService = appServiceWatched
-        } else {
-          nextService = ports.length === 1 ? ports[0].name : undefined
-        }
-      } else {
-        nextService = undefined
-      }
-    }
-
-    const upstream = computeUpstreamForAppUI(app, nextService)
-    lastSyncedAppIdRef.current = appIdWatched
-    // setFieldsValue is a no-op for the form state when nextService
-    // and upstream match the current values, so the re-render this
-    // effect triggers doesn't loop back into the effect.
-    form.setFieldsValue({ appService: nextService, upstream })
-  }, [appIdWatched, appServiceWatched, apps, form])
-
-  // Build app options for the editor select. The "no app" sentinel
-  // is encoded as id=0, which the API treats identically to the
-  // explicit `clearApp: true` flag.
-  const appOptions = useMemo(
-    () =>
-      apps.map((a) => ({
-        value: a.id,
-        label: appOptionLabel(a),
-      })),
-    [apps],
-  )
-
   function openCreate() {
     setEditing(null)
-    form.resetFields()
-    form.setFieldsValue({ scheme: 'https' })
     setEditorOpen(true)
   }
 
   function openEdit(s: Site) {
     setEditing(s)
-    // The site is "free-upstream" when it has no app_id. We represent
-    // that in the form by setting appId to undefined so the upstream
-    // field becomes editable.
-    form.setFieldsValue({
-      domain: s.domain,
-      upstream: s.upstream,
-      appId: s.appId,
-      appService: s.appService,
-      scheme: s.scheme,
-    })
     setEditorOpen(true)
   }
 
-  function onSubmit() {
-    void form.validateFields().then((values) => {
-      const isLinked = !!values.appId
-      const isFree = !isLinked
-      const payload: Parameters<typeof createSite.mutate>[0] = {
-        domain: values.domain,
-        scheme: values.scheme,
-      }
-      if (isLinked) {
-        payload.appId = values.appId
-        if (values.appService) payload.appService = values.appService
-        // Upstream is computed server-side; we never send it in the
-        // linked branch. (Sending a stale value would be ignored by
-        // the API but adds noise to the request body.)
-      } else if (isFree) {
-        if (values.upstream) payload.upstream = values.upstream
-      }
-      const onOk = () => {
-        setEditorOpen(false)
-      }
-      if (editing) {
-        // If the user clears the app linkage on an edit, route through
-        // the explicit clearApp flag so the server doesn't have to
-        // guess the difference between "no change" and "detach".
-        if (editing.appId && !values.appId) {
-          payload.clearApp = true
-          delete payload.appId
-        }
-        void action.run(updateSite.mutateAsync({ id: editing.id, input: payload }), {
-          onSuccess: onOk,
-        })
-      } else {
-        void action.run(createSite.mutateAsync(payload), {
-          success: t('toast.added', { domain: 'PLACEHOLDER' }),
-          successVars: (created) => ({ domain: created.domain }),
-          onSuccess: onOk,
-        })
-      }
-    })
+  function onSubmit(payload: SiteEditorSubmitPayload) {
+    if (editing) {
+      void action.run(
+        updateSite.mutateAsync({ id: editing.id, input: payload }),
+        { onSuccess: () => setEditorOpen(false) },
+      )
+    } else {
+      void action.run(createSite.mutateAsync(payload), {
+        success: t('toast.added', { domain: 'P' }),
+        successVars: (created) => ({ domain: created.domain }),
+        onSuccess: () => setEditorOpen(false),
+      })
+    }
   }
 
   function onToggle(s: Site) {
@@ -315,11 +136,7 @@ function SitesPageContent() {
                   })}
             </p>
           </div>
-          <Button
-            type="primary"
-            icon={<Plus size={14} />}
-            onClick={openCreate}
-          >
+          <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
             {t('newSite')}
           </Button>
         </div>
@@ -441,181 +258,14 @@ function SitesPageContent() {
         </div>
       </main>
 
-      <Modal
-        title={editing ? t('editor.editTitle') : t('editor.newTitle')}
+      <SiteEditorModal
         open={editorOpen}
-        onOk={onSubmit}
-        onCancel={() => setEditorOpen(false)}
-        okText={editing ? t('editor.save') : t('editor.create')}
-        cancelText={t('actions.cancel', { ns: 'common' })}
-        destroyOnClose
-        confirmLoading={createSite.isPending || updateSite.isPending}
-        width={620}
-      >
-        <Form form={form} layout="vertical" preserve={false}>
-          <Form.Item
-            name="domain"
-            label={t('editor.domain')}
-            rules={[
-              { required: true, message: t('editor.domainRequired') },
-              {
-                validator: (_rule, value) => {
-                  if (typeof value !== 'string' || !isValidDomain(value)) {
-                    return Promise.reject(new Error(t('editor.domainPattern')))
-                  }
-                  return Promise.resolve()
-                },
-              },
-            ]}
-          >
-            <Input placeholder={t('editor.domainPlaceholder')} autoFocus />
-          </Form.Item>
-
-          <Form.Item name="appId" label={t('editor.app')}>
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder={t('editor.appPlaceholder')}
-              options={appOptions}
-            />
-          </Form.Item>
-
-          {/* Service select: shown for every compose-mode app, including
-              single-service stacks (the previous "hide for <= 1 service"
-              shortcut broke the visual feedback that something was
-              auto-resolved and the upstream preview that depends on
-              appService). The auto-pick for the lone-service case is
-              handled by the upstream-sync effect above, so a fresh
-              pick of a single-service app lands with that service
-              already selected — same one-click UX, but now the user
-              sees the choice and the upstream updates in real time.
-              For compose apps with no exposed_ports we render a
-              disabled message instead of a select, so the operator
-              knows why linking won't work and where to fix it. */}
-          <Form.Item
-            noStyle
-            shouldUpdate={(prev, curr) => prev.appId !== curr.appId}
-          >
-            {({ getFieldValue }) => {
-              const appId = getFieldValue('appId') as number | undefined
-              const app = apps.find((a) => a.id === appId)
-              const isCompose = app?.deployMethod === 'compose'
-              if (!isCompose) return null
-              const services = app?.exposedPorts ?? []
-              if (services.length === 0) {
-                return (
-                  <Form.Item
-                    label={t('editor.service')}
-                    extra={t('editor.serviceNoneExtra', { name: app!.name })}
-                  >
-                    <Input disabled value={t('editor.serviceNone')} />
-                  </Form.Item>
-                )
-              }
-              return (
-                <Form.Item
-                  name="appService"
-                  label={t('editor.service')}
-                  rules={[
-                    { required: true, message: t('editor.serviceRequired') },
-                  ]}
-                  extra={t('editor.serviceExtra', { name: app!.name })}
-                >
-                  <Select
-                    placeholder={t('editor.servicePlaceholder')}
-                    options={services.map((s) => ({
-                      value: s.name,
-                      label: serviceOptionLabel(s.name, s.port),
-                    }))}
-                  />
-                </Form.Item>
-              )
-            }}
-          </Form.Item>
-
-          {/* Upstream is locked when an app is linked (server derives
-              it from app+service) and editable in the free-upstream
-              path. The conditional `rules` keeps the validator in
-              sync with the field's editability. The shouldUpdate
-              predicate watches both `appId` and `appService` so the
-              "Resolved from the compose stack" hint re-renders when
-              the user switches service (without that, the hint
-              would lag the input). The input value itself is kept
-              in sync by the upstream-sync effect at
-              the top of the page — this block just renders it. */}
-          <Form.Item
-            noStyle
-            shouldUpdate={(prev, curr) =>
-              prev.appId !== curr.appId ||
-              prev.appService !== curr.appService
-            }
-          >
-            {({ getFieldValue }) => {
-              const appId = getFieldValue('appId') as number | undefined
-              const app = apps.find((a) => a.id === appId)
-              const isLinked = !!appId
-              let extra: string
-              if (isLinked) {
-                const svc =
-                  (getFieldValue('appService') as string | undefined) ||
-                  (app?.exposedPorts?.length === 1
-                    ? app.exposedPorts![0].name
-                    : undefined)
-                if (app?.deployMethod === 'compose' && svc) {
-                  extra = t('editor.upstreamExtraAppService', {
-                    app: app.name,
-                    service: svc,
-                  })
-                } else {
-                  extra = t('editor.upstreamExtraApp')
-                }
-              } else {
-                extra = t('editor.upstreamExtraFree')
-              }
-              return (
-                <Form.Item
-                  name="upstream"
-                  label={t('editor.upstream')}
-                  rules={
-                    isLinked
-                      ? []
-                      : [
-                          {
-                            required: true,
-                            message: t('editor.upstreamRequired'),
-                          },
-                        ]
-                  }
-                  extra={extra}
-                >
-                  <Input
-                    placeholder={
-                      isLinked
-                        ? t('editor.upstreamPlaceholderApp')
-                        : t('editor.upstreamPlaceholderFree')
-                    }
-                    disabled={isLinked}
-                  />
-                </Form.Item>
-              )
-            }}
-          </Form.Item>
-
-          <Form.Item
-            name="scheme"
-            label={t('editor.scheme')}
-            extra={t('editor.schemeExtra')}
-          >
-            <Select
-              options={[
-                { value: 'https', label: t('editor.schemeHttps') },
-                { value: 'http', label: t('editor.schemeHttp') },
-              ]}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
+        editing={editing}
+        apps={apps}
+        isPending={createSite.isPending || updateSite.isPending}
+        onClose={() => setEditorOpen(false)}
+        onSubmit={onSubmit}
+      />
     </div>
   )
 }
@@ -635,47 +285,5 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
         {t('emptyState.addSite')}
       </Button>
     </div>
-  )
-}
-
-function CaddyfilePreview() {
-  const { t } = useTranslation('sites')
-  return (
-    <QueryErrorBoundary
-      fallback={(err, reset) => (
-        <div className="border border-[var(--border)] rounded-lg bg-[var(--bg-elevated)] p-4 flex items-center justify-between gap-3">
-          <span className="text-xs text-[var(--danger)] mono">
-            {t('caddyfile.failed')}: {(err as Error).message}
-          </span>
-          <Button
-            size="small"
-            icon={<RefreshCw size={12} />}
-            onClick={reset}
-          >
-            {t('actions.retry', { ns: 'common' })}
-          </Button>
-        </div>
-      )}
-    >
-      <Suspense
-        fallback={
-          <pre className="mono text-xs leading-relaxed bg-[var(--bg-input)] border border-[var(--border)] rounded-lg p-4 overflow-auto max-h-96 text-[var(--fg-muted)]">
-            <Skeleton active paragraph={{ rows: 4 }} title={false} />
-          </pre>
-        }
-      >
-        <CaddyfileContent />
-      </Suspense>
-    </QueryErrorBoundary>
-  )
-}
-
-function CaddyfileContent() {
-  const { t } = useTranslation('sites')
-  const caddyfile = useSuspenseCaddyfile()
-  return (
-    <pre className="mono text-xs leading-relaxed bg-[var(--bg-input)] border border-[var(--border)] rounded-lg p-4 overflow-auto max-h-96 text-[var(--fg-muted)]">
-      {caddyfile.data || t('caddyfile.empty')}
-    </pre>
   )
 }
