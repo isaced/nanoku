@@ -26,9 +26,8 @@ import (
 // and we want a single decoder that doesn't error on the integer
 // form. A typed []string would reject the int form.
 type composeService struct {
-	Ports         yaml.Node `yaml:"ports"`
-	Expose        yaml.Node `yaml:"expose"`
-	ContainerName string    `yaml:"container_name"`
+	Ports  yaml.Node `yaml:"ports"`
+	Expose yaml.Node `yaml:"expose"`
 }
 
 // composeFile is the top-level shape we decode into. Anything not
@@ -74,9 +73,8 @@ func ImportExposedPortsFromCompose(content string) ([]ExposedPort, error) {
 			continue
 		}
 		out = append(out, ExposedPort{
-			Name:          name,
-			Port:          pickServicePort(svc),
-			ContainerName: importableContainerName(svc.ContainerName),
+			Name: name,
+			Port: pickServicePort(svc),
 		})
 	}
 
@@ -113,27 +111,6 @@ func pickServicePort(svc composeService) int {
 		return p
 	}
 	return 0
-}
-
-// importableContainerName returns the trimmed container_name:
-// field if it is a literal value the operator can rely on. Compose
-// itself supports env-var interpolation in container_name:
-// (e.g. `container_name: ${NAME}`), but the result is only known
-// after `docker compose up` substitutes the variable, which is
-// *after* this import runs. Storing a `${...}` literal would force
-// the Caddy upstream to carry a never-resolving host, so we
-// treat any `$` placeholder as "absent" and let the deploy-time
-// compose-default name take over. Operators can still hand-edit
-// the resolved value in the editor once the env is known.
-func importableContainerName(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-	if strings.Contains(raw, "$") {
-		return ""
-	}
-	return raw
 }
 
 // firstScalarInt reads the first scalar integer from a yaml.Node

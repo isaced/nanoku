@@ -3,9 +3,6 @@ package caddy
 import (
 	"strings"
 	"testing"
-
-	"github.com/isaced/nanoku/internal/db"
-	sitepkg "github.com/isaced/nanoku/internal/db/site"
 )
 
 func TestRender_EmptySites(t *testing.T) {
@@ -19,9 +16,9 @@ func TestRender_EmptySites(t *testing.T) {
 }
 
 func TestRender_DisabledSitesAreSkipped(t *testing.T) {
-	sites := []*db.Site{
-		{Domain: "a.example.com", Upstream: "app:3000", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
-		{Domain: "b.example.com", Upstream: "app:3001", Scheme: sitepkg.SchemeHTTPS, Enabled: false},
+	sites := []Site{
+		{Domain: "a.example.com", Upstream: "app:3000", Scheme: "https", Enabled: true},
+		{Domain: "b.example.com", Upstream: "app:3001", Scheme: "https", Enabled: false},
 	}
 	out := Render(sites, "")
 	if !strings.Contains(out, "a.example.com") {
@@ -33,10 +30,10 @@ func TestRender_DisabledSitesAreSkipped(t *testing.T) {
 }
 
 func TestRender_SortsByDomain(t *testing.T) {
-	sites := []*db.Site{
-		{Domain: "zeta.example.com", Upstream: "a:1", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
-		{Domain: "alpha.example.com", Upstream: "a:2", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
-		{Domain: "mike.example.com", Upstream: "a:3", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
+	sites := []Site{
+		{Domain: "zeta.example.com", Upstream: "a:1", Scheme: "https", Enabled: true},
+		{Domain: "alpha.example.com", Upstream: "a:2", Scheme: "https", Enabled: true},
+		{Domain: "mike.example.com", Upstream: "a:3", Scheme: "https", Enabled: true},
 	}
 	out := Render(sites, "")
 	zi := strings.Index(out, "zeta")
@@ -55,7 +52,7 @@ func TestRender_ACMEEmail(t *testing.T) {
 }
 
 func TestRender_HTTPSSiteUsesDefaultHTTPS(t *testing.T) {
-	out := Render([]*db.Site{{Domain: "x.example.com", Upstream: "app:80", Scheme: sitepkg.SchemeHTTPS, Enabled: true}}, "")
+	out := Render([]Site{{Domain: "x.example.com", Upstream: "app:80", Scheme: "https", Enabled: true}}, "")
 	if strings.Contains(out, "auto_https off") {
 		t.Errorf("auto_https should NOT be off by default:\n%s", out)
 	}
@@ -68,7 +65,7 @@ func TestRender_HTTPSSiteUsesDefaultHTTPS(t *testing.T) {
 }
 
 func TestRender_HTTPSiteForcesHTTPScheme(t *testing.T) {
-	out := Render([]*db.Site{{Domain: "x.example.com", Upstream: "app:80", Scheme: sitepkg.SchemeHTTP, Enabled: true}}, "")
+	out := Render([]Site{{Domain: "x.example.com", Upstream: "app:80", Scheme: "http", Enabled: true}}, "")
 	if !strings.Contains(out, "http://x.example.com") {
 		t.Errorf("http site should force http:// scheme:\n%s", out)
 	}
@@ -79,9 +76,9 @@ func TestRender_HTTPSiteForcesHTTPScheme(t *testing.T) {
 
 func TestRender_AutoHTTPSGloballyOff(t *testing.T) {
 	t.Setenv("NANOKU_CADDY_AUTO_HTTPS", "false")
-	out := Render([]*db.Site{
-		{Domain: "a.example.com", Upstream: "app:1", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
-		{Domain: "b.example.com", Upstream: "app:2", Scheme: sitepkg.SchemeHTTP, Enabled: true},
+	out := Render([]Site{
+		{Domain: "a.example.com", Upstream: "app:1", Scheme: "https", Enabled: true},
+		{Domain: "b.example.com", Upstream: "app:2", Scheme: "http", Enabled: true},
 	}, "")
 	if !strings.Contains(out, "auto_https off") {
 		t.Errorf("env=false should emit global auto_https off block:\n%s", out)
@@ -97,8 +94,8 @@ func TestRender_AutoHTTPSGloballyOff(t *testing.T) {
 }
 
 func TestRender_LoopbackSiteForcesHTTP(t *testing.T) {
-	out := Render([]*db.Site{
-		{Domain: "localhost", Upstream: "app:3000", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
+	out := Render([]Site{
+		{Domain: "localhost", Upstream: "app:3000", Scheme: "https", Enabled: true},
 	}, "")
 	if !strings.Contains(out, "auto_https off") {
 		t.Errorf("loopback site should force global auto_https off:\n%s", out)
@@ -112,9 +109,9 @@ func TestRender_LoopbackSiteForcesHTTP(t *testing.T) {
 }
 
 func TestRender_LoopbackIPLiteralForcesHTTP(t *testing.T) {
-	out := Render([]*db.Site{
-		{Domain: "127.0.0.1", Upstream: "app:3000", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
-		{Domain: "::1", Upstream: "app:3000", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
+	out := Render([]Site{
+		{Domain: "127.0.0.1", Upstream: "app:3000", Scheme: "https", Enabled: true},
+		{Domain: "::1", Upstream: "app:3000", Scheme: "https", Enabled: true},
 	}, "")
 	if !strings.Contains(out, "http://127.0.0.1") {
 		t.Errorf("127.0.0.1 should render as http://:\n%s", out)
@@ -125,8 +122,8 @@ func TestRender_LoopbackIPLiteralForcesHTTP(t *testing.T) {
 }
 
 func TestRender_LoopbackSubdomainForcesHTTP(t *testing.T) {
-	out := Render([]*db.Site{
-		{Domain: "app.localhost", Upstream: "app:3000", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
+	out := Render([]Site{
+		{Domain: "app.localhost", Upstream: "app:3000", Scheme: "https", Enabled: true},
 	}, "")
 	if !strings.Contains(out, "http://app.localhost") {
 		t.Errorf("*.localhost should render as http://:\n%s", out)
@@ -139,9 +136,9 @@ func TestRender_LoopbackSiteMixedWithPublicKeepsGlobalOff(t *testing.T) {
 	// HTTPS — users mixing both should put them on separate Nanoku
 	// instances or stick to one scheme. We only assert the rendering
 	// consequence here, not the deployment guidance.
-	out := Render([]*db.Site{
-		{Domain: "localhost", Upstream: "a:1", Scheme: sitepkg.SchemeHTTP, Enabled: true},
-		{Domain: "app.example.com", Upstream: "b:2", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
+	out := Render([]Site{
+		{Domain: "localhost", Upstream: "a:1", Scheme: "http", Enabled: true},
+		{Domain: "app.example.com", Upstream: "b:2", Scheme: "https", Enabled: true},
 	}, "")
 	if !strings.Contains(out, "auto_https off") {
 		t.Errorf("any loopback site should still flip global auto_https off:\n%s", out)
@@ -151,9 +148,9 @@ func TestRender_LoopbackSiteMixedWithPublicKeepsGlobalOff(t *testing.T) {
 func TestRender_DisabledLoopbackSiteDoesNotForceGlobalOff(t *testing.T) {
 	// A loopback site that's disabled should not pull auto_https down,
 	// otherwise the user gets a confusing global state change.
-	out := Render([]*db.Site{
-		{Domain: "localhost", Upstream: "a:1", Scheme: sitepkg.SchemeHTTP, Enabled: false},
-		{Domain: "app.example.com", Upstream: "b:2", Scheme: sitepkg.SchemeHTTPS, Enabled: true},
+	out := Render([]Site{
+		{Domain: "localhost", Upstream: "a:1", Scheme: "http", Enabled: false},
+		{Domain: "app.example.com", Upstream: "b:2", Scheme: "https", Enabled: true},
 	}, "")
 	if strings.Contains(out, "auto_https off") {
 		t.Errorf("disabled loopback site should not flip global auto_https off:\n%s", out)

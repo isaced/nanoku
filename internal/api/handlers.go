@@ -103,7 +103,7 @@ func (h *Handlers) Status(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) CaddyfilePreview(w http.ResponseWriter, r *http.Request) {
-	resolved, err := h.resolveSiteUpstreams(r)
+	resolved, err := h.resolveCaddySites(r.Context())
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
@@ -124,7 +124,7 @@ func (h *Handlers) regenerateAndReload(r *http.Request) error {
 // goroutines that don't have a *http.Request (e.g. the trigger
 // deploy worker).
 func (h *Handlers) regenerateAndReloadCtx(ctx context.Context) error {
-	resolved, err := h.resolveSiteUpstreamsCtx(ctx)
+	resolved, err := h.resolveCaddySites(ctx)
 	if err != nil {
 		return err
 	}

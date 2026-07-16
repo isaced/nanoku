@@ -10,7 +10,7 @@ import (
 	"github.com/isaced/nanoku/internal/db"
 )
 
-// composeProjectName / composeServiceContainerName are the two
+// composeProjectName / networkAliasForService are the two
 // pure-name helpers behind the upstream formula. They're easy
 // to break in a rename refactor and the bug would surface as
 // "502 Bad Gateway" from Caddy, so dedicated tests are worth
@@ -21,11 +21,14 @@ func TestComposeProjectName(t *testing.T) {
 	}
 }
 
-func TestComposeServiceContainerName(t *testing.T) {
-	// The -1 suffix is compose's default replica index; v2
-	// multi-replica will need to extend this with a pick.
-	if got := composeServiceContainerName("kuma", "uptime-kuma"); got != "nanoku-kuma-uptime-kuma-1" {
-		t.Errorf("got %q, want nanoku-kuma-uptime-kuma-1", got)
+func TestNetworkAliasForService(t *testing.T) {
+	// The alias has no -1 suffix; the alias is independent
+	// of the container replica index, so multi-replica
+	// stacks resolve to the same string and Docker DNS
+	// round-robins across all containers carrying the
+	// alias.
+	if got := networkAliasForService("kuma", "uptime-kuma"); got != "nanoku-kuma-uptime-kuma" {
+		t.Errorf("got %q, want nanoku-kuma-uptime-kuma", got)
 	}
 }
 
@@ -147,22 +150,12 @@ func TestLoadMounts_EmptyAndOrdered(t *testing.T) {
 	}
 }
 
-// derefString is the renamed (and inlined) svcStringOrEmpty
-// helper from the previous sites.go. It's a single line but
-// pinned here because the nil-vs-empty distinction is exactly
-// the kind of bug that would surface as a stale upstream after
-// a PATCH.
-func TestDerefString(t *testing.T) {
-	if got := derefString(nil); got != "" {
-		t.Errorf("nil → %q, want empty", got)
-	}
-	s := "web"
-	if got := derefString(&s); got != "web" {
-		t.Errorf("&s → %q, want web", got)
-	}
-	empty := ""
-	if got := derefString(&empty); got != "" {
-		t.Errorf("&empty → %q, want empty", got)
+// networkAliasForApp is the docker-mode sibling of the
+// compose-mode networkAliasForService. Same shape, no service
+// suffix, used by sites linked to a docker-mode app.
+func TestNetworkAliasForApp(t *testing.T) {
+	if got := networkAliasForApp("blog"); got != "nanoku-blog" {
+		t.Errorf("got %q, want nanoku-blog", got)
 	}
 }
 

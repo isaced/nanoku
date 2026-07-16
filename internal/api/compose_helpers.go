@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/isaced/nanoku/internal/db"
 	"github.com/isaced/nanoku/internal/db/volume"
@@ -41,39 +40,22 @@ func composeProjectName(appName string) string {
 	return "nanoku-" + appName
 }
 
-// composeServiceContainerName returns the docker-compose
-// container name for a service within an app's stack. The -1
-// suffix is compose's default replica index; multi-replica
-// stacks (v2) will need a different pick.
-//
-// This is the upstream target Caddy reverse-proxies to: the
-// compose network routes <container-name>:<port> to the right
-// service without us having to think about host ports.
-func composeServiceContainerName(appName, service string) string {
-	return "nanoku-" + appName + "-" + service + "-1"
+// networkAliasForService returns the stable network alias nanoku
+// attaches to a compose service's containers at deploy time, so
+// Caddy can reverse-proxy to it via Docker network DNS. The alias
+// is derived purely from (app, service) and never depends on the
+// actual container name or the compose replica index — that's the
+// whole point of the alias approach: container rotation, scaling,
+// and `docker compose down && up` all leave the alias intact.
+func networkAliasForService(appName, service string) string {
+	return "nanoku-" + appName + "-" + service
 }
 
-// resolveServiceContainerName returns the host:port component
-// for a site targeting a compose service. Order of resolution:
-//
-//  1. override — set by the operator or imported from the
-//     compose file's `container_name:` field. Required when the
-//     user opts out of the compose-default name (otherwise the
-//     Caddyfile upstream and the deploy-time missing-check both
-//     miss the actual running container and the route 502s).
-//  2. compose default — `nanoku-<app>-<service>-1`.
-//
-// We trust the override if it matches the docker container-name
-// pattern (see containerNameRe). Anything with shell-special
-// characters, spaces, or path separators falls through to the
-// default rather than reaching the Caddyfile / docker cli — both
-// of which would be unsafe to inject unchecked.
-func resolveServiceContainerName(appName, service, override string) string {
-	override = strings.TrimSpace(override)
-	if override != "" && containerNameRe.MatchString(override) {
-		return override
-	}
-	return composeServiceContainerName(appName, service)
+// networkAliasForApp returns the stable network alias nanoku
+// attaches to a docker-mode app's container. Same story as
+// networkAliasForService but for the single-container case.
+func networkAliasForApp(appName string) string {
+	return "nanoku-" + appName
 }
 
 // resolveComposeFile returns the compose file path actually used

@@ -10,49 +10,34 @@ import (
 )
 
 // ExposedPort is a single (service name, container-side port) pair declared by
-// a compose-mode app. Caddy uses the port as the upstream target; the name
-// matches a service in the app's compose file and a container name of the
-// shape `nanoku-<app>-<name>-1` once the stack is up.
+// a compose-mode app. The name matches a service in the app's compose file;
+// port is what that service listens on inside the container. Caddy uses both
+// to form the stable network-alias upstream `nanoku-<app>-<name>:<port>`.
 //
 // The struct is also serialized to JSON in the App.exposed_ports DB column,
 // so changing field tags / names is a wire-format break.
 type ExposedPort struct {
 	// Service name as it appears in the compose file (e.g. "web", "api").
 	// Must be DNS-1123 label-friendly: lowercase, alnum + dash, ≤ 63 chars.
-	// Matches the form compose uses to suffix container names so that
-	// `nanoku-<app>-<name>-1` is the actual running container we proxy to.
+	// The name is the suffix of the network alias
+	// (`nanoku-<app>-<name>`) that Caddy reverse-proxies to via Docker
+	// network DNS — independent of the actual container name, so it
+	// doesn't rotate on redeploys.
 	Name string `json:"name"`
 	// Container-side port the service listens on (1..65535). Caddy
-	// reverse-proxies to `<container-name>:<port>` over the nanoku network.
+	// reverse-proxies to `<alias>:<port>` over the nanoku network.
 	Port int `json:"port"`
-	// ContainerName is the actual docker container name for this service
-	// when it differs from the compose-default `nanoku-<app>-<name>-1`.
-	// Set from the compose file's `container_name:` field at import time
-	// (or by hand in the editor); empty means "use the default". Caddy
-	// upstream and the deploy-time missing-check both read through
-	// resolveServiceContainerName so the two stay in lockstep.
-	ContainerName string `json:"containerName"`
 }
 
 // serviceNameRe mirrors compose's constraint on service names: a service name
 // must start with a letter or digit and may contain letters, digits,
 // underscores, and hyphens. We tighten underscores away so the resulting
-// container suffix stays DNS-1123 label compatible (docker compose allows
-// underscores, but other downstream consumers — and our own Caddyfile
-// rendering — prefer dashes). Keeping it strict here also rules out
-// injection attempts where a name like "../etc" would otherwise slip
+// network-alias suffix stays DNS-1123 label compatible (docker compose
+// allows underscores, but other downstream consumers — and our own
+// Caddyfile rendering — prefer dashes). Keeping it strict here also rules
+// out injection attempts where a name like "../etc" would otherwise slip
 // through a less strict validator.
 var serviceNameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
-
-// containerNameRe is the validation pattern for ExposedPort.ContainerName
-// — the user-supplied actual docker container name for the service. It is
-// intentionally broader than serviceNameRe (docker itself accepts
-// `[a-zA-Z0-9_.-]`, ≤ 64 chars); the user's compose `container_name:`
-// may contain underscores or upper-case that compose defaults never
-// produce, and we want to round-trip whatever the user wrote. We still
-// reject spaces, slashes, and other shell-special chars that would
-// break the Caddyfile or the deploy-time `docker compose ps` lookup.
-var containerNameRe = regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,64}$`)
 
 // ParseExposedPorts decodes the App.exposed_ports JSON column. The column is
 // nullable; a nil/empty raw value is a valid "no exposed_ports" state and
@@ -93,12 +78,6 @@ func ParseExposedPorts(raw *string) ([]ExposedPort, error) {
 		if ep.Port < 1 || ep.Port > 65535 {
 			return nil, fmt.Errorf("exposed_ports[%d]: port must be 1..65535", i)
 		}
-		if cn := strings.TrimSpace(ep.ContainerName); cn != "" {
-			if !containerNameRe.MatchString(cn) {
-				return nil, fmt.Errorf("exposed_ports[%d]: containerName %q must match %s", i, cn, containerNameRe.String())
-			}
-			ep.ContainerName = cn
-		}
 		if _, dup := seen[name]; dup {
 			return nil, fmt.Errorf("exposed_ports[%d]: duplicate name %q", i, name)
 		}
@@ -114,7 +93,7 @@ func ParseExposedPorts(raw *string) ([]ExposedPort, error) {
 }
 
 // MarshalExposedPorts encodes a list to the App.exposed_ports column format.
-// Returns ("", nil) for an empty/nil list so the column stays NULLABLE in
+// Returns (nil, nil) for an empty/nil list so the column stays NULLABLE in
 // the DB rather than carrying an empty JSON array.
 func MarshalExposedPorts(ports []ExposedPort) (*string, error) {
 	if len(ports) == 0 {
@@ -133,12 +112,6 @@ func MarshalExposedPorts(ports []ExposedPort) (*string, error) {
 		}
 		if ep.Port < 1 || ep.Port > 65535 {
 			return nil, fmt.Errorf("exposed_ports[%d]: port must be 1..65535", i)
-		}
-		if cn := strings.TrimSpace(ep.ContainerName); cn != "" {
-			if !containerNameRe.MatchString(cn) {
-				return nil, fmt.Errorf("exposed_ports[%d]: containerName %q must match %s", i, cn, containerNameRe.String())
-			}
-			ports[i].ContainerName = cn
 		}
 		if _, dup := seen[name]; dup {
 			return nil, fmt.Errorf("exposed_ports[%d]: duplicate name %q", i, name)

@@ -68,7 +68,7 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	sites, err := h.DB.Site.Query().
-		WithApp(func(q *db.AppQuery) { q.WithCurrentContainer() }).
+		WithApp().
 		Order(site.ByDomain()).
 		All(ctx)
 	if err != nil {
@@ -85,10 +85,12 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 	siteDTOs := make([]DashboardSiteDTO, 0, len(sites))
 	for _, s := range sites {
 		d := DashboardSiteDTO{
-			ID:       s.ID,
-			Domain:   s.Domain,
-			Upstream: s.Upstream,
-			Enabled:  s.Enabled,
+			ID:      s.ID,
+			Domain:  s.Domain,
+			Enabled: s.Enabled,
+		}
+		if s.Upstream != nil {
+			d.Upstream = *s.Upstream
 		}
 		if s.Enabled {
 			enabledCount++
@@ -97,6 +99,9 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 			id := s.Edges.App.ID
 			d.AppID = &id
 			d.AppName = s.Edges.App.Name
+			if derived := upstreamFor(s.Edges.App, s.AppService); derived != "" {
+				d.Upstream = derived
+			}
 		}
 		siteDTOs = append(siteDTOs, d)
 	}

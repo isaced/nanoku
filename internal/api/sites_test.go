@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/isaced/nanoku/internal/db"
-	"github.com/isaced/nanoku/internal/db/app"
 	"github.com/isaced/nanoku/internal/db/site"
 )
 
@@ -225,7 +224,7 @@ func TestCreateSite_ComposeApp_ResolvesFromExposedPort(t *testing.T) {
 	if dto.AppID == nil || *dto.AppID != a.ID {
 		t.Fatalf("appId = %v, want %d", dto.AppID, a.ID)
 	}
-	want := "nanoku-kuma-uptime-kuma-1:3001"
+	want := "nanoku-kuma-uptime-kuma:3001"
 	if dto.Upstream != want {
 		t.Errorf("upstream = %q, want %q", dto.Upstream, want)
 	}
@@ -251,8 +250,8 @@ func TestCreateSite_ComposeApp_AppServiceOverridesExposedPort(t *testing.T) {
 		"appService": "api",
 	})
 	dto := decodeSite(t, w)
-	if dto.Upstream != "nanoku-stack-api-1:8080" {
-		t.Errorf("upstream = %q, want nanoku-stack-api-1:8080", dto.Upstream)
+	if dto.Upstream != "nanoku-stack-api:8080" {
+		t.Errorf("upstream = %q, want nanoku-stack-api:8080", dto.Upstream)
 	}
 	if dto.AppService != "api" {
 		t.Errorf("appService = %q, want api", dto.AppService)
@@ -317,14 +316,14 @@ func TestUpdateSite_ComposeApp_ChangeServiceRewritesUpstream(t *testing.T) {
 		"appService": "web",
 	})
 	dto := decodeSite(t, w)
-	if dto.Upstream != "nanoku-stack-web-1:80" {
+	if dto.Upstream != "nanoku-stack-web:80" {
 		t.Fatalf("initial upstream = %q", dto.Upstream)
 	}
 
 	w2 := patchSite(t, h, dto.ID, map[string]any{"appService": "api"})
 	dto2 := decodeSite(t, w2)
-	if dto2.Upstream != "nanoku-stack-api-1:8080" {
-		t.Errorf("after swap upstream = %q, want nanoku-stack-api-1:8080", dto2.Upstream)
+	if dto2.Upstream != "nanoku-stack-api:8080" {
+		t.Errorf("after swap upstream = %q, want nanoku-stack-api:8080", dto2.Upstream)
 	}
 	if dto2.AppService != "api" {
 		t.Errorf("appService = %q, want api", dto2.AppService)
@@ -369,95 +368,76 @@ func TestUpdateSite_ClearApp_DetachesAndClearsUpstream(t *testing.T) {
 
 // --- upstream resolution helpers ---------------------------------------
 
-// TestComputeUpstreamForApp_Docker exercises the upstream formula
-// directly so we don't have to spin up a Handlers/Docker stack just
-// for the calculation.
-func TestComputeUpstreamForApp_Docker(t *testing.T) {
+// TestUpstreamFor_Docker exercises the docker-mode upstream formula
+// directly. The output must depend only on the app name and the
+// port — NOT on the current_container.name, since the alias is
+// the stable routing identity.
+func TestUpstreamFor_Docker(t *testing.T) {
 	h := newSiteTestHandlers(t)
 	a := seedAppDocker(t, h, "blog")
-	a2, err := h.DB.App.Query().Where(app.IDEQ(a.ID)).WithCurrentContainer().Only(context.Background())
-	if err != nil {
-		t.Fatalf("reload app with current_container: %v", err)
-	}
-	got := computeUpstreamForApp(a2, nil)
+	// Note: NOT loading current_container — the formula doesn't
+	// depend on it. The old behavior (computeUpstreamForApp reading
+	// current_container.name) is gone.
+	got := upstreamFor(a, nil)
 	if got != "nanoku-blog:80" {
 		t.Errorf("got %q, want nanoku-blog:80", got)
 	}
 }
 
-func TestComputeUpstreamForApp_Compose_AutoSingle(t *testing.T) {
+func TestUpstreamFor_Compose_AutoSingle(t *testing.T) {
 	h := newSiteTestHandlers(t)
 	a := seedAppCompose(t, h, "kuma", []ExposedPort{{Name: "uptime-kuma", Port: 3001}})
-	a2, err := h.DB.App.Query().Where(app.IDEQ(a.ID)).WithCurrentContainer().Only(context.Background())
-	if err != nil {
-		t.Fatalf("reload app: %v", err)
-	}
-	got := computeUpstreamForApp(a2, nil)
-	if got != "nanoku-kuma-uptime-kuma-1:3001" {
-		t.Errorf("got %q, want nanoku-kuma-uptime-kuma-1:3001", got)
+	got := upstreamFor(a, nil)
+	if got != "nanoku-kuma-uptime-kuma:3001" {
+		t.Errorf("got %q, want nanoku-kuma-uptime-kuma:3001", got)
 	}
 }
 
-func TestComputeUpstreamForApp_Compose_MultiNeedsService(t *testing.T) {
+func TestUpstreamFor_Compose_MultiNeedsService(t *testing.T) {
 	h := newSiteTestHandlers(t)
 	a := seedAppCompose(t, h, "stack", []ExposedPort{
 		{Name: "web", Port: 80},
 		{Name: "api", Port: 8080},
 	})
-	a2, err := h.DB.App.Query().Where(app.IDEQ(a.ID)).WithCurrentContainer().Only(context.Background())
-	if err != nil {
-		t.Fatalf("reload app: %v", err)
-	}
 	// No service set + multiple exposed ports → cannot auto-resolve.
-	if got := computeUpstreamForApp(a2, nil); got != "" {
+	if got := upstreamFor(a, nil); got != "" {
 		t.Errorf("with no service got %q, want empty", got)
 	}
 	// With service set → resolves.
 	api := "api"
-	if got := computeUpstreamForApp(a2, &api); got != "nanoku-stack-api-1:8080" {
-		t.Errorf("with service=api got %q, want nanoku-stack-api-1:8080", got)
+	if got := upstreamFor(a, &api); got != "nanoku-stack-api:8080" {
+		t.Errorf("with service=api got %q, want nanoku-stack-api:8080", got)
 	}
 }
 
-func TestComputeUpstreamForApp_Compose_StaleServiceFallsThrough(t *testing.T) {
+func TestUpstreamFor_Compose_StaleServiceFallsThrough(t *testing.T) {
 	h := newSiteTestHandlers(t)
 	a := seedAppCompose(t, h, "stack", []ExposedPort{{Name: "web", Port: 80}})
-	a2, err := h.DB.App.Query().Where(app.IDEQ(a.ID)).WithCurrentContainer().Only(context.Background())
-	if err != nil {
-		t.Fatalf("reload app: %v", err)
-	}
 	// Stale service name (deleted from exposed_ports) → empty so the
-	// stored upstream is preserved. The site is not auto-rewritten to
-	// blank.
+	// site is skipped from the Caddyfile rather than 502'ing.
 	missing := "missing"
-	if got := computeUpstreamForApp(a2, &missing); got != "" {
+	if got := upstreamFor(a, &missing); got != "" {
 		t.Errorf("with stale service got %q, want empty (fallthrough)", got)
 	}
 }
 
-// TestRefreshSitesForApp_RewritesUpstreamAfterContainerRoll covers the
-// post-deploy reconcile hook. After a docker roll, the linked site's
-// stored upstream is stale; the helper must update it.
-func TestRefreshSitesForApp_RewritesUpstreamAfterContainerRoll(t *testing.T) {
+// TestUpstreamFor_StableAcrossContainerRoll is the whole point of
+// the alias design: a docker-mode app's site upstream must NOT
+// change when the underlying container rolls. Previously this was
+// guaranteed by a post-deploy reconciler that rewrote the stored
+// upstream string; now it's a property of the formula itself.
+func TestUpstreamFor_StableAcrossContainerRoll(t *testing.T) {
 	h := newSiteTestHandlers(t)
 	a := seedAppDocker(t, h, "blog")
+	before := upstreamFor(a, nil)
 
-	// Create a site linked to the app.
-	w := postSite(t, h, map[string]any{"domain": "blog.example.com", "appId": a.ID})
-	dto := decodeSite(t, w)
-	if dto.Upstream != "nanoku-blog:80" {
-		t.Fatalf("initial upstream = %q", dto.Upstream)
-	}
-
-	// Roll the container: replace current_container with a new name.
-	// Clear first — the FK is UNIQUE per app, so the second Set would
-	// collide with the first container row that still has it.
+	// Roll: swap current_container to a totally different name.
 	if _, err := h.DB.App.UpdateOneID(a.ID).ClearCurrentContainer().Save(context.Background()); err != nil {
 		t.Fatalf("clear current_container: %v", err)
 	}
 	newCont, err := h.DB.Container.Create().
 		SetDockerID("").
-		SetName("nanoku-blog-v2").
+		SetName("nanoku-blog-v2-totally-different").
 		SetImage("nginx:1.27").
 		SetStatus("running").
 		SetAppID(a.ID).
@@ -468,42 +448,16 @@ func TestRefreshSitesForApp_RewritesUpstreamAfterContainerRoll(t *testing.T) {
 	if _, err := h.DB.App.UpdateOneID(a.ID).SetCurrentContainerID(newCont.ID).Save(context.Background()); err != nil {
 		t.Fatalf("swap current_container: %v", err)
 	}
-
-	if err := h.RefreshSitesForApp(context.Background(), a.ID); err != nil {
-		t.Fatalf("refresh: %v", err)
-	}
-
-	row, err := h.DB.Site.Get(context.Background(), dto.ID)
+	// Re-read the app (no WithCurrentContainer — we don't need it).
+	a, err = h.DB.App.Get(context.Background(), a.ID)
 	if err != nil {
-		t.Fatalf("get: %v", err)
+		t.Fatalf("reload app: %v", err)
 	}
-	if row.Upstream != "nanoku-blog-v2:80" {
-		t.Errorf("upstream after refresh = %q, want nanoku-blog-v2:80", row.Upstream)
+	after := upstreamFor(a, nil)
+	if after != before {
+		t.Errorf("upstream changed after container roll: %q → %q (must be stable)", before, after)
 	}
-}
-
-// TestRefreshSitesForApp_NoChangeNoOp is the no-op guard: if the
-// recomputed upstream equals what's stored, no DB write is performed.
-// We don't assert that directly (ent's UpdateOneID is a no-op anyway
-// for unchanged values), but the test guards against a regression
-// where Refresh does an unconditional write.
-func TestRefreshSitesForApp_NoChangeNoOp(t *testing.T) {
-	h := newSiteTestHandlers(t)
-	a := seedAppDocker(t, h, "blog")
-
-	w := postSite(t, h, map[string]any{"domain": "blog.example.com", "appId": a.ID})
-	dto := decodeSite(t, w)
-
-	// No container roll. Refresh should be a no-op and not error.
-	if err := h.RefreshSitesForApp(context.Background(), a.ID); err != nil {
-		t.Fatalf("refresh: %v", err)
-	}
-	// Pull a fresh read to confirm nothing moved.
-	row, err := h.DB.Site.Query().Where(site.IDEQ(dto.ID)).Only(context.Background())
-	if err != nil {
-		t.Fatalf("get: %v", err)
-	}
-	if row.Upstream != "nanoku-blog:80" {
-		t.Errorf("upstream = %q, want unchanged", row.Upstream)
+	if after != "nanoku-blog:80" {
+		t.Errorf("upstream = %q, want nanoku-blog:80 (alias form)", after)
 	}
 }

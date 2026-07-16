@@ -10,44 +10,44 @@ import (
 	"strings"
 	"time"
 
+	"github.com/isaced/nanoku/internal/caddy"
 	"github.com/isaced/nanoku/internal/db"
 	"github.com/isaced/nanoku/internal/db/app"
-	"github.com/isaced/nanoku/internal/db/site"
 	sitepkg "github.com/isaced/nanoku/internal/db/site"
 )
 
 // sites.go owns everything to do with the Site table: DTOs, HTTP
-// handlers, upstream resolution, and the per-app reconcile hook
-// that keeps the stored Site.Upstream in lockstep with the joined
-// app state.
+// handlers, and the pure upstream-resolution function.
 //
-// The file is split out of handlers.go (which used to be a
-// kitchen-sink "shared utilities + site stuff" module) so that
-// the upstream-resolution logic — which is a self-contained domain
-// concern, not a request handler — lives next to the handlers
-// that drive it. The runtime split is: handlers.go owns the
-// status / caddyfile preview / path-ID parser, sites.go owns
-// sites.
+// The upstream string for an app-linked site is **derived** from
+// (app, app_service) at render time — never stored on the row. The
+// network alias (e.g. `nanoku-<app>-<service>`) is the stable
+// routing identity, so the Caddyfile never needs to change when a
+// container rotates, scales, or is recreated. For free-upstream
+// sites (no app linked), the operator's literal string is the
+// source of truth and IS stored on the row.
+//
+// Splitting the two cases here means there is no "reconciler"
+// keeping a stored value in lockstep with derived state — the
+// derived case literally has nothing to reconcile, because the
+// derived value is never written back.
 
 // --- DTOs ---------------------------------------------------------------
 
-// SiteDTO is the wire shape of a site. AppService / ExposedServices
-// reflect what's stored in the DB; Upstream is the *last-resolved*
-// value (i.e. the value the Caddyfile currently uses) and is not
-// recomputed here. Callers that want a fresh upstream should use
-// resolveSiteUpstreams.
+// SiteDTO is the wire shape of a site. Upstream is always populated
+// (derived for app-linked sites, the stored value for free-upstream
+// sites) so the UI and the Caddyfile see the same string.
 type SiteDTO struct {
-	ID        int    `json:"id"`
-	Domain    string `json:"domain"`
-	Upstream  string `json:"upstream"`
-	Enabled   bool   `json:"enabled"`
-	Scheme    string `json:"scheme"`
-	AppID     *int   `json:"appId,omitempty"`
-	AppName   string `json:"appName,omitempty"`
+	ID       int    `json:"id"`
+	Domain   string `json:"domain"`
+	Upstream string `json:"upstream"`
+	Enabled  bool   `json:"enabled"`
+	Scheme   string `json:"scheme"`
+	AppID    *int   `json:"appId,omitempty"`
+	AppName  string `json:"appName,omitempty"`
 	// AppService is the service within a compose-mode app that this
 	// site proxies to. Empty for docker-mode apps and for free-upstream
-	// sites. When AppID is set and the app is compose, this drives
-	// upstream resolution (see resolveSiteUpstreams).
+	// sites. Drives upstream resolution together with the linked app.
 	AppService string `json:"appService,omitempty"`
 	// ExposedServices is the resolved list of ExposedPort on the
 	// linked app (compose-mode only). Drives the service select in
@@ -63,33 +63,34 @@ type SiteDTO struct {
 // AppID=0 has the same effect but the explicit flag is preferred
 // when the caller wants to make the intent obvious in a PATCH.
 type SiteInput struct {
-	Domain    *string `json:"domain"`
-	Upstream  *string `json:"upstream"`
-	Enabled   *bool   `json:"enabled"`
-	AppID     *int    `json:"appId"`
+	Domain     *string `json:"domain"`
+	Upstream   *string `json:"upstream"`
+	Enabled    *bool   `json:"enabled"`
+	AppID      *int    `json:"appId"`
 	AppService *string `json:"appService"`
-	Scheme    *string `json:"scheme"`
-	// ClearApp detaches the site from any app (and clears appService +
-	// upstream). Use this instead of sending AppID=0 so the intent is
-	// explicit and the handler doesn't have to guess the empty-FK
-	// convention.
+	Scheme     *string `json:"scheme"`
+	// ClearApp detaches the site from any app (and clears
+	// appService). Use this instead of sending AppID=0 so the
+	// intent is explicit and the handler doesn't have to guess
+	// the empty-FK convention.
 	ClearApp bool `json:"clearApp"`
 }
 
-// toDTO renders a site for the API. The AppService / ExposedServices
-// fields reflect what's stored in the DB; Upstream is the
-// *last-resolved* value (i.e. the value the Caddyfile currently
-// uses) and is not recomputed here. Callers that want a fresh
-// upstream should use resolveSiteUpstreams.
+// toDTO renders a site for the API. Upstream is always populated:
+// for app-linked sites it's the result of upstreamFor() applied to
+// the (app, app_service) pair; for free-upstream sites it's the
+// stored column value.
 func toDTO(s *db.Site) SiteDTO {
 	out := SiteDTO{
 		ID:        s.ID,
 		Domain:    s.Domain,
-		Upstream:  s.Upstream,
 		Enabled:   s.Enabled,
 		Scheme:    string(s.Scheme),
 		CreatedAt: s.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt: s.UpdatedAt.UTC().Format(time.RFC3339),
+	}
+	if s.Upstream != nil {
+		out.Upstream = *s.Upstream
 	}
 	if s.Edges.App != nil {
 		id := s.Edges.App.ID
@@ -101,6 +102,12 @@ func toDTO(s *db.Site) SiteDTO {
 		if ports, err := ParseExposedPorts(s.Edges.App.ExposedPorts); err == nil {
 			out.ExposedServices = ports
 		}
+		// For app-linked sites the stored column is always nil
+		// (we never write it), so out.Upstream is still the
+		// zero value here — overwrite with the derived string.
+		if derived := upstreamFor(s.Edges.App, s.AppService); derived != "" {
+			out.Upstream = derived
+		}
 	}
 	return out
 }
@@ -108,18 +115,14 @@ func toDTO(s *db.Site) SiteDTO {
 // --- HTTP handlers ------------------------------------------------------
 
 func (h *Handlers) ListSites(w http.ResponseWriter, r *http.Request) {
-	sites, err := h.DB.Site.Query().WithApp(func(q *db.AppQuery) { q.WithCurrentContainer() }).Order(sitepkg.ByDomain()).All(r.Context())
+	sites, err := h.DB.Site.Query().WithApp().Order(sitepkg.ByDomain()).All(r.Context())
 	if err != nil {
 		writeInternalErr(w, err)
 		return
 	}
 	out := make([]SiteDTO, 0, len(sites))
 	for _, s := range sites {
-		dto := toDTO(s)
-		if s.Edges.App != nil {
-			dto.AppName = s.Edges.App.Name
-		}
-		out = append(out, dto)
+		out = append(out, toDTO(s))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -145,8 +148,7 @@ func (h *Handlers) CreateSite(w http.ResponseWriter, r *http.Request) {
 
 	// When the caller supplies an app, validate the service belongs to
 	// that app's exposed_ports (compose-mode only). For docker-mode
-	// apps we silently drop app_service — see UpdateSite for the same
-	// reasoning. This is the create-side mirror of the update branch.
+	// apps we silently drop app_service — docker sites never use it.
 	var appService string
 	if in.AppID != nil && *in.AppID != 0 {
 		app, err := h.DB.App.Get(r.Context(), *in.AppID)
@@ -190,32 +192,41 @@ func (h *Handlers) CreateSite(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Upstream is computed from the app/service if linked; otherwise
-	// the caller's free-form value is used. We refuse to create a
-	// site that has neither a usable upstream nor a free-form
-	// fallback, since a blank Caddyfile entry would either error or
-	// silently 502.
-	upstream := ""
+	// Upstream is only stored for free-upstream sites. For app-linked
+	// sites it's a pure function of (app, app_service); the value is
+	// computed in toDTO. Validating here that we can compute it (i.e.
+	// the service resolves to a port) gives the user a clear 400
+	// rather than a silently-broken Caddyfile entry.
 	if in.AppID != nil && *in.AppID != 0 {
-		upstream = h.computeSiteUpstream(r.Context(), *in.AppID, appService)
-	} else if in.Upstream != nil {
-		upstream = strings.TrimSpace(*in.Upstream)
-	}
-	if upstream == "" {
-		writeErr(w, http.StatusBadRequest, errors.New("could not determine upstream: provide appService (for compose apps), app.port (for docker apps), or a custom upstream"))
-		return
+		upstream := h.computeSiteUpstream(r.Context(), *in.AppID, appService)
+		if upstream == "" {
+			if appService == "" {
+				writeErr(w, http.StatusBadRequest, errors.New("appService is required for compose apps"))
+			} else {
+				writeErr(w, http.StatusBadRequest, fmt.Errorf("could not resolve upstream for app %d service %q: service not in exposed_ports", *in.AppID, appService))
+			}
+			return
+		}
+	} else {
+		if strings.TrimSpace(*in.Upstream) == "" {
+			writeErr(w, http.StatusBadRequest, errors.New("upstream is required when no app is linked"))
+			return
+		}
 	}
 
 	create := h.DB.Site.Create().
 		SetDomain(strings.TrimSpace(*in.Domain)).
 		SetEnabled(enabled).
-		SetScheme(scheme).
-		SetUpstream(upstream)
+		SetScheme(scheme)
 	if in.AppID != nil && *in.AppID != 0 {
 		create.SetAppID(*in.AppID)
 		if appService != "" {
 			create.SetAppService(appService)
 		}
+		// App-linked: do NOT write Upstream. It's derived.
+	} else {
+		upstream := strings.TrimSpace(*in.Upstream)
+		create.SetUpstream(upstream)
 	}
 	site, err := create.Save(r.Context())
 	if err != nil {
@@ -228,7 +239,7 @@ func (h *Handlers) CreateSite(w http.ResponseWriter, r *http.Request) {
 		writeInternalErr(w, err)
 		return
 	}
-	fresh, ferr := h.DB.Site.Query().WithApp(func(q *db.AppQuery) { q.WithCurrentContainer() }).Where(sitepkg.IDEQ(site.ID)).Only(r.Context())
+	fresh, ferr := h.DB.Site.Query().WithApp().Where(sitepkg.IDEQ(site.ID)).Only(r.Context())
 	dto := toDTO(site)
 	if ferr == nil {
 		dto = toDTO(fresh)
@@ -251,9 +262,8 @@ func (h *Handlers) UpdateSite(w http.ResponseWriter, r *http.Request) {
 
 	// Load the existing site (with the app edge) to validate
 	// app/service combinations and to know what the previous app_id
-	// was — the upstream rewrite below depends on whether the app
-	// linkage actually changed. The app FK lives on the edge, not
-	// as a column, so we always need WithApp here.
+	// was. The app FK lives on the edge, not as a column, so we
+	// always need WithApp here.
 	existing, err := h.DB.Site.Query().
 		Where(sitepkg.IDEQ(id)).
 		WithApp().
@@ -279,9 +289,6 @@ func (h *Handlers) UpdateSite(w http.ResponseWriter, r *http.Request) {
 		}
 		upd.SetDomain(strings.TrimSpace(*in.Domain))
 	}
-	if in.Upstream != nil {
-		upd.SetUpstream(strings.TrimSpace(*in.Upstream))
-	}
 	if in.Enabled != nil {
 		upd.SetEnabled(*in.Enabled)
 	}
@@ -295,12 +302,29 @@ func (h *Handlers) UpdateSite(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Free-upstream upstream column is only writable when the site
+	// has no app linked. If the caller sends upstream together with
+	// appId / clearApp, refuse — the field would be ignored on
+	// read anyway (toDTO prefers the derived value), and silently
+	// accepting it would be a footgun.
+	willHaveApp := !in.ClearApp && (in.AppID == nil || *in.AppID != 0 || existingAppID != 0)
+	if in.Upstream != nil {
+		if willHaveApp {
+			writeErr(w, http.StatusBadRequest, errors.New("upstream is derived for app-linked sites and cannot be set directly; clearApp first to switch to free-upstream mode"))
+			return
+		}
+		upd.SetUpstream(strings.TrimSpace(*in.Upstream))
+	}
+
 	// App linkage is split into three explicit branches so the
-	// caller's intent is unambiguous: ClearApp > SetAppID(0) >
+	// caller's intent is unambiguous: ClearApp > AppID=0 >
 	// SetAppID(N). The handler never silently treats AppID=0 as a
 	// no-op, so a future bug that sends 0 by accident is
 	// observable as a 400-ish detach, not a missed update.
-	appChanged := h.applySiteAppLinkage(upd, in, existingAppID)
+	//
+	// For app-linked sites the upstream column is intentionally
+	// never written: the value is derived at render time.
+	applySiteAppLinkage(upd, in, existingAppID)
 	// AppService is validated against the target app's
 	// exposed_ports; for docker apps we silently drop the value
 	// rather than 400 (docker sites never use app_service).
@@ -315,16 +339,35 @@ func (h *Handlers) UpdateSite(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Upstream rewrite. Whenever the app linkage OR appService
-	// changes, recompute the upstream from the linked app —
-	// otherwise the stored upstream string would point at the wrong
-	// container (or a deleted service) after the update. The
-	// recomputation uses the post-update state (new app, new
-	// service).
-	if appChanged || in.AppService != nil {
-		if err := h.rewriteSiteUpstream(r.Context(), upd, existing, existingAppID, in); err != nil {
-			writeErr(w, http.StatusBadRequest, err)
-			return
+	// If the patch is creating an app-linked state, make sure the
+	// (app, service) pair actually resolves to a port. We check
+	// this against the post-update state — the same logic the
+	// Caddyfile will see — so a future bug that lets an
+	// unresolvable pair through can't render a 502.
+	if willHaveApp {
+		var targetAppID int
+		if in.ClearApp {
+			targetAppID = 0
+		} else if in.AppID != nil {
+			targetAppID = *in.AppID
+		} else {
+			targetAppID = existingAppID
+		}
+		var svc string
+		if in.AppService != nil {
+			svc = strings.TrimSpace(*in.AppService)
+		} else if existing.AppService != nil {
+			svc = strings.TrimSpace(*existing.AppService)
+		}
+		if targetAppID != 0 {
+			if upstream := h.computeSiteUpstream(r.Context(), targetAppID, svc); upstream == "" {
+				if svc == "" {
+					writeErr(w, http.StatusBadRequest, errors.New("appService is required for compose apps"))
+				} else {
+					writeErr(w, http.StatusBadRequest, fmt.Errorf("could not resolve upstream for app %d service %q: service not in exposed_ports", targetAppID, svc))
+				}
+				return
+			}
 		}
 	}
 
@@ -338,7 +381,7 @@ func (h *Handlers) UpdateSite(w http.ResponseWriter, r *http.Request) {
 		writeInternalErr(w, err)
 		return
 	}
-	fresh, ferr := h.DB.Site.Query().WithApp(func(q *db.AppQuery) { q.WithCurrentContainer() }).Where(sitepkg.IDEQ(id)).Only(r.Context())
+	fresh, ferr := h.DB.Site.Query().WithApp().Where(sitepkg.IDEQ(id)).Only(r.Context())
 	dto := toDTO(site)
 	if ferr == nil {
 		dto = toDTO(fresh)
@@ -387,7 +430,7 @@ func (h *Handlers) ToggleSite(w http.ResponseWriter, r *http.Request) {
 		writeInternalErr(w, err)
 		return
 	}
-	fresh, ferr := h.DB.Site.Query().WithApp(func(q *db.AppQuery) { q.WithCurrentContainer() }).Where(sitepkg.IDEQ(id)).Only(r.Context())
+	fresh, ferr := h.DB.Site.Query().WithApp().Where(sitepkg.IDEQ(id)).Only(r.Context())
 	dto := toDTO(updated)
 	if ferr == nil {
 		dto = toDTO(fresh)
@@ -398,28 +441,24 @@ func (h *Handlers) ToggleSite(w http.ResponseWriter, r *http.Request) {
 // --- UpdateSite helpers -------------------------------------------------
 
 // applySiteAppLinkage handles the three explicit "change the app
-// edge" branches (ClearApp / AppID=0 / AppID=N) and returns whether
-// the linkage actually changed. The boolean drives whether
-// rewriteSiteUpstream runs — a no-op branch (caller didn't touch
-// AppID at all) leaves the stored upstream alone.
-func (h *Handlers) applySiteAppLinkage(upd *db.SiteUpdateOne, in SiteInput, existingAppID int) bool {
+// edge" branches (ClearApp / AppID=0 / AppID=N). The upstream
+// column is no longer touched here — app-linked sites compute
+// upstream at render time, and ClearApp / AppID=0 transitions
+// leave the stored upstream alone (the editor and free-upstream
+// code paths set it explicitly when appropriate).
+func applySiteAppLinkage(upd *db.SiteUpdateOne, in SiteInput, existingAppID int) {
 	switch {
 	case in.ClearApp:
 		upd.ClearApp()
 		upd.ClearAppService()
-		upd.SetUpstream("")
-		return true
 	case in.AppID != nil:
 		if *in.AppID == 0 {
 			upd.ClearApp()
 			upd.ClearAppService()
-			upd.SetUpstream("")
-			return true
+		} else {
+			upd.SetAppID(*in.AppID)
 		}
-		upd.SetAppID(*in.AppID)
-		return existingAppID != *in.AppID
-	default:
-		return false
+		_ = existingAppID // kept for signature symmetry; the upstream no longer depends on it
 	}
 }
 
@@ -464,82 +503,41 @@ func (h *Handlers) applySiteAppService(upd *db.SiteUpdateOne, inAppService *stri
 
 // --- Upstream resolution ------------------------------------------------
 
-// resolveSiteUpstreams returns site projections where upstream is
-// resolved:
+// upstreamFor is the single source of truth for app-linked
+// upstreams. The returned string is what Caddy reverse-proxies to;
+// it depends only on the network alias (a function of app+service)
+// and the exposed port, never on the actual container name.
 //
-//   - docker-mode apps: `<current_container.name>:<app.port>`
-//   - compose-mode apps with app_service set:
-//     `nanoku-<app>-<service>-1:<port>` where port comes from the
-//     matching ExposedPort on the app. If the service is not in
-//     exposed_ports, falls through to "free upstream" (preserves
-//     whatever the user typed) so a stale service name doesn't
-//     break the Caddyfile.
-//   - compose-mode apps with no app_service and exactly one
-//     exposed_port: same as above with the lone service
-//     auto-selected. Convenience for single-service stacks.
-//   - free upstream: stored value used as-is.
-func (h *Handlers) resolveSiteUpstreams(r *http.Request) ([]*db.Site, error) {
-	return h.resolveSiteUpstreamsCtx(r.Context())
-}
-
-func (h *Handlers) resolveSiteUpstreamsCtx(ctx context.Context) ([]*db.Site, error) {
-	sites, err := h.DB.Site.Query().WithApp(func(q *db.AppQuery) { q.WithCurrentContainer() }).All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	// Copy each site into a new value so mutating Upstream here
-	// doesn't affect the ent-loaded entity in the caller's
-	// context. (ent's generated structs are plain in-memory
-	// values — no surprise write back to the DB — but mutating
-	// shared entities is still a footgun.)
-	resolved := make([]*db.Site, 0, len(sites))
-	for _, s := range sites {
-		cp := *s
-		if s.Edges.App != nil {
-			cp.Upstream = computeUpstreamForApp(s.Edges.App, s.AppService)
-		}
-		resolved = append(resolved, &cp)
-	}
-	return resolved, nil
-}
-
-// computeUpstreamForApp returns the upstream string for a site
-// linked to the given app, given an optional service name.
-// Returns "" when the caller should fall back to whatever is
-// stored in Site.Upstream (e.g. a free-upstream site, or a
-// compose site whose service is not in exposed_ports).
+// Returns "" when the inputs are insufficient to compute a value
+// (e.g. app has no current_container in docker mode, or the
+// service is not in exposed_ports in compose mode). Callers should
+// treat that as "site is in an inconsistent state" and surface a
+// 400 / 502 rather than guessing.
 //
-// This is the single source of truth for the upstream string.
-// Both resolveSiteUpstreamsCtx and rewriteSiteUpstream / CreateSite
-// / UpdateSite use it so the Caddyfile always shows the same
-// string as the API.
-func computeUpstreamForApp(a *db.App, appService *string) string {
+// docker mode:  nanoku-<app>:<port>
+// compose mode: nanoku-<app>-<service>:<port>
+func upstreamFor(a *db.App, appService *string) string {
 	if a == nil {
 		return ""
 	}
 	if a.DeployMethod != "compose" {
-		// docker-mode: keep the historical <container>:<port>
-		// shape. We require both an app_id (callers enforce)
-		// and a current container (the deploy path sets it
-		// after success). If the current container is missing,
-		// fall back to the stored upstream string so the
-		// Caddyfile doesn't get a half-baked entry.
-		if a.Edges.CurrentContainer == nil {
-			return ""
-		}
-		return a.Edges.CurrentContainer.Name + ":" + strconv.Itoa(a.Port)
+		// Docker-mode app: a single container with a stable
+		// alias `nanoku-<app>`. Caddy talks to the alias, not
+		// the container name, so the Caddyfile never changes
+		// across redeploys.
+		return networkAliasForApp(a.Name) + ":" + strconv.Itoa(a.Port)
 	}
-	// compose-mode. Resolve the service the caller wants; if
-	// not specified and there is exactly one ExposedPort,
-	// auto-pick it (single-service stacks are the common
-	// case).
-	ports, err := ParseExposedPorts(a.ExposedPorts)
-	if err != nil || len(ports) == 0 {
-		return ""
-	}
+	// Compose mode. The site must select a service, or
+	// auto-pick the lone service when the stack has
+	// exactly one exposed port (single-service stacks are
+	// the common case and don't deserve a UI prompt).
 	var svc string
 	if appService != nil {
 		svc = strings.TrimSpace(*appService)
+	}
+	ports, err := ParseExposedPorts(a.ExposedPorts)
+	if err != nil {
+		return ""
 	}
 	if svc == "" && len(ports) == 1 {
 		svc = ports[0].Name
@@ -551,16 +549,15 @@ func computeUpstreamForApp(a *db.App, appService *string) string {
 	if ep == nil {
 		return ""
 	}
-	return resolveServiceContainerName(a.Name, svc, ep.ContainerName) + ":" + strconv.Itoa(ep.Port)
+	return networkAliasForService(a.Name, svc) + ":" + strconv.Itoa(ep.Port)
 }
 
 // computeSiteUpstream is a thin ctx-aware wrapper used by the
-// create / update handlers that have a target app_id but no
-// loaded App edge yet.
+// create / update handlers that have a target app_id but no loaded
+// App edge yet.
 func (h *Handlers) computeSiteUpstream(ctx context.Context, appID int, appService string) string {
 	a, err := h.DB.App.Query().
 		Where(app.IDEQ(appID)).
-		WithCurrentContainer().
 		Only(ctx)
 	if err != nil {
 		return ""
@@ -569,105 +566,46 @@ func (h *Handlers) computeSiteUpstream(ctx context.Context, appID int, appServic
 	if appService != "" {
 		svcPtr = &appService
 	}
-	return computeUpstreamForApp(a, svcPtr)
+	return upstreamFor(a, svcPtr)
 }
 
-// rewriteSiteUpstream computes a new upstream for the site being
-// updated and queues a SetUpstream on the builder. Used by
-// UpdateSite when the app linkage or app_service changes.
-//
-// The existing site is needed for the "free upstream" fallback:
-// a compose-mode site whose new service isn't in exposed_ports
-// should keep whatever the user typed rather than go blank.
-// existingAppID is passed separately because the edge struct on
-// existing doesn't expose the FK id in a queryable form for this
-// code path.
-func (h *Handlers) rewriteSiteUpstream(ctx context.Context, upd *db.SiteUpdateOne, existing *db.Site, existingAppID int, in SiteInput) error {
-	// Resolve the target app id (after the update is applied, not
-	// before).
-	var targetAppID int
-	switch {
-	case in.ClearApp:
-		targetAppID = 0
-	case in.AppID != nil:
-		targetAppID = *in.AppID
-	default:
-		targetAppID = existingAppID
-	}
-	if targetAppID == 0 {
-		// Detached sites keep whatever upstream the caller set
-		// (or blank). The UpdateSite call site has already
-		// issued SetUpstream("") for ClearApp / AppID=0.
-		return nil
-	}
-
-	var svcPtr *string
-	if in.AppService != nil {
-		if s := strings.TrimSpace(*in.AppService); s != "" {
-			svcPtr = &s
-		}
-	}
-	if svcPtr == nil && existing.AppService != nil {
-		if s := strings.TrimSpace(*existing.AppService); s != "" {
-			svcPtr = &s
-		}
-	}
-
-	newUpstream := h.computeSiteUpstream(ctx, targetAppID, derefString(svcPtr))
-	if newUpstream == "" {
-		// Couldn't auto-resolve (service not in exposed_ports,
-		// or app has no current_container yet). Keep the
-		// existing stored value so the Caddyfile doesn't go
-		// blank; the next successful deploy will refresh it
-		// via the post-deploy reconcile.
-		return nil
-	}
-	upd.SetUpstream(newUpstream)
-	return nil
-}
-
-// derefString returns "" when p is nil, otherwise the dereferenced
-// value. Inlined from the previous `svcStringOrEmpty` helper —
-// small enough that the name didn't add anything.
-func derefString(p *string) string {
-	if p == nil {
-		return ""
-	}
-	return *p
-}
-
-// --- Reconcile hook -----------------------------------------------------
-
-// RefreshSitesForApp recomputes the upstream for every site
-// linked to the given app and writes it back if it changed. Used
-// after a deploy (where container names may rotate) and after an
-// app update that touched exposed_ports (where the upstream
-// formula changed). A no-op for sites where the recomputed
-// upstream equals the stored value, so a routine refresh is
-// cheap.
-//
-// Free-upstream sites (no app or app with no current_container)
-// are skipped — they don't have a derivable upstream, and the
-// stored value is whatever the operator typed.
-func (h *Handlers) RefreshSitesForApp(ctx context.Context, appID int) error {
-	sites, err := h.DB.Site.Query().
-		Where(site.HasAppWith(app.IDEQ(appID))).
-		WithApp(func(q *db.AppQuery) { q.WithCurrentContainer() }).
-		All(ctx)
+// resolveCaddySites projects every site to the caddy.Site shape
+// the renderer wants: domain, scheme, fully resolved upstream,
+// enabled. App-linked sites are resolved through upstreamFor;
+// free-upstream sites read from the stored column. The result is
+// the single input to caddy.Render — both CaddyfilePreview and
+// regenerateAndReloadCtx go through here so the live Caddyfile
+// and the preview pane are always in lockstep.
+func (h *Handlers) resolveCaddySites(ctx context.Context) ([]caddy.Site, error) {
+	sites, err := h.DB.Site.Query().WithApp().All(ctx)
 	if err != nil {
-		return fmt.Errorf("load sites: %w", err)
+		return nil, err
 	}
+	out := make([]caddy.Site, 0, len(sites))
 	for _, s := range sites {
-		if s.Edges.App == nil {
+		cs := caddy.Site{
+			Domain:  s.Domain,
+			Scheme:  string(s.Scheme),
+			Enabled: s.Enabled,
+		}
+		switch {
+		case s.Edges.App != nil:
+			cs.Upstream = upstreamFor(s.Edges.App, s.AppService)
+		case s.Upstream != nil:
+			cs.Upstream = *s.Upstream
+		}
+		// Empty Upstream at this point would mean a stale app
+		// row (e.g. service removed from exposed_ports) or a
+		// docker app with no current_container before the first
+		// deploy. Skip the row entirely — the site can still be
+		// listed in the UI, it just won't be in the Caddyfile.
+		// A 502 from a stale row is strictly worse than a
+		// missing reverse_proxy entry that the operator can
+		// notice.
+		if cs.Upstream == "" {
 			continue
 		}
-		newUpstream := computeUpstreamForApp(s.Edges.App, s.AppService)
-		if newUpstream == "" || newUpstream == s.Upstream {
-			continue
-		}
-		if _, uerr := h.DB.Site.UpdateOneID(s.ID).SetUpstream(newUpstream).Save(ctx); uerr != nil {
-			return fmt.Errorf("update site %d upstream: %w", s.ID, uerr)
-		}
+		out = append(out, cs)
 	}
-	return nil
+	return out, nil
 }
