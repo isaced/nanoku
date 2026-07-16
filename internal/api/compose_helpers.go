@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/isaced/nanoku/internal/db"
 	"github.com/isaced/nanoku/internal/db/volume"
@@ -50,6 +51,29 @@ func composeProjectName(appName string) string {
 // service without us having to think about host ports.
 func composeServiceContainerName(appName, service string) string {
 	return "nanoku-" + appName + "-" + service + "-1"
+}
+
+// resolveServiceContainerName returns the host:port component
+// for a site targeting a compose service. Order of resolution:
+//
+//  1. override — set by the operator or imported from the
+//     compose file's `container_name:` field. Required when the
+//     user opts out of the compose-default name (otherwise the
+//     Caddyfile upstream and the deploy-time missing-check both
+//     miss the actual running container and the route 502s).
+//  2. compose default — `nanoku-<app>-<service>-1`.
+//
+// We trust the override if it matches the docker container-name
+// pattern (see containerNameRe). Anything with shell-special
+// characters, spaces, or path separators falls through to the
+// default rather than reaching the Caddyfile / docker cli — both
+// of which would be unsafe to inject unchecked.
+func resolveServiceContainerName(appName, service, override string) string {
+	override = strings.TrimSpace(override)
+	if override != "" && containerNameRe.MatchString(override) {
+		return override
+	}
+	return composeServiceContainerName(appName, service)
 }
 
 // resolveComposeFile returns the compose file path actually used
