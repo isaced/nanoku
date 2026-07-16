@@ -551,7 +551,7 @@ func computeUpstreamForApp(a *db.App, appService *string) string {
 	if ep == nil {
 		return ""
 	}
-	return composeServiceContainerName(a.Name, svc) + ":" + strconv.Itoa(ep.Port)
+	return resolveServiceContainerName(a.Name, svc, ep.ContainerName) + ":" + strconv.Itoa(ep.Port)
 }
 
 // computeSiteUpstream is a thin ctx-aware wrapper used by the
