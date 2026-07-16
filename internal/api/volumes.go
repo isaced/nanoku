@@ -114,7 +114,11 @@ func (h *Handlers) ListAppVolumes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := h.DB.App.Get(r.Context(), id); err != nil {
-		writeErr(w, http.StatusNotFound, err)
+		if isNotFound(err) {
+			writeErr(w, http.StatusNotFound, errors.New("app not found"))
+			return
+		}
+		writeInternalErr(w, err)
 		return
 	}
 	vols, err := h.DB.Volume.Query().
@@ -122,7 +126,7 @@ func (h *Handlers) ListAppVolumes(w http.ResponseWriter, r *http.Request) {
 		Order(volume.ByID()).
 		All(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	out := make([]VolumeDTO, 0, len(vols))
@@ -144,7 +148,11 @@ func (h *Handlers) ReplaceAppVolumes(w http.ResponseWriter, r *http.Request) {
 	}
 	a, err := h.DB.App.Get(r.Context(), id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, err)
+		if isNotFound(err) {
+			writeErr(w, http.StatusNotFound, errors.New("app not found"))
+			return
+		}
+		writeInternalErr(w, err)
 		return
 	}
 	var in []VolumeInput
@@ -172,12 +180,12 @@ func (h *Handlers) ReplaceAppVolumes(w http.ResponseWriter, r *http.Request) {
 
 	tx, err := h.DB.Tx(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	if _, err := tx.Volume.Delete().Where(volume.HasAppWith(app.IDEQ(id))).Exec(r.Context()); err != nil {
 		_ = tx.Rollback()
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	for _, m := range mounts {
@@ -191,12 +199,12 @@ func (h *Handlers) ReplaceAppVolumes(w http.ResponseWriter, r *http.Request) {
 		}
 		if _, cerr := create.Save(r.Context()); cerr != nil {
 			_ = tx.Rollback()
-			writeErr(w, http.StatusInternalServerError, cerr)
+			writeDBErr(w, cerr)
 			return
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

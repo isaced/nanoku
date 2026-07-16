@@ -230,7 +230,7 @@ func (h *Handlers) CreateSite(w http.ResponseWriter, r *http.Request) {
 	}
 	site, err := create.Save(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err)
+		writeDBErr(w, err)
 		return
 	}
 
@@ -334,6 +334,10 @@ func (h *Handlers) UpdateSite(w http.ResponseWriter, r *http.Request) {
 			targetAppID = &existingAppID
 		}
 		if err := h.applySiteAppService(upd, in.AppService, targetAppID); err != nil {
+			if errors.Is(err, errAppServiceDB) {
+				writeInternalErr(w, err)
+				return
+			}
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}
@@ -373,7 +377,7 @@ func (h *Handlers) UpdateSite(w http.ResponseWriter, r *http.Request) {
 
 	site, err := upd.Save(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err)
+		writeDBErr(w, err)
 		return
 	}
 
@@ -396,7 +400,7 @@ func (h *Handlers) DeleteSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.DB.Site.DeleteOneID(id).Exec(r.Context()); err != nil {
-		writeErr(w, http.StatusBadRequest, err)
+		writeDBErr(w, err)
 		return
 	}
 	if err := h.regenerateAndReload(r); err != nil {
@@ -471,13 +475,20 @@ func applySiteAppLinkage(upd *db.SiteUpdateOne, in SiteInput, existingAppID int)
 //
 // targetAppID is the post-update app FK; pass nil for sites with
 // no app (the field is then a no-op).
+//
+// Errors fall in two categories that callers must distinguish:
+//   - A wrapped *ent* / DB error from the load below — surfaced via
+//     errAppServiceDB so handlers can return 500 (writeInternalErr)
+//     instead of echoing the internal ent message at 400.
+//   - Input-validation errors (ParseExposedPorts, "not in
+//     exposed_ports") — safe to surface at 400.
 func (h *Handlers) applySiteAppService(upd *db.SiteUpdateOne, inAppService *string, targetAppID *int) error {
 	if targetAppID == nil || *targetAppID == 0 {
 		return nil
 	}
 	app, err := h.DB.App.Get(context.Background(), *targetAppID)
 	if err != nil {
-		return fmt.Errorf("load app for service check: %w", err)
+		return fmt.Errorf("%w: load app for service check: %v", errAppServiceDB, err)
 	}
 	if app.DeployMethod != "compose" {
 		// docker-mode: ignore the value. We don't ClearAppService
@@ -500,6 +511,11 @@ func (h *Handlers) applySiteAppService(upd *db.SiteUpdateOne, inAppService *stri
 	upd.SetAppService(svc)
 	return nil
 }
+
+// errAppServiceDB is the sentinel that wrap-loaded DB errors in
+// applySiteAppService. The handler uses errors.Is to decide between
+// 500 (writeInternalErr) and 400 (writeErr with the safe message).
+var errAppServiceDB = errors.New("applySiteAppService: db")
 
 // --- Upstream resolution ------------------------------------------------
 

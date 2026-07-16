@@ -72,12 +72,12 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 		Order(site.ByDomain()).
 		All(ctx)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	apps, err := h.DB.App.Query().WithCurrentContainer().Order(app.ByName()).All(ctx)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 

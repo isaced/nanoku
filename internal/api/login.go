@@ -104,7 +104,7 @@ func (h *Handlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	row, err := h.DB.User.Get(r.Context(), u.ID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	if _, err := Authenticate(r.Context(), h.DB, row.Username, in.OldPassword); err != nil {
@@ -113,16 +113,16 @@ func (h *Handlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	hash, err := HashPassword(in.NewPassword)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	if _, err := h.DB.User.UpdateOneID(u.ID).SetPasswordHash(hash).Save(r.Context()); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	// drop all other sessions for this user (force re-login on other devices)
 	if _, err := h.DB.Session.Delete().Where(sessionpkg.HasUserWith(userpkg.IDEQ(u.ID))).Exec(r.Context()); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

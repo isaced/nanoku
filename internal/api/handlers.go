@@ -105,7 +105,7 @@ func (h *Handlers) Status(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) CaddyfilePreview(w http.ResponseWriter, r *http.Request) {
 	resolved, err := h.resolveCaddySites(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")

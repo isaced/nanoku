@@ -138,7 +138,7 @@ func (h *Handlers) CreateApp(w http.ResponseWriter, r *http.Request) {
 
 	a, err := create.Save(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err)
+		writeDBErr(w, err)
 		return
 	}
 	// Persist the compose file to disk right away so the file path returned
@@ -321,7 +321,7 @@ func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
 	}
 	a, err = upd.Save(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err)
+		writeDBErr(w, err)
 		return
 	}
 	// Sync the on-disk compose file with the latest content.

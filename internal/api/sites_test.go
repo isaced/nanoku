@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -84,6 +85,31 @@ func seedAppCompose(t *testing.T, h *Handlers, name string, ports []ExposedPort)
 		t.Fatalf("seed compose app: %v", err)
 	}
 	return a
+}
+
+// mustSeedSite creates a free-upstream site row directly via ent,
+// skipping the handler. Used by tests that need a *db.SiteUpdateOne
+// to pass into helpers like applySiteAppService without round-
+// tripping through the HTTP layer.
+func mustSeedSite(t *testing.T, h *Handlers, domain string, appID *int, appService *string, enabled bool) *db.Site {
+	t.Helper()
+	create := h.DB.Site.Create().
+		SetDomain(domain).
+		SetEnabled(enabled).
+		SetScheme("https")
+	if appID != nil {
+		create.SetAppID(*appID)
+		if appService != nil {
+			create.SetAppService(*appService)
+		}
+	} else {
+		create.SetUpstream("upstream.example:80")
+	}
+	s, err := create.Save(context.Background())
+	if err != nil {
+		t.Fatalf("seed site %q: %v", domain, err)
+	}
+	return s
 }
 
 // postSite drives the CreateSite handler end-to-end and returns the
@@ -418,6 +444,61 @@ func TestUpstreamFor_Compose_StaleServiceFallsThrough(t *testing.T) {
 	missing := "missing"
 	if got := upstreamFor(a, &missing); got != "" {
 		t.Errorf("with stale service got %q, want empty (fallthrough)", got)
+	}
+}
+
+// TestApplySiteAppService_DBErrorWrapsSentinel pins the
+// DB-vs-validation error split that the UpdateSite handler relies
+// on: when applySiteAppService can't load the target app (e.g. the
+// DB is down), the returned err must wrap errAppServiceDB so the
+// handler routes to writeInternalErr (500), not writeErr (400 with
+// the leaked ent message). Validation errors must NOT wrap the
+// sentinel so they still surface as a clean 400.
+func TestApplySiteAppService_DBErrorWrapsSentinel(t *testing.T) {
+	h := newSiteTestHandlers(t)
+	// Seed a real site row (we just need a typed *db.SiteUpdateOne
+	// to pass into the helper; the Save is never called).
+	s := mustSeedSite(t, h, "somesite", nil, nil, true)
+	updOne := h.DB.Site.UpdateOneID(s.ID)
+
+	// A non-existent app id forces h.DB.App.Get to error. The
+	// function still wraps the result with errAppServiceDB so the
+	// handler routes to writeInternalErr, regardless of whether the
+	// underlying cause is "row not found" or "DB is down" — the
+	// UpdateSite flow has no use case for distinguishing them
+	// (caller must re-read the app before retrying).
+	nonExistentID := 99999
+	svc := "web"
+	err := h.applySiteAppService(updOne, &svc, &nonExistentID)
+	if err == nil {
+		t.Fatal("applySiteAppService with bogus app id should error")
+	}
+	if !errors.Is(err, errAppServiceDB) {
+		t.Errorf("err = %v, want wrap of errAppServiceDB (DB-class error)", err)
+	}
+}
+
+// TestApplySiteAppService_ValidationErrorDoesNotWrap pins the
+// other half: a validation error (e.g. service not in
+// exposed_ports) is safe to surface to the operator as 400. It
+// must NOT be marked as a DB error.
+func TestApplySiteAppService_ValidationErrorDoesNotWrap(t *testing.T) {
+	h := newSiteTestHandlers(t)
+	a := seedAppCompose(t, h, "stack", []ExposedPort{{Name: "web", Port: 80}})
+	s := mustSeedSite(t, h, "somesite", &a.ID, nil, true)
+	updOne := h.DB.Site.UpdateOneID(s.ID)
+	bad := "not-in-ports"
+	err := h.applySiteAppService(updOne, &bad, &a.ID)
+	if err == nil {
+		t.Fatal("validation error expected")
+	}
+	if errors.Is(err, errAppServiceDB) {
+		t.Errorf("validation error was wrapped as DB error: %v", err)
+	}
+	// And the message is the safe, hand-written one — no SQL
+	// detail, no path leak.
+	if !strings.Contains(err.Error(), "not in app's exposed_ports") {
+		t.Errorf("err = %q, want validation message", err.Error())
 	}
 }
 

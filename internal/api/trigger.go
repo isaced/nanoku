@@ -126,7 +126,7 @@ func (h *Handlers) Trigger(w http.ResponseWriter, r *http.Request) {
 		Save(r.Context())
 	if err != nil {
 		h.DeployLock.Release(a.ID)
-		writeErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, err)
 		return
 	}
 
