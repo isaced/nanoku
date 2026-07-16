@@ -61,6 +61,7 @@ export function AppRowActions({
             loading={deployPending}
             icon={<Rocket size={14} />}
             onClick={() => onTriggerDeploy(app)}
+            aria-label={t('table.actions.deploy')}
           />
         </Tooltip>
       )}
@@ -73,6 +74,7 @@ export function AppRowActions({
               loading={actions.stop.isPending && actions.stop.variables === app.id}
               icon={<Square size={14} />}
               onClick={() => runLifecycle('stopped', () => actions.stop.mutateAsync(app.id))}
+              aria-label={t('table.actions.stop')}
             />
           </Tooltip>
           {!lc.isRestarting && (
@@ -85,6 +87,7 @@ export function AppRowActions({
                 }
                 icon={<RefreshCw size={14} />}
                 onClick={() => runLifecycle('restarted', () => actions.restart.mutateAsync(app.id))}
+                aria-label={t('table.actions.restart')}
               />
             </Tooltip>
           )}
@@ -100,6 +103,7 @@ export function AppRowActions({
             }
             icon={<Play size={14} />}
             onClick={() => runLifecycle('started', () => actions.start.mutateAsync(app.id))}
+            aria-label={t('table.actions.start')}
           />
         </Tooltip>
       )}
@@ -111,6 +115,7 @@ export function AppRowActions({
             loading={deployPending}
             icon={<ContainerIcon size={14} />}
             onClick={() => onTriggerDeploy(app)}
+            aria-label={t('table.actions.redeploy')}
           />
         </Tooltip>
       )}
@@ -120,6 +125,7 @@ export function AppRowActions({
           size="small"
           icon={<Pencil size={14} />}
           onClick={() => onEdit(app)}
+          aria-label={t('table.actions.edit')}
         />
       </Tooltip>
       <Tooltip title={t('table.actions.delete')}>
@@ -128,6 +134,7 @@ export function AppRowActions({
           size="small"
           icon={<Trash2 size={14} />}
           onClick={() => onDelete(app)}
+          aria-label={t('table.actions.delete')}
         />
       </Tooltip>
     </Space>

@@ -225,6 +225,11 @@ function SitesPageContent() {
                           </span>
                         }
                         onClick={() => onToggle(row)}
+                        aria-label={
+                          row.enabled
+                            ? t('table.actions.disable')
+                            : t('table.actions.enable')
+                        }
                       />
                     </Tooltip>
                     <Tooltip title={t('table.actions.edit')}>
@@ -233,6 +238,7 @@ function SitesPageContent() {
                         size="small"
                         icon={<Pencil size={14} />}
                         onClick={() => openEdit(row)}
+                        aria-label={t('table.actions.edit')}
                       />
                     </Tooltip>
                     <Tooltip title={t('table.actions.delete')}>
@@ -241,6 +247,7 @@ function SitesPageContent() {
                         size="small"
                         icon={<Trash2 size={14} />}
                         onClick={() => onDelete(row)}
+                        aria-label={t('table.actions.delete')}
                       />
                     </Tooltip>
                   </div>

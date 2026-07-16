@@ -74,6 +74,7 @@ export function VolumesEditor({
                 size="small"
                 icon={<Trash2 size={13} />}
                 onClick={() => remove(i)}
+                aria-label={t('actions.delete', { ns: 'common' })}
               />
             </div>
           )

@@ -12,6 +12,7 @@ export function CodeBlock({ value }: { value: string }) {
         onClick={() => {
           void navigator.clipboard.writeText(value)
         }}
+        aria-label={t('actions.copy')}
       >
         {t('actions.copy')}
       </Button>
@@ -37,6 +38,7 @@ export function CopyableValue({ value, label }: { value: string; label: string }
         onClick={() => {
           void navigator.clipboard.writeText(value)
         }}
+        aria-label={t('actions.copy')}
       >
         {t('actions.copy')}
       </Button>

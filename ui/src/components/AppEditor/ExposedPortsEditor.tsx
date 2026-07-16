@@ -79,6 +79,7 @@ export function ExposedPortsEditor({
               icon={<Wand2 size={13} />}
               onClick={doImport}
               loading={importMutation.isPending}
+              aria-label={t('editor.exposedPortImport')}
             >
               {t('editor.exposedPortImport')}
             </Button>
@@ -113,6 +114,7 @@ export function ExposedPortsEditor({
               size="small"
               icon={<Trash2 size={13} />}
               onClick={() => remove(i)}
+              aria-label={t('actions.delete', { ns: 'common' })}
             />
           </div>
         ))}

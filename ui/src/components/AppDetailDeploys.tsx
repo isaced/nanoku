@@ -81,6 +81,7 @@ export function AppDetailDeploys({
                         return next
                       })
                     }}
+                    aria-label={t('detail.logs')}
                   >
                     <ScrollText size={12} className="inline-block mr-1" />
                     {t('detail.logs')}
