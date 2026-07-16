@@ -25,6 +25,13 @@ type ExposedPort struct {
 	// Container-side port the service listens on (1..65535). Caddy
 	// reverse-proxies to `<container-name>:<port>` over the nanoku network.
 	Port int `json:"port"`
+	// ContainerName is the actual docker container name for this service
+	// when it differs from the compose-default `nanoku-<app>-<name>-1`.
+	// Set from the compose file's `container_name:` field at import time
+	// (or by hand in the editor); empty means "use the default". Caddy
+	// upstream and the deploy-time missing-check both read through
+	// resolveServiceContainerName so the two stay in lockstep.
+	ContainerName string `json:"containerName"`
 }
 
 // serviceNameRe mirrors compose's constraint on service names: a service name
@@ -36,6 +43,16 @@ type ExposedPort struct {
 // injection attempts where a name like "../etc" would otherwise slip
 // through a less strict validator.
 var serviceNameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+
+// containerNameRe is the validation pattern for ExposedPort.ContainerName
+// — the user-supplied actual docker container name for the service. It is
+// intentionally broader than serviceNameRe (docker itself accepts
+// `[a-zA-Z0-9_.-]`, ≤ 64 chars); the user's compose `container_name:`
+// may contain underscores or upper-case that compose defaults never
+// produce, and we want to round-trip whatever the user wrote. We still
+// reject spaces, slashes, and other shell-special chars that would
+// break the Caddyfile or the deploy-time `docker compose ps` lookup.
+var containerNameRe = regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,64}$`)
 
 // ParseExposedPorts decodes the App.exposed_ports JSON column. The column is
 // nullable; a nil/empty raw value is a valid "no exposed_ports" state and
@@ -76,6 +93,12 @@ func ParseExposedPorts(raw *string) ([]ExposedPort, error) {
 		if ep.Port < 1 || ep.Port > 65535 {
 			return nil, fmt.Errorf("exposed_ports[%d]: port must be 1..65535", i)
 		}
+		if cn := strings.TrimSpace(ep.ContainerName); cn != "" {
+			if !containerNameRe.MatchString(cn) {
+				return nil, fmt.Errorf("exposed_ports[%d]: containerName %q must match %s", i, cn, containerNameRe.String())
+			}
+			ep.ContainerName = cn
+		}
 		if _, dup := seen[name]; dup {
 			return nil, fmt.Errorf("exposed_ports[%d]: duplicate name %q", i, name)
 		}
@@ -110,6 +133,12 @@ func MarshalExposedPorts(ports []ExposedPort) (*string, error) {
 		}
 		if ep.Port < 1 || ep.Port > 65535 {
 			return nil, fmt.Errorf("exposed_ports[%d]: port must be 1..65535", i)
+		}
+		if cn := strings.TrimSpace(ep.ContainerName); cn != "" {
+			if !containerNameRe.MatchString(cn) {
+				return nil, fmt.Errorf("exposed_ports[%d]: containerName %q must match %s", i, cn, containerNameRe.String())
+			}
+			ports[i].ContainerName = cn
 		}
 		if _, dup := seen[name]; dup {
 			return nil, fmt.Errorf("exposed_ports[%d]: duplicate name %q", i, name)
