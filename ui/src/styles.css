@@ -3,44 +3,62 @@
 @import "tailwindcss";
 
 /*
- * Theme tokens. We expose every visual surface as a CSS variable so
- * components never hardcode colours — antd's algorithm can't reach
- * every shadow / hover state we need, and we want a single place to
- * change the look.
+ * Theme tokens. Two palette blocks: a light default and an opt-in
+ * dark mode (driven by the [data-theme="dark"] attribute on <html>,
+ * which the ThemeToggle in TopNav writes).
  *
- * Dark mode is opt-in via the `[data-theme="dark"]` attribute on the
- * <html> element. The ThemeToggle (TopNav) writes that attribute and
- * mirrors it to localStorage. The default is light.
+ * Colour philosophy (Vercel/Linear-flavoured):
+ *   - low chroma on greys, slightly warm (zinc/gray not slate)
+ *   - one saturated accent (blue), used sparingly
+ *   - surface elevation reads as bg → bg-elevated → bg-input
+ *     with a 3-step ladder so the depth is visible
+ *   - borders are deliberately faint; we rely on the surface
+ *     shift + 1px lines, not on heavy 2px rules
+ *
+ * These values also feed ConfigProvider's seed tokens in __root.tsx
+ * so antd's auto-generated palette stays in sync with our chrome.
  */
 :root,
 :root[data-theme="light"] {
   color-scheme: light;
   --bg: #ffffff;
   --bg-elevated: #fafafa;
-  --bg-input: #f5f5f5;
-  --border: #e5e7eb;
-  --border-strong: #d1d5db;
-  --fg: #1f2937;
-  --fg-muted: #6b7280;
-  --accent: #0070f3;
-  --accent-soft: #f0f7ff;
-  --danger: #ef4444;
+  --bg-input: #f4f4f5;
+  --border: #ececef;
+  --border-strong: #d4d4d8;
+  --fg: #09090b;
+  --fg-muted: #71717a;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-soft: #eff6ff;
+  --accent-soft-2: #dbeafe;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
   --success: #16a34a;
+  --success-soft: #f0fdf4;
+  --warn: #d97706;
+  --warn-soft: #fffbeb;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0b0d10;
-  --bg-elevated: #15181c;
-  --bg-input: #1c2026;
-  --border: #2a2f36;
-  --border-strong: #3a4049;
-  --fg: #e6e8eb;
-  --fg-muted: #8a8f99;
-  --accent: #4f9eff;
-  --accent-soft: #15243a;
+  --bg: #09090b;
+  --bg-elevated: #18181b;
+  --bg-input: #27272a;
+  --border: #27272a;
+  --border-strong: #3f3f46;
+  --fg: #fafafa;
+  --fg-muted: #a1a1aa;
+  --accent: #3b82f6;
+  --accent-strong: #60a5fa;
+  --accent-soft: #1e293b;
+  --accent-soft-2: #1e3a8a;
   --danger: #f87171;
+  --danger-soft: #450a0a;
   --success: #4ade80;
+  --success-soft: #052e16;
+  --warn: #fbbf24;
+  --warn-soft: #451a03;
 }
 
 * {

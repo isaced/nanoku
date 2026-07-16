@@ -69,15 +69,43 @@ function RootLayout() {
         // This is the canonical way (antd v5) to switch themes: the
         // algorithm generates the full token table for every
         // component (Tag, Table, Drawer, Modal, ...) so we don't
-        // have to chase each surface with CSS overrides. Our
-        // CSS variables (--bg, --fg, --border) are still the
-        // source of truth for our own custom components and the
-        // chrome around antd (header bg, footer bg, code blocks).
+        // have to chase each surface with CSS overrides.
+        //
+        // We also pass `token` overrides that match the CSS
+        // variables in styles.css (colorPrimary = our --accent,
+        // colorBgContainer / colorBgLayout follow our surface
+        // ladder) so an antd button and our custom button chrome
+        // look like they came from the same palette.
         theme={{
           algorithm:
             theme === 'dark'
               ? antdTheme.darkAlgorithm
               : antdTheme.defaultAlgorithm,
+          token: {
+            colorPrimary:
+              theme === 'dark' ? '#3b82f6' : '#2563eb',
+            colorLink:
+              theme === 'dark' ? '#60a5fa' : '#1d4ed8',
+            colorBgContainer:
+              theme === 'dark' ? '#18181b' : '#ffffff',
+            colorBgElevated:
+              theme === 'dark' ? '#27272a' : '#fafafa',
+            colorBgLayout:
+              theme === 'dark' ? '#09090b' : '#fafafa',
+            colorBorder:
+              theme === 'dark' ? '#27272a' : '#ececef',
+            colorBorderSecondary:
+              theme === 'dark' ? '#27272a' : '#ececef',
+            colorText:
+              theme === 'dark' ? '#fafafa' : '#09090b',
+            colorTextSecondary:
+              theme === 'dark' ? '#a1a1aa' : '#71717a',
+            colorTextTertiary:
+              theme === 'dark' ? '#71717a' : '#a1a1aa',
+            borderRadius: 6,
+            fontFamily:
+              "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+          },
         }}
       >
         <AntdApp>
