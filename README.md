@@ -313,6 +313,7 @@ Everything is configured through `NANOKU_*` environment variables
 | `NANOKU_ACME_EMAIL`           | —                     | *(empty)*                     | Email for Let's Encrypt registration                                         |
 | `NANOKU_COMPOSE_DIR`          | —                     | `./composes`                  | Where nanoku stores generated `docker-compose.yml` files                     |
 | `NANOKU_DEPLOY_LOG_DIR`       | —                     | `./data/deploy-logs`          | Where per-deploy log files live                                              |
+| `NANOKU_KEEP_DEPLOY_DAYS`     | —                     | `30`                          | Days of history kept by the background Janitor (deploy log files + retired containers) |
 | `NANOKU_SELF_CONTAINER`       | —                     | *(empty)*                     | nanoku's own container name (enables the "self log" view in `/system`)       |
 | `NANOKU_ADMIN_USER`           | —                     | `admin`                       | Seed admin username on a **fresh** DB; ignored after first boot              |
 | `NANOKU_ADMIN_PASSWORD`       | —                     | *(empty)*                     | Seed admin password; **required** on first boot                              |
@@ -351,6 +352,27 @@ cd ui && npm test
 
 See [`AGENTS.md`](./AGENTS.md) for the full project layout, code style,
 and testing conventions.
+
+## 🧹 Background cleanup
+
+A built-in **Janitor** runs a fixed set of periodic tasks on a single
+1-minute master ticker. The goal is bounded growth: deploy log files,
+expired sessions, and retired container rows don't pile up forever.
+
+| Task                       | Default interval | What it does                                                                |
+| -------------------------- | ---------------- | ---------------------------------------------------------------------------- |
+| `purge-expired-sessions`   | 1h               | Delete `sessions` rows past their absolute expiry                            |
+| `purge-stale-attempts`     | 5m               | Drop empty per-IP login-attempt windows from the in-memory map               |
+| `prune-orphan-log-files`   | 1h               | Delete `<id>.log` files for deploy rows that no longer exist                |
+| `prune-old-log-files`      | 6h               | Delete deploy log files older than `NANOKU_KEEP_DEPLOY_DAYS` (deploy row is kept as history) |
+| `prune-old-containers`     | 24h              | Delete `Container` rows in terminal states (exited/dead/retired) older than `NANOKU_KEEP_DEPLOY_DAYS` that aren't any app's `current_container` |
+
+Every task runs once at boot (so a long-idle install doesn't have to
+wait the first interval) and then on its own cadence. Each task has a
+per-task timeout and panic isolation — a stuck or buggy cleanup
+can't crash the process. Per-task status (last run, error, counts) is
+exposed at `GET /api/system/cleanup` and rendered as a table on the
+**System** page.
 
 ## 🔐 Security
 

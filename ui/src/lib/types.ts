@@ -172,6 +172,30 @@ export type SystemStatus = {
   buildType: 'source' | 'release';
 };
 
+// CleanupStatus mirrors the wire shape of GET /api/system/cleanup.
+// Every field is optional/zero so older nanoku binaries that don't
+// return the same keys (e.g. a release without the Janitor) still
+// render an empty section instead of crashing the page.
+export type CleanupResult = {
+  scanned: number;
+  pruned: number;
+  bytes: number;
+};
+
+export type CleanupStatusEntry = {
+  lastRun: string;
+  nextRun: string;
+  lastResult: CleanupResult;
+  lastErr?: string;
+  lastErrAt?: string;
+  runCount: number;
+  errCount: number;
+};
+
+export type CleanupStatus = {
+  tasks: Record<string, CleanupStatusEntry>;
+};
+
 export type ContainerStats = {
   name: string;
   cpuPerc: number;

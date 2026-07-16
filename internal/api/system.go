@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 const (
@@ -122,4 +123,62 @@ func (h *Handlers) SystemStatus(w http.ResponseWriter, r *http.Request) {
 	out.Date = h.Date
 	out.BuildType = h.BuildType
 	writeJSON(w, http.StatusOK, out)
+}
+
+// CleanupStatus is the JSON wire shape of GET /api/system/cleanup.
+// The Janitor records per-task last-run + counts; this endpoint
+// surfaces them so an operator (or the system page) can verify the
+// background cleanup is alive and the most recent run did something
+// useful.
+type CleanupStatus struct {
+	// Tasks is keyed by task name. Times are RFC3339; the
+	// individual CleanupResult fields let callers tell the
+	// difference between "ran but found nothing" and
+	// "never ran".
+	Tasks map[string]CleanupStatusEntry `json:"tasks"`
+}
+
+// CleanupStatusEntry is the per-task shape inside CleanupStatus.
+// LastRun and NextRun are RFC3339; a zero LastRun means the task
+// has not run yet (and LastErr / LastResult are their zero
+// values).
+type CleanupStatusEntry struct {
+	LastRun    time.Time     `json:"lastRun"`
+	NextRun    time.Time     `json:"nextRun"`
+	LastResult CleanupResult `json:"lastResult"`
+	LastErr    string        `json:"lastErr,omitempty"`
+	LastErrAt  time.Time     `json:"lastErrAt,omitempty"`
+	RunCount   int           `json:"runCount"`
+	ErrCount   int           `json:"errCount"`
+}
+
+func (h *Handlers) SystemCleanup(w http.ResponseWriter, r *http.Request) {
+	if h.Janitor == nil {
+		writeJSON(w, http.StatusOK, CleanupStatus{Tasks: map[string]CleanupStatusEntry{}})
+		return
+	}
+	raw := h.Janitor.Status()
+	out := make(map[string]CleanupStatusEntry, len(raw))
+	for name, s := range raw {
+		var lastRun, nextRun, lastErrAt time.Time
+		if !s.LastRun.IsZero() {
+			lastRun = s.LastRun.UTC()
+		}
+		if !s.NextRun.IsZero() {
+			nextRun = s.NextRun.UTC()
+		}
+		if !s.LastErrAt.IsZero() {
+			lastErrAt = s.LastErrAt.UTC()
+		}
+		out[name] = CleanupStatusEntry{
+			LastRun:    lastRun,
+			NextRun:    nextRun,
+			LastResult: s.LastResult,
+			LastErr:    s.LastErr,
+			LastErrAt:  lastErrAt,
+			RunCount:   s.RunCount,
+			ErrCount:   s.ErrCount,
+		}
+	}
+	writeJSON(w, http.StatusOK, CleanupStatus{Tasks: out})
 }

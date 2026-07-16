@@ -104,6 +104,7 @@ func adminMux(h *Handlers) *http.ServeMux {
 	mux.HandleFunc("GET /api/system/reconcile", h.SystemReconcile)
 	mux.HandleFunc("POST /api/system/reconcile", h.SystemReconcileApply)
 	mux.HandleFunc("DELETE /api/system/orphans/{name}", h.SystemRemoveOrphan)
+	mux.HandleFunc("GET /api/system/cleanup", h.SystemCleanup)
 
 	// --- singletons --------------------------------------------
 	mux.HandleFunc("GET /api/status", h.Status)

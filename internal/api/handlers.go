@@ -39,11 +39,16 @@ type Handlers struct {
 	DeployLogs      *deployLogStore
 	Sessions        *SessionStore
 	Secret          *secret.Sealer
-	Version         string
-	Commit          string
-	Date            string
-	BuildType       string
-	TrustProxy      bool
+	// Janitor is the background cleanup coordinator. Owned by
+	// main.go (lifecycle: Start after boot, Stop on shutdown) and
+	// exposed here so /api/system/cleanup can read its status. Nil
+	// in unit tests that don't exercise the Janitor.
+	Janitor    *Janitor
+	Version    string
+	Commit     string
+	Date       string
+	BuildType  string
+	TrustProxy bool
 
 	// ShutdownWG is incremented by executeDeploy on entry and
 	// decremented on return, so main.go can Wait on it after

@@ -3,6 +3,7 @@ import { api } from '../api'
 import { queryKeys } from '../queryKeys'
 import type {
   App,
+  CleanupStatus,
   ContainerInfo,
   Dashboard,
   Deploy,
@@ -99,6 +100,18 @@ export function useSystemStatus(): UseQueryResult<SystemStatus> {
   return useQuery({
     queryKey: queryKeys.system.status(),
     queryFn: api.systemStatus,
+  })
+}
+
+export function useCleanupStatus(): UseQueryResult<CleanupStatus> {
+  return useQuery({
+    queryKey: queryKeys.system.cleanup(),
+    queryFn: api.cleanupStatus,
+    // Background cleanup runs on minute-scale intervals; polling
+    // every 30s keeps the system page fresh without thrashing the
+    // server. Stale-while-revalidate semantics: the operator sees
+    // the previous result immediately on tab focus.
+    refetchInterval: 30_000,
   })
 }
 

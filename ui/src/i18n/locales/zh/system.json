@@ -14,5 +14,21 @@
     "set": "设置 <codeExample/> 即可启用。",
     "docker": "若 nanoku 部署在 Docker 中，请将环境变量设为容器名（如 <mono>nanoku</mono>），然后重启。日志将通过 <mono>docker logs</mono> 在此展示。"
   },
-  "dockerHint": "Docker 不可用 — 请挂载 Docker socket 后再启动 nanoku。"
+  "dockerHint": "Docker 不可用 — 请挂载 Docker socket 后再启动 nanoku。",
+  "cleanup": {
+    "title": "后台清理",
+    "subtitle": "Janitor 各任务的运行状态（过期会话、旧的部署日志、退役容器）。",
+    "refresh": "刷新",
+    "empty": "暂无后台任务运行。",
+    "colTask": "任务",
+    "colLastRun": "上次运行",
+    "colNextRun": "下次运行",
+    "colPruned": "已清理 / 扫描",
+    "colBytes": "释放字节",
+    "colRuns": "运行次数",
+    "colStatus": "状态",
+    "statusOk": "正常",
+    "statusError": "异常",
+    "statusIdle": "空闲"
+  }
 }

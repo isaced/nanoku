@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -24,6 +25,12 @@ type Config struct {
 	SelfContainer    string // nanoku's own container name (for log viewing); empty if not containerized
 	ComposeBaseDir   string // where nanoku stores generated docker-compose.yml files
 	DeployLogDir     string // where per-deploy log files live; defaults to ./data/deploy-logs
+	// KeepDeploysDays is the retention window for the background
+	// Janitor. Deploy log files and Container rows older than this
+	// are pruned on the Janitor's master tick. Deploy rows
+	// themselves are kept as history; only their on-disk log file
+	// and the DB Container row go away. Default 30.
+	KeepDeploysDays int
 	// TrustProxy makes clientIP honor X-Forwarded-For (leftmost hop).
 	// Only enable when nanoku sits behind a reverse proxy that sanitizes
 	// the header; otherwise an attacker can spoof IPs to bypass the
@@ -33,24 +40,25 @@ type Config struct {
 
 func Load() (*Config, error) {
 	c := &Config{
-	Listen:           getEnv("NANOKU_LISTEN", ":8080"),
-	DBPath:           getEnv("NANOKU_DB", "./nanoku.db"),
-	CaddyfilePath:    getEnv("NANOKU_CADDYFILE", "./Caddyfile"),
-	CaddyMode:        getEnv("NANOKU_CADDY_MODE", "managed"),
-	CaddyImage:       getEnv("NANOKU_CADDY_IMAGE", "caddy:2"),
-	CaddyContainer:   getEnv("NANOKU_CADDY_CONTAINER", "nanoku-caddy"),
-	CaddyVolumeName:  getEnv("NANOKU_CADDY_VOLUME", "nanoku-caddy-data"),
-	CaddyNetworkName: getEnv("NANOKU_CADDY_NETWORK", "nanoku-net"),
-	ACMEEmail:        os.Getenv("NANOKU_ACME_EMAIL"),
-	AdminUser:        getEnv("NANOKU_ADMIN_USER", "admin"),
-	AdminPassword:    os.Getenv("NANOKU_ADMIN_PASSWORD"),
-	DockerHost:       getEnv("DOCKER_HOST", "unix:///var/run/docker.sock"),
-	SkipCaddyReload:  false,
-	SelfContainer:    os.Getenv("NANOKU_SELF_CONTAINER"),
-	ComposeBaseDir:   getEnv("NANOKU_COMPOSE_DIR", "./composes"),
-	DeployLogDir:     getEnv("NANOKU_DEPLOY_LOG_DIR", "./data/deploy-logs"),
-	TrustProxy:       parseBool("NANOKU_TRUST_PROXY"),
-}
+		Listen:           getEnv("NANOKU_LISTEN", ":8080"),
+		DBPath:           getEnv("NANOKU_DB", "./nanoku.db"),
+		CaddyfilePath:    getEnv("NANOKU_CADDYFILE", "./Caddyfile"),
+		CaddyMode:        getEnv("NANOKU_CADDY_MODE", "managed"),
+		CaddyImage:       getEnv("NANOKU_CADDY_IMAGE", "caddy:2"),
+		CaddyContainer:   getEnv("NANOKU_CADDY_CONTAINER", "nanoku-caddy"),
+		CaddyVolumeName:  getEnv("NANOKU_CADDY_VOLUME", "nanoku-caddy-data"),
+		CaddyNetworkName: getEnv("NANOKU_CADDY_NETWORK", "nanoku-net"),
+		ACMEEmail:        os.Getenv("NANOKU_ACME_EMAIL"),
+		AdminUser:        getEnv("NANOKU_ADMIN_USER", "admin"),
+		AdminPassword:    os.Getenv("NANOKU_ADMIN_PASSWORD"),
+		DockerHost:       getEnv("DOCKER_HOST", "unix:///var/run/docker.sock"),
+		SkipCaddyReload:  false,
+		SelfContainer:    os.Getenv("NANOKU_SELF_CONTAINER"),
+		ComposeBaseDir:   getEnv("NANOKU_COMPOSE_DIR", "./composes"),
+		DeployLogDir:     getEnv("NANOKU_DEPLOY_LOG_DIR", "./data/deploy-logs"),
+		KeepDeploysDays:  parseInt("NANOKU_KEEP_DEPLOY_DAYS", 30),
+		TrustProxy:       parseBool("NANOKU_TRUST_PROXY"),
+	}
 
 	flag.StringVar(&c.Listen, "listen", c.Listen, "admin HTTP listen address")
 	flag.StringVar(&c.DBPath, "db", c.DBPath, "SQLite database file path")
@@ -81,4 +89,20 @@ func parseBool(key string) bool {
 		return true
 	}
 	return false
+}
+
+// parseInt returns the named env var parsed as an int, or fallback when
+// the var is unset, blank, or not a valid integer. We don't expose this
+// for the broader config — the existing fields are all strings or bools —
+// but the Janitor's KeepDeploysDays needs a numeric knob.
+func parseInt(key string, fallback int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
 }

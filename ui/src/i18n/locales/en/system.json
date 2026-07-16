@@ -14,5 +14,21 @@
     "set": "Set <codeExample/> to enable.",
     "docker": "When nanoku runs in Docker, set the env var to the container name (e.g. <mono>nanoku</mono>) and restart. Logs will then stream here via <mono>docker logs</mono>."
   },
-  "dockerHint": "Docker unavailable — start nanoku with the docker socket mounted."
+  "dockerHint": "Docker unavailable — start nanoku with the docker socket mounted.",
+  "cleanup": {
+    "title": "Background cleanup",
+    "subtitle": "Per-task status of the Janitor (expired sessions, old deploy logs, retired containers).",
+    "refresh": "Refresh",
+    "empty": "No background tasks have run yet.",
+    "colTask": "Task",
+    "colLastRun": "Last run",
+    "colNextRun": "Next run",
+    "colPruned": "Pruned / scanned",
+    "colBytes": "Bytes freed",
+    "colRuns": "Runs",
+    "colStatus": "Status",
+    "statusOk": "healthy",
+    "statusError": "error",
+    "statusIdle": "idle"
+  }
 }

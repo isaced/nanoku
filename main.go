@@ -106,27 +106,22 @@ func main() {
 	cancelSeed()
 
 	sessions := api.NewSessionStore(database)
-	// Best-effort expired-session cleanup on boot; ignore errors.
-	if _, err := sessions.PurgeExpired(context.Background()); err != nil {
-		log.Printf("purge expired sessions: %v", err)
-	}
-	// Drop login-attempt entries that have aged out of the 1-minute
-	// window. Otherwise IPs that tried once and never returned stay in
-	// the map forever, and an attacker can walk a wide source range to
-	// grow it without bound.
-	go func() {
-		t := time.NewTicker(5 * time.Minute)
-		defer t.Stop()
-		for range t.C {
-			sessions.PurgeStaleAttempts()
-		}
-	}()
 
 	deployLogStore, err := api.NewDeployLogStore(cfg.DeployLogDir)
 	if err != nil {
 		log.Fatalf("deploy log store: %v", err)
 	}
 	log.Printf("deploy log dir: %s", cfg.DeployLogDir)
+
+	// Background cleanup. The Janitor runs every built-in task once at
+	// start (a long-idle install doesn't have to wait the first interval
+	// to clean up) and then on its master 1-minute tick. Tasks share the
+	// same per-task timeout and panic isolation, so a stuck or buggy
+	// task can't crash the process. See internal/api/cleanup.go for the
+	// task list and individual behavior.
+	janitor := api.NewJanitor(database, sessions, deployLogStore, api.CleanupConfig{
+		KeepDeploysDays: cfg.KeepDeploysDays,
+	})
 
 	var deployWG sync.WaitGroup
 	handlers := &api.Handlers{
@@ -141,6 +136,7 @@ func main() {
 		DeployLogs:      deployLogStore,
 		Sessions:        sessions,
 		Secret:          sealer,
+		Janitor:         janitor,
 		Version:         version,
 		Commit:          commit,
 		Date:            date,
@@ -157,6 +153,13 @@ func main() {
 	bootReconCtx, cancelRecon := context.WithTimeout(context.Background(), 60*time.Second)
 	handlers.RunBootReconcile(bootReconCtx)
 	cancelRecon()
+
+	// Start the Janitor last so the one-shot startup pass can observe
+	// any state produced above (admin seed, boot reconcile). It runs
+	// synchronously up to len(tasks)*TaskTimeout; in practice that's
+	// a handful of milliseconds. The master loop continues in the
+	// background until Stop.
+	janitor.Start(context.Background())
 
 	// Routing layers, outer to inner (see internal/api/router.go for the
 	// full route table):
@@ -205,4 +208,11 @@ func main() {
 	drainCtx, cancelDrain := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelDrain()
 	handlers.DrainInflight(drainCtx, 30*time.Second)
+
+	// The Janitor's master loop and any in-flight task get a short
+	// window to finish. Cleanup tasks are short and stateless; if one
+	// is mid-run when we cancel, the next Start on the next boot
+	// picks up the work. Same graceful contract as DeployLock: try
+	// to wait, then give up.
+	janitor.Stop(2 * time.Second)
 }

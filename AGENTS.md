@@ -31,6 +31,18 @@ Nanoku is an ultra-lightweight self-hosted deployment hub: a single Go binary th
 - `composes/` — example compose apps used by the Docker deploy path.
 - `docs/` — design docs (PLAN-v0, SCHEMA-v0, PROPOSAL-webhook, REVIEW-v0) — context, not user docs.
 
+## Background cleanup (Janitor)
+
+`internal/api/cleanup.go` owns a `Janitor` that runs a fixed set of periodic tasks on a single 1-minute master ticker:
+
+- `purge-expired-sessions` (1h) — delete session rows past their absolute expiry
+- `purge-stale-attempts` (5m) — drop empty per-IP login-attempt windows from the in-memory map
+- `prune-orphan-log-files` (1h) — delete `<id>.log` files for deploy rows that no longer exist
+- `prune-old-log-files` (6h) — delete deploy log files older than `NANOKU_KEEP_DEPLOY_DAYS` (deploy row itself is kept as history)
+- `prune-old-containers` (24h) — delete `Container` rows in terminal states (exited/dead/retired) older than `NANOKU_KEEP_DEPLOY_DAYS` that aren't any app's `current_container`
+
+`Start` runs each task once synchronously (so the system page reflects state immediately) and the master loop continues in the background. Each task gets a per-task timeout and panic isolation; one stuck or buggy task doesn't crash the process or block the rest. `main.go` calls `Stop(gracefulWindow)` after `DrainInflight` to exit cleanly. Per-task status is exposed at `GET /api/system/cleanup` and rendered in the UI's system page.
+
 ## Auth model
 
 - **Admin UI** (`/api/*` except login/logout/trigger) sits behind **session-cookie auth** (`SessionAuth` in `internal/api/auth.go`), not Basic Auth. `POST /api/login` issues an HttpOnly, `SameSite=Strict`, `Secure`(when TLS) cookie; `GET /api/me` is the heartbeat the SPA checks on route entry.

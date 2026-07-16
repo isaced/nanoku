@@ -1,6 +1,7 @@
 import type {
   App,
   AppInput,
+  CleanupStatus,
   ContainerInfo,
   Dashboard,
   Deploy,
@@ -141,6 +142,7 @@ export const api = {
   systemStatus: () => request<SystemStatus>('/api/system/status'),
   systemLogs: (source: 'caddy' | 'nanoku', tail = 200) =>
     request<string>(`/api/system/logs?source=${source}&tail=${tail}`),
+  cleanupStatus: () => request<CleanupStatus>('/api/system/cleanup'),
 
   dashboard: () => request<Dashboard>('/api/dashboard'),
 };

@@ -25,5 +25,6 @@ export const queryKeys = {
     status: () => ['system', 'status'] as const,
     logs: (source: 'caddy' | 'nanoku', tail: number) =>
       ['system', 'logs', source, tail] as const,
+    cleanup: () => ['system', 'cleanup'] as const,
   },
 }

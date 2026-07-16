@@ -5,7 +5,9 @@ import {
   InputNumber,
   Space,
   Switch,
+  Table,
   Tag,
+  Tooltip,
 } from 'antd'
 import {
   CircleCheck,
@@ -19,6 +21,7 @@ import {
 import { Trans, useTranslation } from 'react-i18next'
 import { ensureAuth, isAuthenticated } from '../lib/auth'
 import {
+  useCleanupStatus,
   useSuspenseStatus,
   useSuspenseSystemStatus,
   useSystemLogs,
@@ -191,9 +194,181 @@ function SystemPageContent() {
             }
           />
         </div>
+
+        <CleanupSection />
       </main>
     </div>
   )
+}
+
+// CleanupSection surfaces the background Janitor's per-task
+// status from GET /api/system/cleanup. Each task shows its
+// last-run time, last-run counts (pruned / scanned / bytes), and
+// any error from the most recent run. The hook auto-polls every
+// 30s, so an operator watching this card sees liveness + health
+// without manual refresh.
+function CleanupSection() {
+  const { t } = useTranslation('system')
+  const cleanupQuery = useCleanupStatus()
+
+  const tasks = useMemo(() => {
+    const raw = cleanupQuery.data?.tasks ?? {}
+    return Object.entries(raw)
+      .map(([name, entry]) => ({ name, ...entry }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [cleanupQuery.data])
+
+  return (
+    <section className="mt-8 border border-[var(--border)] rounded-lg bg-[var(--bg-elevated)] overflow-hidden">
+      <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <ShieldCheck size={14} className="text-[var(--fg-muted)]" />
+          <span className="mono text-sm">{t('cleanup.title')}</span>
+          <span className="text-xs text-[var(--fg-muted)]">
+            {t('cleanup.subtitle')}
+          </span>
+        </div>
+        <Button
+          icon={<RefreshCw size={13} />}
+          onClick={() => void cleanupQuery.refetch()}
+          loading={cleanupQuery.isFetching}
+          size="small"
+        >
+          {t('cleanup.refresh')}
+        </Button>
+      </div>
+      <div className="p-3">
+        {tasks.length === 0 ? (
+          <div className="text-xs text-[var(--fg-muted)] p-2">
+            {t('cleanup.empty')}
+          </div>
+        ) : (
+          <Table<CleanupRow>
+            size="small"
+            rowKey="name"
+            pagination={false}
+            dataSource={tasks}
+            columns={[
+              {
+                title: t('cleanup.colTask'),
+                dataIndex: 'name',
+                key: 'name',
+                render: (name: string) => (
+                  <span className="mono text-xs">{name}</span>
+                ),
+              },
+              {
+                title: t('cleanup.colLastRun'),
+                dataIndex: 'lastRun',
+                key: 'lastRun',
+                render: (v: string) =>
+                  v ? <span className="mono text-xs">{formatTs(v)}</span> : '—',
+              },
+              {
+                title: t('cleanup.colNextRun'),
+                dataIndex: 'nextRun',
+                key: 'nextRun',
+                render: (v: string) =>
+                  v ? <span className="mono text-xs">{formatTs(v)}</span> : '—',
+              },
+              {
+                title: t('cleanup.colPruned'),
+                dataIndex: 'lastResult',
+                key: 'pruned',
+                render: (r: { pruned: number; scanned: number; bytes: number }) => (
+                  <span className="mono text-xs">
+                    {r.pruned}
+                    <span className="text-[var(--fg-muted)]">
+                      {' / '}
+                      {r.scanned}
+                    </span>
+                  </span>
+                ),
+              },
+              {
+                title: t('cleanup.colBytes'),
+                dataIndex: 'lastResult',
+                key: 'bytes',
+                render: (r: { bytes: number }) => (
+                  <span className="mono text-xs">{formatBytes(r.bytes)}</span>
+                ),
+              },
+              {
+                title: t('cleanup.colRuns'),
+                dataIndex: 'runCount',
+                key: 'runCount',
+                render: (n: number, row) => (
+                  <span className="mono text-xs">
+                    {n}
+                    {row.errCount > 0 && (
+                      <span className="text-[var(--danger)] ml-1">
+                        ({row.errCount} ✗)
+                      </span>
+                    )}
+                  </span>
+                ),
+              },
+              {
+                title: t('cleanup.colStatus'),
+                key: 'status',
+                render: (_: unknown, row) =>
+                  row.lastErr ? (
+                    <Tooltip title={row.lastErr}>
+                      <Tag color="red" className="!m-0">
+                        <span className="inline-flex items-center gap-1">
+                          <CircleX size={10} /> {t('cleanup.statusError')}
+                        </span>
+                      </Tag>
+                    </Tooltip>
+                  ) : row.runCount > 0 ? (
+                    <Tag color="green" className="!m-0">
+                      <span className="inline-flex items-center gap-1">
+                        <CircleCheck size={10} /> {t('cleanup.statusOk')}
+                      </span>
+                    </Tag>
+                  ) : (
+                    <Tag className="!m-0">
+                      <span className="inline-flex items-center gap-1">
+                        <CircleDashed size={10} /> {t('cleanup.statusIdle')}
+                      </span>
+                    </Tag>
+                  ),
+              },
+            ]}
+          />
+        )}
+      </div>
+    </section>
+  )
+}
+
+type CleanupRow = {
+  name: string
+  lastRun: string
+  nextRun: string
+  lastResult: { scanned: number; pruned: number; bytes: number }
+  lastErr?: string
+  lastErrAt?: string
+  runCount: number
+  errCount: number
+};
+
+function formatTs(iso: string): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  // Locale-aware short timestamp; falls back to ISO on failure.
+  return d.toLocaleString();
+}
+
+function formatBytes(n: number): string {
+  if (!n) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(
+    Math.floor(Math.log(n) / Math.log(1024)),
+    units.length - 1,
+  );
+  return `${(n / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
 function LogCard({
