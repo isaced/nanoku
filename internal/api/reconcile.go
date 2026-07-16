@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -205,28 +206,43 @@ func (h *Handlers) clearAppCurrentContainer(ctx context.Context, appID int) erro
 // Refuses to remove the caddy container or anything matching a tracked
 // app's current container name, so a UI race (clicking delete on a
 // tracked container) can't take down the reverse proxy.
+//
+// Returns a *orphanRefusal when the request is invalid (handler surfaces
+// the safe message at 400); returns the raw DB / docker error otherwise
+// (handler routes to writeInternalErr at 500). The split keeps internal
+// error text from leaking through the refusal path.
 func (h *Handlers) RemoveOrphanContainer(ctx context.Context, name string) error {
 	if h.Docker == nil {
-		return fmt.Errorf("docker manager not initialized")
+		return &orphanRefusal{"docker manager not initialized"}
 	}
 	if name == "" {
-		return fmt.Errorf("name required")
+		return &orphanRefusal{"name required"}
 	}
 	if name == h.Docker.CaddyContainerName() {
-		return fmt.Errorf("refusing to remove caddy container %q", name)
+		return &orphanRefusal{fmt.Sprintf("refusing to remove caddy container %q", name)}
 	}
 	if !strings.HasPrefix(name, "nanoku-") {
-		return fmt.Errorf("refusing to remove non-nanoku container %q", name)
+		return &orphanRefusal{fmt.Sprintf("refusing to remove non-nanoku container %q", name)}
 	}
 	tracked, err := h.DB.Container.Query().Where(container.Name(name)).Exist(ctx)
 	if err != nil {
 		return fmt.Errorf("check tracked: %w", err)
 	}
 	if tracked {
-		return fmt.Errorf("refusing to remove tracked container %q", name)
+		return &orphanRefusal{fmt.Sprintf("refusing to remove tracked container %q", name)}
 	}
 	return h.Docker.RemoveContainer(ctx, name)
 }
+
+// orphanRefusal is the typed error returned for the "refuse to
+// remove" branches of RemoveOrphanContainer. The HTTP handler uses
+// errors.As to recognize it and return 400 with the safe message;
+// any other error is routed to writeInternalErr. The message itself
+// is what the operator sees, so it must be hand-written — never
+// include raw ent / docker error text here.
+type orphanRefusal struct{ msg string }
+
+func (e *orphanRefusal) Error() string { return e.msg }
 
 // RunBootReconcile is the boot-time call: scan, log, and auto-clear stale
 // current_container edges so a half-finished deploy doesn't leave the app
@@ -285,7 +301,12 @@ func (h *Handlers) SystemReconcileApply(w http.ResponseWriter, r *http.Request) 
 func (h *Handlers) SystemRemoveOrphan(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if err := h.RemoveOrphanContainer(r.Context(), name); err != nil {
-		writeErr(w, http.StatusBadRequest, err)
+		var refused *orphanRefusal
+		if errors.As(err, &refused) {
+			writeErr(w, http.StatusBadRequest, errors.New(refused.msg))
+			return
+		}
+		writeInternalErr(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
