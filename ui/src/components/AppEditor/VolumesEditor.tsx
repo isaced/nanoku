@@ -1,6 +1,7 @@
 import { Button, Checkbox, Form, Input, Select, Switch, Tag, Tooltip } from 'antd'
 import { Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useFieldArray } from '../../lib/hooks/useFieldArray'
 import type { VolumeInput } from '../../lib/types'
 
 // VolumesEditor mirrors EnvVarsEditor: always-open, lives in the
@@ -14,15 +15,7 @@ export function VolumesEditor({
   onChange: (next: VolumeInput[]) => void
 }) {
   const { t } = useTranslation('apps')
-  function setRow(i: number, patch: Partial<VolumeInput>) {
-    onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
-  }
-  function addRow() {
-    onChange([...rows, { type: 'volume', target: '' }])
-  }
-  function delRow(i: number) {
-    onChange(rows.filter((_, idx) => idx !== i))
-  }
+  const { set, add, remove } = useFieldArray<VolumeInput>(rows, onChange)
   return (
     <div className="space-y-3">
       {rows.length === 0 && (
@@ -41,7 +34,7 @@ export function VolumesEditor({
               <Select
                 className="!w-32"
                 value={row.type ?? 'volume'}
-                onChange={(v) => setRow(i, { type: v })}
+                onChange={(v) => set(i, { type: v })}
                 options={[
                   { value: 'volume', label: t('volumeEditor.typeVolume') },
                   { value: 'bind', label: t('volumeEditor.typeBind') },
@@ -55,18 +48,18 @@ export function VolumesEditor({
                     : t('volumeEditor.sourceVolumePlaceholder')
                 }
                 value={row.source ?? ''}
-                onChange={(e) => setRow(i, { source: e.target.value })}
+                onChange={(e) => set(i, { source: e.target.value })}
               />
               <Input
                 className="flex-1 mono text-xs"
                 placeholder={t('volumeEditor.targetPlaceholder')}
                 value={row.target ?? ''}
-                onChange={(e) => setRow(i, { target: e.target.value })}
+                onChange={(e) => set(i, { target: e.target.value })}
               />
               <Tooltip title={t('volumeEditor.readOnly')}>
                 <Switch
                   checked={!!row.readOnly}
-                  onChange={(v) => setRow(i, { readOnly: v })}
+                  onChange={(v) => set(i, { readOnly: v })}
                 />
               </Tooltip>
               {isAuto && (
@@ -80,7 +73,7 @@ export function VolumesEditor({
                 type="text"
                 size="small"
                 icon={<Trash2 size={13} />}
-                onClick={() => delRow(i)}
+                onClick={() => remove(i)}
               />
             </div>
           )
@@ -90,7 +83,7 @@ export function VolumesEditor({
         type="dashed"
         size="small"
         icon={<Plus size={13} />}
-        onClick={addRow}
+        onClick={() => add({ type: 'volume', target: '' })}
       >
         {t('volumeEditor.addRow')}
       </Button>

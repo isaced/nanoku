@@ -1,6 +1,7 @@
 import { App, Button, Input, InputNumber, Tooltip } from 'antd'
 import { Plus, Trash2, Wand2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useFieldArray } from '../../lib/hooks/useFieldArray'
 import { useImportExposedPorts } from '../../lib/hooks'
 import type { ExposedPort } from '../../lib/types'
 
@@ -33,17 +34,9 @@ export function ExposedPortsEditor({
   const { t } = useTranslation('apps')
   const { message } = App.useApp()
   const importMutation = useImportExposedPorts()
+  const { set, add, remove } = useFieldArray<ExposedPort>(rows, onChange)
   const count = rows.length
   const canImport = appId != null
-  function setRow(i: number, patch: Partial<ExposedPort>) {
-    onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
-  }
-  function addRow() {
-    onChange([...rows, { name: '', port: 80 }])
-  }
-  function delRow(i: number) {
-    onChange(rows.filter((_, idx) => idx !== i))
-  }
   // doImport runs the server-side parser and replaces the current
   // draft with the result. The user is expected to review before
   // submitting — the import is scaffolding, not a commit. The
@@ -105,7 +98,7 @@ export function ExposedPortsEditor({
               className="!w-40 mono text-xs"
               placeholder={t('editor.exposedPortNamePlaceholder')}
               value={row.name}
-              onChange={(e) => setRow(i, { name: e.target.value })}
+              onChange={(e) => set(i, { name: e.target.value })}
             />
             <InputNumber
               className="!w-28"
@@ -113,7 +106,7 @@ export function ExposedPortsEditor({
               max={65535}
               placeholder="3000"
               value={row.port}
-              onChange={(v) => setRow(i, { port: Number(v) || 0 })}
+              onChange={(v) => set(i, { port: Number(v) || 0 })}
             />
             <span className="text-[10px] text-[var(--fg-muted)] flex-1">
               {t('editor.exposedPortExtra')}
@@ -122,7 +115,7 @@ export function ExposedPortsEditor({
               type="text"
               size="small"
               icon={<Trash2 size={13} />}
-              onClick={() => delRow(i)}
+              onClick={() => remove(i)}
             />
           </div>
         ))}
@@ -131,7 +124,7 @@ export function ExposedPortsEditor({
         type="dashed"
         size="small"
         icon={<Plus size={13} />}
-        onClick={addRow}
+        onClick={() => add({ name: '', port: 80 })}
       >
         {t('editor.exposedPortAdd')}
       </Button>

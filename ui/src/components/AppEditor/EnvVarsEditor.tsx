@@ -1,6 +1,7 @@
 import { Button, Input } from 'antd'
 import { Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useFieldArray } from '../../lib/hooks/useFieldArray'
 import type { EnvVar } from '../../lib/types'
 
 // EnvVarsEditor is an always-open editor (no collapse switch): it lives
@@ -15,15 +16,7 @@ export function EnvVarsEditor({
   onChange: (next: EnvVar[]) => void
 }) {
   const { t } = useTranslation('apps')
-  function setRow(i: number, patch: Partial<EnvVar>) {
-    onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
-  }
-  function addRow() {
-    onChange([...rows, { key: '', value: '' }])
-  }
-  function delRow(i: number) {
-    onChange(rows.filter((_, idx) => idx !== i))
-  }
+  const { set, add, remove } = useFieldArray<EnvVar>(rows, onChange)
   return (
     <div className="space-y-3">
       {rows.length === 0 && (
@@ -41,19 +34,19 @@ export function EnvVarsEditor({
               className="!w-40 mono text-xs"
               placeholder={t('detail.keyPlaceholder')}
               value={row.key}
-              onChange={(e) => setRow(i, { key: e.target.value })}
+              onChange={(e) => set(i, { key: e.target.value })}
             />
             <Input
               className="flex-1 mono text-xs"
               placeholder={t('detail.valuePlaceholder')}
               value={row.value}
-              onChange={(e) => setRow(i, { value: e.target.value })}
+              onChange={(e) => set(i, { value: e.target.value })}
             />
             <Button
               type="text"
               size="small"
               icon={<Trash2 size={13} />}
-              onClick={() => delRow(i)}
+              onClick={() => remove(i)}
             />
           </div>
         ))}
@@ -62,7 +55,7 @@ export function EnvVarsEditor({
         type="dashed"
         size="small"
         icon={<Plus size={13} />}
-        onClick={addRow}
+        onClick={() => add({ key: '', value: '' })}
       >
         {t('detail.addVar')}
       </Button>
