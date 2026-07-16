@@ -174,6 +174,7 @@ func main() {
 	mux.HandleFunc("POST /api/apps/{id}/restart", handlers.RestartApp)
 	mux.HandleFunc("GET /api/apps/{id}/logs", handlers.AppLogs)
 	mux.HandleFunc("GET /api/apps/{id}/logs/stream", handlers.AppLogsStream)
+	mux.HandleFunc("GET /api/apps/{id}/containers", handlers.AppContainers)
 	mux.HandleFunc("GET /api/apps/{id}/deployments/{did}/logs/stream", handlers.DeployLogStream)
 	mux.HandleFunc("GET /api/apps/{id}/env", handlers.ListAppEnvVars)
 	mux.HandleFunc("PUT /api/apps/{id}/env", handlers.ReplaceAppEnvVars)

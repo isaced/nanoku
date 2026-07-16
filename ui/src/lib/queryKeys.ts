@@ -11,7 +11,9 @@ export const queryKeys = {
     env: (id: number) => ['apps', id, 'env'] as const,
     volumes: (id: number) => ['apps', id, 'volumes'] as const,
     deploys: (id: number) => ['apps', id, 'deploys'] as const,
-    logs: (id: number, tail: number) => ['apps', id, 'logs', tail] as const,
+    logs: (id: number, tail: number, container?: string) =>
+      ['apps', id, 'logs', tail, container ?? ''] as const,
+    containers: (id: number) => ['apps', id, 'containers'] as const,
   },
   sites: {
     all: () => ['sites'] as const,

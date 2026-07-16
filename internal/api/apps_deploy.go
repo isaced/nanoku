@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/isaced/nanoku/internal/db"
+	"github.com/isaced/nanoku/internal/docker"
 )
 
 // DeployApp is the manual UI deploy entry point. Like the HTTP trigger path,
@@ -208,12 +211,12 @@ func (h *Handlers) AppLogs(w http.ResponseWriter, r *http.Request) {
 		writeInternalErr(w, err)
 		return
 	}
-	cur, err := a.QueryCurrentContainer().Only(r.Context())
-	if err != nil || cur == nil {
-		writeErr(w, http.StatusConflict, errors.New("no deployed container"))
+	containerName, status, msg := h.resolveLogContainer(r, a)
+	if msg != "" {
+		writeErr(w, status, errors.New(msg))
 		return
 	}
-	out, err := h.Docker.ContainerLogs(r.Context(), cur.Name, tail)
+	out, err := h.Docker.ContainerLogs(r.Context(), containerName, tail)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err)
 		return
@@ -258,12 +261,12 @@ func (h *Handlers) AppLogsStream(w http.ResponseWriter, r *http.Request) {
 		writeInternalErr(w, err)
 		return
 	}
-	cur, err := a.QueryCurrentContainer().Only(r.Context())
-	if err != nil || cur == nil {
-		writeErr(w, http.StatusConflict, errors.New("no deployed container"))
+	containerName, status, msg := h.resolveLogContainer(r, a)
+	if msg != "" {
+		writeErr(w, status, errors.New(msg))
 		return
 	}
-	stream, err := h.Docker.ContainerLogsStream(r.Context(), cur.Name, tail, true)
+	stream, err := h.Docker.ContainerLogsStream(r.Context(), containerName, tail, true)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err)
 		return
@@ -271,4 +274,79 @@ func (h *Handlers) AppLogsStream(w http.ResponseWriter, r *http.Request) {
 	sseHeaders(w)
 	w.WriteHeader(http.StatusOK)
 	streamToSSE(r.Context(), w, stream.Lines, stream.Err, stream.Cancel)
+}
+
+// resolveLogContainer determines which container's logs to stream. The
+// ?container=<name> query param (used by the compose container-selector
+// UI) takes precedence; when absent we fall back to the app's
+// current_container so docker-mode apps and older callers keep working.
+//
+// Returns (name, 0, "") on success. On failure returns ("", status, msg)
+// where status/msg are suitable for writeErr.
+func (h *Handlers) resolveLogContainer(r *http.Request, a *db.App) (string, int, string) {
+	if c := r.URL.Query().Get("container"); c != "" {
+		return c, 0, ""
+	}
+	cur, err := a.QueryCurrentContainer().Only(r.Context())
+	if err != nil || cur == nil {
+		return "", http.StatusConflict, "no deployed container"
+	}
+	return cur.Name, 0, ""
+}
+
+// AppContainers lists the containers belonging to an app. For compose
+// apps this enumerates every service in the stack (via the
+// com.docker.compose.project label) so the Logs tab can offer a
+// container selector. For docker-mode apps it returns the single
+// current_container. The list reflects live Docker state, not the DB,
+// so containers added/removed by `docker compose up/down` between
+// deploys are accurately represented.
+func (h *Handlers) AppContainers(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))
+		return
+	}
+	if h.Docker == nil {
+		writeErr(w, http.StatusServiceUnavailable, errors.New("docker unavailable"))
+		return
+	}
+	a, err := h.DB.App.Get(r.Context(), id)
+	if err != nil {
+		if isNotFound(err) {
+			writeErr(w, http.StatusNotFound, errors.New("app not found"))
+			return
+		}
+		writeInternalErr(w, err)
+		return
+	}
+
+	if a.DeployMethod == "compose" {
+		project := composeProjectName(a.Name)
+		containers, err := h.Docker.ListAppContainers(r.Context(), project)
+		if err != nil {
+			writeInternalErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, containers)
+		return
+	}
+
+	// docker-mode: return the single current container (or empty list
+	// if not yet deployed). The frontend hides the selector when only
+	// one container exists, so this just confirms deploy status.
+	cur, err := a.QueryCurrentContainer().Only(r.Context())
+	if err != nil || cur == nil {
+		writeJSON(w, http.StatusOK, []docker.ContainerInfo{})
+		return
+	}
+	status := string(cur.Status)
+	if live, err := h.Docker.ContainerStatus(r.Context(), cur.Name); err == nil && live != "not_found" {
+		status = live
+	}
+	writeJSON(w, http.StatusOK, []docker.ContainerInfo{{
+		Name:   cur.Name,
+		Image:  cur.Image,
+		Status: status,
+	}})
 }

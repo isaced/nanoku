@@ -48,6 +48,15 @@ export type Container = {
   stoppedAt?: string;
 };
 
+/** ContainerInfo is the lightweight container summary returned by
+ * GET /api/apps/{id}/containers. Used by the Logs tab to populate the
+ * container selector for compose apps. */
+export type ContainerInfo = {
+  name: string;
+  image: string;
+  status: string;
+};
+
 export type Volume = {
   type: 'volume' | 'bind';
   source: string;

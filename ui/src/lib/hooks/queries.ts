@@ -3,6 +3,7 @@ import { api } from '../api'
 import { queryKeys } from '../queryKeys'
 import type {
   App,
+  ContainerInfo,
   Dashboard,
   Deploy,
   EnvVar,
@@ -65,11 +66,23 @@ export function useAppDeploys(
 export function useAppLogs(
   id: number | null | undefined,
   tail: number,
+  container?: string,
   opts: { enabled?: boolean } = {},
 ): UseQueryResult<string> {
   return useQuery({
-    queryKey: queryKeys.apps.logs(id ?? -1, tail),
-    queryFn: () => api.appLogs(id as number, tail),
+    queryKey: queryKeys.apps.logs(id ?? -1, tail, container),
+    queryFn: () => api.appLogs(id as number, tail, container),
+    enabled: (opts.enabled ?? false) && id != null,
+  })
+}
+
+export function useAppContainers(
+  id: number | null | undefined,
+  opts: { enabled?: boolean } = {},
+): UseQueryResult<ContainerInfo[]> {
+  return useQuery({
+    queryKey: queryKeys.apps.containers(id ?? -1),
+    queryFn: () => api.appContainers(id as number),
     enabled: (opts.enabled ?? false) && id != null,
   })
 }

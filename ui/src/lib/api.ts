@@ -1,6 +1,7 @@
 import type {
   App,
   AppInput,
+  ContainerInfo,
   Dashboard,
   Deploy,
   DeployResponse,
@@ -103,8 +104,12 @@ export const api = {
     request<App>(`/api/apps/${id}/stop`, { method: 'POST' }),
   restartApp: (id: number) =>
     request<App>(`/api/apps/${id}/restart`, { method: 'POST' }),
-  appLogs: (id: number, tail = 200) =>
-    request<string>(`/api/apps/${id}/logs?tail=${tail}`),
+  appLogs: (id: number, tail = 200, container?: string) =>
+    request<string>(
+      `/api/apps/${id}/logs?tail=${tail}${container ? `&container=${encodeURIComponent(container)}` : ''}`,
+    ),
+  appContainers: (id: number) =>
+    request<ContainerInfo[]>(`/api/apps/${id}/containers`),
   listAppEnv: (id: number) => request<EnvVar[]>(`/api/apps/${id}/env`),
   replaceAppEnv: (id: number, vars: EnvVar[]) =>
     request<{ count: number; hint: string; appId: number }>(

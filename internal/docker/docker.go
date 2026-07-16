@@ -751,6 +751,46 @@ func (m *Manager) ListContainersByNamePrefix(ctx context.Context, prefix string)
 	return names, nil
 }
 
+// ContainerInfo is a lightweight summary of a running (or stopped)
+// container, returned by ListAppContainers for the container-selector
+// UI in the Logs tab.
+type ContainerInfo struct {
+	Name   string `json:"name"`
+	Image  string `json:"image"`
+	Status string `json:"status"`
+}
+
+// ListAppContainers lists every container belonging to an app. For
+// compose apps the project label groups all services in the stack, so
+// a single filtered ContainerList call returns them all. For docker-mode
+// apps the container name is deterministic ("nanoku-<app>"), so we
+// filter by name prefix instead. All: true includes stopped containers
+// so the user can still inspect logs of a service that crashed.
+func (m *Manager) ListAppContainers(ctx context.Context, project string) ([]ContainerInfo, error) {
+	args := filters.NewArgs()
+	args.Add("label", fmt.Sprintf("com.docker.compose.project=%s", project))
+	list, err := m.cli.ContainerList(ctx, container.ListOptions{All: true, Filters: args})
+	if err != nil {
+		return nil, fmt.Errorf("list app containers for project %q: %w", project, err)
+	}
+	out := make([]ContainerInfo, 0, len(list))
+	for _, c := range list {
+		name := ""
+		if len(c.Names) > 0 {
+			name = strings.TrimPrefix(c.Names[0], "/")
+		}
+		if name == "" {
+			continue
+		}
+		out = append(out, ContainerInfo{
+			Name:   name,
+			Image:  c.Image,
+			Status: c.State,
+		})
+	}
+	return out, nil
+}
+
 func (m *Manager) CreateAppContainer(ctx context.Context, namePrefix, imageRef string, port int, env []string, hostPort int, mounts []VolumeMount) (dockerID string, containerName string, err error) {
 	if err := m.EnsureNetwork(ctx); err != nil {
 		return "", "", err
