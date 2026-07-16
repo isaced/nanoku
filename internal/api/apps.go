@@ -345,16 +345,19 @@ func (h *Handlers) UpdateApp(w http.ResponseWriter, r *http.Request) {
 			_ = werr
 		}
 	}
-	// If exposed_ports or the docker→compose mode changed, the upstream
-	// formula for every site linked to this app may have shifted. Refresh
-	// them so the API list view reflects what the Caddyfile actually
-	// serves. Best-effort: a refresh failure is not fatal here, since
-	// the next deploy will reconcile anyway.
+	// Regenerate the Caddyfile now: changing exposed_ports /
+	// deploy_method may have invalidated the upstream of a
+	// previously-resolvable site (e.g. removed a service that
+	// a site was pointing at). The upstream is derived at
+	// render time, so the only way for that invalidation to
+	// surface is via a fresh regen — without this call the
+	// site would keep the old upstream in the Caddyfile
+	// until the next site mutation. RegenerateAndReload is
+	// best-effort; a failure here doesn't fail the PATCH
+	// (the app row is already saved), but we log it so a
+	// manual regen is one click away.
 	if in.ExposedPorts != nil || in.DeployMethod != nil {
-		if rerr := h.RefreshSitesForApp(r.Context(), a.ID); rerr != nil {
-			// Don't fail the PATCH on a refresh error — the app row
-			// itself is already saved. The next site update / deploy
-			// will pick up the slack.
+		if rerr := h.regenerateAndReload(r); rerr != nil {
 			_ = rerr
 		}
 	}
