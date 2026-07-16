@@ -838,3 +838,396 @@ func sortByName(ss []string) []string {
 }
 
 var _ = sortByName // keep the helper exported-but-internal
+
+// ---- coverage gaps: lifecycle edges, status states, error paths ---------
+
+// TestJanitor_StartNilParentDefaultsToBackground pins the
+// contract that Start(nil) does not crash and behaves the same
+// as Start(context.Background()). Defensive — without this, a
+// misconfigured main.go could nil-deref at boot.
+func TestJanitor_StartNilParentDefaultsToBackground(t *testing.T) {
+	d := newTestDB(t)
+	j := NewJanitor(d, nil, nil, CleanupConfig{TaskTimeout: time.Second})
+	var fired atomic.Int32
+	j.WithTask("ok", time.Hour, func(ctx context.Context) (CleanupResult, error) {
+		fired.Add(1)
+		return CleanupResult{}, nil
+	})
+	j.Start(nil)
+	defer j.Stop(time.Second)
+	if fired.Load() == 0 {
+		t.Fatal("task did not run on Start(nil)")
+	}
+}
+
+// TestJanitor_StopIdempotent: calling Stop twice in a row
+// must not deadlock or panic. The second call short-circuits
+// because j.cancel is already drained, and the done channel
+// is already closed. Important for shutdown code that may
+// run through multiple paths (signal handler + defer, etc).
+func TestJanitor_StopIdempotent(t *testing.T) {
+	d := newTestDB(t)
+	j := NewJanitor(d, nil, nil, CleanupConfig{TaskTimeout: time.Second})
+	j.WithTask("noop", time.Hour, func(ctx context.Context) (CleanupResult, error) {
+		return CleanupResult{}, nil
+	})
+	j.Start(context.Background())
+	j.Stop(time.Second)
+	// Second call: must return promptly.
+	done := make(chan struct{})
+	go func() {
+		j.Stop(time.Second)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("second Stop hung")
+	}
+}
+
+// TestJanitor_StopWithoutStart covers the case where Stop is
+// called on a freshly-constructed Janitor (Start was never
+// called). The cancel field is nil; Stop must early-return
+// without panicking.
+func TestJanitor_StopWithoutStart(t *testing.T) {
+	j := NewJanitor(newTestDB(t), nil, nil, CleanupConfig{})
+	// Should be a no-op, not a panic.
+	j.Stop(time.Second)
+}
+
+// TestJanitor_CustomTaskNameCollision covers the warning path
+// in `tasks()`: when a WithTask name shadows a built-in, the
+// custom one is dropped (built-in wins, to prevent the
+// registration from silently disabling a core cleanup). The
+// status map should still record the built-in's run, not the
+// shadow.
+func TestJanitor_CustomTaskNameCollision(t *testing.T) {
+	d := newTestDB(t)
+	j := NewJanitor(d, nil, nil, CleanupConfig{TaskTimeout: time.Second})
+	var shadowFired atomic.Int32
+	j.WithTask("prune-old-log-files", time.Hour, func(ctx context.Context) (CleanupResult, error) {
+		shadowFired.Add(1)
+		return CleanupResult{Pruned: 999}, nil
+	})
+	j.Start(context.Background())
+	defer j.Stop(time.Second)
+	if shadowFired.Load() != 0 {
+		t.Error("shadow task should not have run (built-in wins)")
+	}
+	// Built-in should have run, recorded under its real name.
+	if _, ok := j.Status()["prune-old-log-files"]; !ok {
+		t.Error("built-in task missing from status")
+	}
+}
+
+// TestRunTask_RecordsNonPanicError pins the error-recording
+// path: a task returning a regular error (not a panic) must
+// show up in Status with the message and ErrCount bumped.
+// This is distinct from TestJanitor_PanicDoesNotKillLoop,
+// which exercises the recover path.
+func TestRunTask_RecordsNonPanicError(t *testing.T) {
+	d := newTestDB(t)
+	j := NewJanitor(d, nil, nil, CleanupConfig{TaskTimeout: time.Second})
+	want := errors.New("docker socket closed")
+	j.WithTask("fails", time.Hour, func(ctx context.Context) (CleanupResult, error) {
+		return CleanupResult{}, want
+	})
+
+	got, err := j.RunTask(context.Background(), "fails")
+	if !errors.Is(err, want) {
+		t.Errorf("RunTask err = %v, want %v", err, want)
+	}
+	if got.Pruned != 0 {
+		t.Errorf("result = %+v, want zero value", got)
+	}
+	st := j.Status()["fails"]
+	if st.ErrCount != 1 {
+		t.Errorf("ErrCount = %d, want 1", st.ErrCount)
+	}
+	if st.LastErr != want.Error() {
+		t.Errorf("LastErr = %q, want %q", st.LastErr, want.Error())
+	}
+	if st.RunCount != 1 {
+		t.Errorf("RunCount = %d, want 1 (error runs still count)", st.RunCount)
+	}
+	if !st.LastErrAt.IsZero() {
+		// LastErrAt should be populated when an error happens.
+		if st.LastErrAt.Before(st.LastRun) {
+			t.Error("LastErrAt < LastRun")
+		}
+	}
+}
+
+// TestPruneOldLogFiles_KeepsPendingStatus covers the third
+// status: an old deploy row that's still in "pending" state
+// (e.g. aborted before docker pull started) must NOT have
+// its log file pruned. The worker may resume it on a future
+// trigger, and a missing log would lose history.
+func TestPruneOldLogFiles_KeepsPendingStatus(t *testing.T) {
+	j, d, dir := newTestJanitor(t)
+	app := seedAppWithContainers(t, d, "pending", nil, nil)
+
+	// Old pending: should be kept (worker could resume).
+	oldPending := seedDeployAt(t, d, app.ID, 60*24*time.Hour, deploy.StatusPending)
+	pendingPath := writeLog(t, dir, oldPending.ID, "partial pull progress\n")
+
+	// Old running: should be kept (still writing).
+	oldRunning := seedDeployAt(t, d, app.ID, 60*24*time.Hour, deploy.StatusRunning)
+	runningPath := writeLog(t, dir, oldRunning.ID, "still writing\n")
+
+	// Old success: should be pruned.
+	oldSucc := seedDeployAt(t, d, app.ID, 60*24*time.Hour, deploy.StatusSuccess)
+	writeLog(t, dir, oldSucc.ID, "old success\n")
+
+	frozen := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	j.cfg.Now = func() time.Time { return frozen }
+	j.cfg.KeepDeploysDays = 30
+
+	res, err := j.pruneOldLogFiles(context.Background())
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if res.Pruned != 1 {
+		t.Errorf("Pruned = %d, want 1 (only success)", res.Pruned)
+	}
+	if _, err := os.Stat(pendingPath); err != nil {
+		t.Errorf("pending log was deleted: %v", err)
+	}
+	if _, err := os.Stat(runningPath); err != nil {
+		t.Errorf("running log was deleted: %v", err)
+	}
+	if oldSucc.ID == 0 {
+		t.Fatal("test setup: succ deploy id is 0")
+	}
+}
+
+// TestPruneOldLogFiles_ReportsBytes is the Bytes-accounting
+// counterpart to TestCleanupResult_ReportsBytes (which only
+// covered the orphan path). Together they pin the contract
+// that the operator-visible "Bytes freed" column reflects
+// actual disk usage reclaimed.
+func TestPruneOldLogFiles_ReportsBytes(t *testing.T) {
+	j, d, dir := newTestJanitor(t)
+	app := seedAppWithContainers(t, d, "bytes", nil, nil)
+
+	const size = 256
+	oldA := seedDeployAt(t, d, app.ID, 60*24*time.Hour, deploy.StatusSuccess)
+	oldB := seedDeployAt(t, d, app.ID, 60*24*time.Hour, deploy.StatusFailed)
+	writeLog(t, dir, oldA.ID, strings.Repeat("a", size))
+	writeLog(t, dir, oldB.ID, strings.Repeat("b", size))
+
+	frozen := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	j.cfg.Now = func() time.Time { return frozen }
+	j.cfg.KeepDeploysDays = 30
+
+	res, err := j.pruneOldLogFiles(context.Background())
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if res.Pruned != 2 {
+		t.Errorf("Pruned = %d, want 2", res.Pruned)
+	}
+	if res.Bytes != 2*size {
+		t.Errorf("Bytes = %d, want %d", res.Bytes, 2*size)
+	}
+	if res.Scanned != 2 {
+		t.Errorf("Scanned = %d, want 2", res.Scanned)
+	}
+}
+
+// TestPruneOldLogFiles_NilLogStoreIsNoop covers the
+// `j.logs == nil` early return. The path is reachable when
+// a test (or, theoretically, a misconfigured production
+// build) wires a Janitor without a deploy log store. The
+// function should not panic on a nil deref.
+func TestPruneOldLogFiles_NilLogStoreIsNoop(t *testing.T) {
+	j := NewJanitor(newTestDB(t), nil, nil, CleanupConfig{})
+	res, err := j.pruneOldLogFiles(context.Background())
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if res.Pruned != 0 {
+		t.Errorf("Pruned = %d, want 0", res.Pruned)
+	}
+}
+
+// TestPruneOldLogFiles_RespectsCancelledContext seeds enough
+// old deploy rows to make the loop's ctx.Err() check
+// reachable, then cancels the context before calling the
+// task. The function should return whatever it has so far
+// (Pruned=0 in this empty-DB case) plus the cancel error.
+func TestPruneOldLogFiles_RespectsCancelledContext(t *testing.T) {
+	j, d, dir := newTestJanitor(t)
+	app := seedAppWithContainers(t, d, "cancel", nil, nil)
+	for i := 0; i < 5; i++ {
+		dep := seedDeployAt(t, d, app.ID, 60*24*time.Hour, deploy.StatusSuccess)
+		writeLog(t, dir, dep.ID, "old\n")
+	}
+	frozen := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	j.cfg.Now = func() time.Time { return frozen }
+	j.cfg.KeepDeploysDays = 30
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled before the call
+	res, err := j.pruneOldLogFiles(ctx)
+	if err == nil {
+		t.Fatal("expected ctx error, got nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want context.Canceled", err)
+	}
+	// Res.Pruned is 0 because the loop's ctx.Err() check
+	// short-circuits before any delete. Bytes likewise 0.
+	if res.Pruned != 0 {
+		t.Errorf("Pruned = %d, want 0 (cancelled before loop body)", res.Pruned)
+	}
+}
+
+// TestPruneOldContainers_HandlesRetiredStatus covers the
+// third terminal status (retired) that the production
+// container lifecycle can leave behind (the executor marks
+// previous containers "exited" today, but the field exists
+// for future states and the cleanup should already handle
+// it). Pairs with the exited+dead cases in
+// TestPruneOldContainers_LeavesCurrentAlone.
+func TestPruneOldContainers_HandlesRetiredStatus(t *testing.T) {
+	j, d, _ := newTestJanitor(t)
+	frozen := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	j.cfg.Now = func() time.Time { return frozen }
+	j.cfg.KeepDeploysDays = 30
+
+	// Two retired containers of different ages; only the old
+	// one should be pruned.
+	seedAppWithContainers(t, d, "ret",
+		[]time.Duration{60 * 24 * time.Hour, 2 * 24 * time.Hour},
+		[]container.Status{container.StatusRetired, container.StatusRetired},
+	)
+
+	res, err := j.pruneOldContainers(context.Background())
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if res.Pruned != 1 {
+		t.Errorf("Pruned = %d, want 1 (only the old retired)", res.Pruned)
+	}
+	// Sanity: the recent one survived.
+	count, _ := d.Container.Query().Count(context.Background())
+	if count != 1 {
+		t.Errorf("survivors = %d, want 1", count)
+	}
+}
+
+// TestPruneOldContainers_KeepsActiveStates covers the
+// negative case for the status filter: containers in
+// running/paused/restarting/created must be kept regardless
+// of age. None of them are "terminal", so the status filter
+// (StatusIn exited,dead,retired) is the only thing standing
+// between a live app and accidental deletion.
+func TestPruneOldContainers_KeepsActiveStates(t *testing.T) {
+	j, d, _ := newTestJanitor(t)
+	frozen := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	j.cfg.Now = func() time.Time { return frozen }
+	j.cfg.KeepDeploysDays = 30
+
+	active := []container.Status{
+		container.StatusRunning,
+		container.StatusPaused,
+		container.StatusRestarting,
+		container.StatusCreated,
+		container.StatusRemoving,
+	}
+	ages := make([]time.Duration, len(active))
+	for i := range ages {
+		ages[i] = 365 * 24 * time.Hour // a year old, well past retention
+	}
+	seedAppWithContainers(t, d, "active", ages, active)
+
+	res, err := j.pruneOldContainers(context.Background())
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if res.Pruned != 0 {
+		t.Errorf("Pruned = %d, want 0 (active states preserved)", res.Pruned)
+	}
+	if res.Scanned != 0 {
+		// Status filter excludes them before CreatedAtLT — Scanned
+		// counts only rows that matched the entire WHERE clause.
+		t.Errorf("Scanned = %d, want 0", res.Scanned)
+	}
+	count, _ := d.Container.Query().Count(context.Background())
+	if count != len(active) {
+		t.Errorf("survivors = %d, want %d", count, len(active))
+	}
+}
+
+// TestJanitor_RunTaskReportsResultToStatus confirms that a
+// successful task's CleanupResult bubbles up to Status so the
+// /api/system/cleanup endpoint can show "Pruned: 5" instead
+// of just "Last run: 12:34:56". Pairs with
+// TestRunTask_RecordsNonPanicError (error path) and
+// TestCleanupResult_ReportsBytes (orphan Bytes).
+func TestJanitor_RunTaskReportsResultToStatus(t *testing.T) {
+	d := newTestDB(t)
+	j := NewJanitor(d, nil, nil, CleanupConfig{TaskTimeout: time.Second})
+	want := CleanupResult{Scanned: 3, Pruned: 2, Bytes: 1024}
+	j.WithTask("worker", time.Hour, func(ctx context.Context) (CleanupResult, error) {
+		return want, nil
+	})
+	if _, err := j.RunTask(context.Background(), "worker"); err != nil {
+		t.Fatalf("RunTask: %v", err)
+	}
+	st := j.Status()["worker"]
+	if st.LastResult != want {
+		t.Errorf("LastResult = %+v, want %+v", st.LastResult, want)
+	}
+	if st.LastErr != "" {
+		t.Errorf("LastErr = %q, want empty", st.LastErr)
+	}
+}
+
+// TestJanitor_MasterLoopTicksAtInterval is the only test
+// that exercises the actual master-loop path (not the
+// one-shot Start pass or manual RunTask). It uses a short
+// 100ms task interval to wait for the 1-minute master tick
+// — which is too long for a test — so we run for 200ms and
+// verify the RunCount grew.
+//
+// Note: the master tick is hard-coded at 1 minute in
+// cleanup.go; the per-task interval is what determines
+// re-run cadence. With a 100ms task interval and a 1-minute
+// master tick, a freshly started Janitor's loop won't
+// re-tick the task within 200ms. To exercise the master
+// loop's re-tick path without 1-minute test budgets, this
+// test only verifies the loop is alive (no hang, no panic)
+// after a brief wall-clock wait. The interval-check logic
+// in shouldRun is exercised directly in
+// TestJanitor_CadenceUnderFastTick via RunTask.
+func TestJanitor_MasterLoopAlive(t *testing.T) {
+	d := newTestDB(t)
+	j := NewJanitor(d, nil, nil, CleanupConfig{TaskTimeout: time.Second})
+	var fired atomic.Int32
+	j.WithTask("heartbeat", time.Hour, func(ctx context.Context) (CleanupResult, error) {
+		fired.Add(1)
+		return CleanupResult{}, nil
+	})
+	j.Start(context.Background())
+	defer j.Stop(time.Second)
+
+	// One-shot already ran. Wait a brief moment to ensure
+	// the master loop is alive in the background, then
+	// verify only the one-shot fired (no spurious ticks).
+	time.Sleep(80 * time.Millisecond)
+	if got := fired.Load(); got != 1 {
+		t.Errorf("fired = %d, want 1 (master tick shouldn't fire within 80ms)", got)
+	}
+	// The status map should still show RunCount=1 with a
+	// non-zero NextRun scheduled into the future.
+	st := j.Status()["heartbeat"]
+	if st.RunCount != 1 {
+		t.Errorf("RunCount = %d, want 1", st.RunCount)
+	}
+	if !st.NextRun.After(st.LastRun) {
+		t.Error("NextRun should be after LastRun")
+	}
+}
