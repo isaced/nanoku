@@ -190,13 +190,13 @@ func writeLogLine(sw *sseWriter, l deployLogReadLine) error {
 
 // isTerminalStatus returns true if a deploy row is in a state
 // that won't change without explicit intervention. Kept for
-// callers that want to decide whether to wait for the hub
-// equivalent (e.g. tests). The file-based handler doesn't need
-// it — IsDeployInFlight is the source of truth for "is the
-// worker still writing".
+// callers that want to decide whether to wait for the worker
+// (e.g. tests). The file-based handler doesn't need it —
+// IsDeployInFlight is the source of truth for "is the worker
+// still writing".
 func isTerminalStatus(s string) bool {
 	switch deploy.Status(s) {
-	case deploy.StatusSuccess, deploy.StatusFailed, deploy.StatusRolledBack:
+	case deploy.StatusSuccess, deploy.StatusFailed:
 		return true
 	}
 	return false

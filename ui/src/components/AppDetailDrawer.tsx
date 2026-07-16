@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Button, Drawer, Popconfirm, Select, Tabs, Tag } from 'antd'
+import { Button, Drawer, Select, Tabs, Tag } from 'antd'
 import {
   Bell,
   Box,
@@ -19,7 +19,6 @@ import {
   useSuspenseAppVolumes,
   useAppContainers,
   useAppLogs,
-  useRollbackApp,
 } from '../lib/hooks'
 import { queryKeys } from '../lib/queryKeys'
 import { useQueryClient } from '@tanstack/react-query'
@@ -357,7 +356,6 @@ function OverviewTab({
 
 function DeploysTab({ deploys, appId }: { deploys: Deploy[]; appId: number }) {
   const { t } = useTranslation('apps')
-  const rollback = useRollbackApp()
   // Local state for which deploy's log panel is open. By default we
   // auto-open the panel for any in-flight deploy so the operator
   // doesn't have to click to see what's happening — Coolify does
@@ -376,7 +374,6 @@ function DeploysTab({ deploys, appId }: { deploys: Deploy[]; appId: number }) {
   return (
     <div className="space-y-2">
       {deploys.map((d) => {
-        const canRollback = d.status === 'success'
         const isOpen = openLogs.has(d.id)
         return (
           <div
@@ -398,11 +395,9 @@ function DeploysTab({ deploys, appId }: { deploys: Deploy[]; appId: number }) {
                         ? 'green'
                         : d.status === 'failed'
                           ? 'red'
-                          : d.status === 'rolled_back'
-                            ? 'orange'
-                            : d.status === 'running'
-                              ? 'blue'
-                              : 'default'
+                          : d.status === 'running'
+                            ? 'blue'
+                            : 'default'
                     }
                   >
                     {d.status}
@@ -426,20 +421,6 @@ function DeploysTab({ deploys, appId }: { deploys: Deploy[]; appId: number }) {
                     <ScrollText size={12} className="inline-block mr-1" />
                     {t('detail.logs')}
                   </Button>
-                  {canRollback && (
-                    <Popconfirm
-                      title={t('detail.rollbackConfirmTitle')}
-                      description={t('detail.rollbackConfirmDesc', { id: d.id })}
-                      okText={t('detail.rollback')}
-                      cancelText={t('common.cancel')}
-                      onConfirm={() => rollback.mutate({ appId, deployId: d.id })}
-                      okButtonProps={{ danger: true }}
-                    >
-                      <Button size="small" type="text" loading={rollback.isPending}>
-                        {t('detail.rollback')}
-                      </Button>
-                    </Popconfirm>
-                  )}
                 </div>
               </div>
               {d.commitMessage && (

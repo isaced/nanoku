@@ -126,11 +126,6 @@ export const api = {
     request<Deploy[]>(`/api/apps/${id}/deployments`),
   rotateTriggerToken: (id: number) =>
     request<App>(`/api/apps/${id}/rotate-trigger-token`, { method: 'POST' }),
-  rollbackApp: (id: number, deployId: number) =>
-    request<DeployResponse>(`/api/apps/${id}/rollback`, {
-      method: 'POST',
-      body: JSON.stringify({ deployId }),
-    }),
   // importExposedPorts parses the app's compose YAML and returns a
   // {name, port} list the operator can review before saving.
   // Compose-only: the server returns 400 for docker-mode apps and

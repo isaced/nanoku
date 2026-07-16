@@ -375,8 +375,7 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 
 	// Best-effort retire of the old container *after* the new one is
 	// live and routed. The Docker container is stopped + removed; the DB
-	// row is kept (marked exited) so a later rollback can find the image
-	// snapshot on the original Deploy record. If retire fails the deploy
+	// row is kept (marked exited) for audit. If retire fails the deploy
 	// still reports success — the stray old container is preferable to
 	// having taken it down before the new one was ready.
 	if oldContainerID != 0 && oldContainerName != "" && oldContainerName != containerName {

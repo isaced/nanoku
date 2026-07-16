@@ -110,9 +110,8 @@ const DefaultTrigger = TriggerManual
 
 // Trigger values.
 const (
-	TriggerManual   Trigger = "manual"
-	TriggerTrigger  Trigger = "trigger"
-	TriggerRollback Trigger = "rollback"
+	TriggerManual  Trigger = "manual"
+	TriggerTrigger Trigger = "trigger"
 )
 
 func (t Trigger) String() string {
@@ -122,7 +121,7 @@ func (t Trigger) String() string {
 // TriggerValidator is a validator for the "trigger" field enum values. It is called by the builders before save.
 func TriggerValidator(t Trigger) error {
 	switch t {
-	case TriggerManual, TriggerTrigger, TriggerRollback:
+	case TriggerManual, TriggerTrigger:
 		return nil
 	default:
 		return fmt.Errorf("deploy: invalid enum value for trigger field: %q", t)
@@ -137,11 +136,10 @@ const DefaultStatus = StatusPending
 
 // Status values.
 const (
-	StatusPending    Status = "pending"
-	StatusRunning    Status = "running"
-	StatusSuccess    Status = "success"
-	StatusFailed     Status = "failed"
-	StatusRolledBack Status = "rolled_back"
+	StatusPending Status = "pending"
+	StatusRunning Status = "running"
+	StatusSuccess Status = "success"
+	StatusFailed  Status = "failed"
 )
 
 func (s Status) String() string {
@@ -151,7 +149,7 @@ func (s Status) String() string {
 // StatusValidator is a validator for the "status" field enum values. It is called by the builders before save.
 func StatusValidator(s Status) error {
 	switch s {
-	case StatusPending, StatusRunning, StatusSuccess, StatusFailed, StatusRolledBack:
+	case StatusPending, StatusRunning, StatusSuccess, StatusFailed:
 		return nil
 	default:
 		return fmt.Errorf("deploy: invalid enum value for status field: %q", s)

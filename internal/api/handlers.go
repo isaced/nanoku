@@ -48,8 +48,8 @@ type Handlers struct {
 	// ShutdownWG is incremented by executeDeploy on entry and
 	// decremented on return, so main.go can Wait on it after
 	// srv.Shutdown to drain in-flight deploy goroutines spawned
-	// by DeployApp / Trigger / RollbackApp. Nil in unit tests
-	// that don't exercise shutdown.
+	// by DeployApp / Trigger. Nil in unit tests that don't
+	// exercise shutdown.
 	ShutdownWG *sync.WaitGroup
 
 	// inflightMu guards inflight. Populated by executeDeploy so

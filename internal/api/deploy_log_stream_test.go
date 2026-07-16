@@ -229,7 +229,6 @@ func TestIsTerminalStatus(t *testing.T) {
 		{"pending", false},
 		{"success", true},
 		{"failed", true},
-		{"rolled_back", true},
 		{"", false},
 		{"SUCCESS", false}, // case-sensitive: matches the ent enum
 	}

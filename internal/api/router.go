@@ -85,7 +85,6 @@ func adminMux(h *Handlers) *http.ServeMux {
 	mux.HandleFunc("POST /api/apps/{id}/start", h.StartApp)
 	mux.HandleFunc("POST /api/apps/{id}/stop", h.StopApp)
 	mux.HandleFunc("POST /api/apps/{id}/restart", h.RestartApp)
-	mux.HandleFunc("POST /api/apps/{id}/rollback", h.RollbackApp)
 	mux.HandleFunc("POST /api/apps/{id}/rotate-trigger-token", h.RotateTriggerToken)
 	mux.HandleFunc("POST /api/apps/{id}/exposed-ports/import", h.ImportExposedPorts)
 	mux.HandleFunc("GET /api/apps/{id}/logs", h.AppLogs)

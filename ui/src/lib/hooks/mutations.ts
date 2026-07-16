@@ -73,21 +73,6 @@ export function useDeployApp(): UseMutationResult<DeployResponse, Error, number>
   })
 }
 
-export function useRollbackApp(): UseMutationResult<
-  DeployResponse,
-  Error,
-  { appId: number; deployId: number }
-> {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ appId, deployId }) => api.rollbackApp(appId, deployId),
-    onSuccess: (_data, { appId }) => {
-      invalidateAppList(qc, appId)
-      void qc.invalidateQueries({ queryKey: queryKeys.apps.deploys(appId) })
-    },
-  })
-}
-
 export function useStartApp(): UseMutationResult<App, Error, number> {
   const qc = useQueryClient()
   return useMutation({
