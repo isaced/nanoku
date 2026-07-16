@@ -11,5 +11,11 @@
   "logout": "退出登录",
   "loggedOut": "已退出登录",
   "darkMode": "切换到深色模式",
-  "lightMode": "切换到浅色模式"
+  "lightMode": "切换到浅色模式",
+  "palette": {
+    "title": "命令面板",
+    "placeholder": "输入命令…",
+    "empty": "无匹配项",
+    "items": "项"
+  }
 }

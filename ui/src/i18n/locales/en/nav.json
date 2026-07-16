@@ -11,5 +11,11 @@
   "logout": "Sign out",
   "loggedOut": "Signed out",
   "darkMode": "Switch to dark mode",
-  "lightMode": "Switch to light mode"
+  "lightMode": "Switch to light mode",
+  "palette": {
+    "title": "Command palette",
+    "placeholder": "Type a command…",
+    "empty": "No matches",
+    "items": "items"
+  }
 }
