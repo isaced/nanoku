@@ -285,6 +285,16 @@ func UpstreamHasSuffix(v string) predicate.Site {
 	return predicate.Site(sql.FieldHasSuffix(FieldUpstream, v))
 }
 
+// UpstreamIsNil applies the IsNil predicate on the "upstream" field.
+func UpstreamIsNil() predicate.Site {
+	return predicate.Site(sql.FieldIsNull(FieldUpstream))
+}
+
+// UpstreamNotNil applies the NotNil predicate on the "upstream" field.
+func UpstreamNotNil() predicate.Site {
+	return predicate.Site(sql.FieldNotNull(FieldUpstream))
+}
+
 // UpstreamEqualFold applies the EqualFold predicate on the "upstream" field.
 func UpstreamEqualFold(v string) predicate.Site {
 	return predicate.Site(sql.FieldEqualFold(FieldUpstream, v))

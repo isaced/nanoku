@@ -5103,7 +5103,7 @@ func (m *SiteMutation) Upstream() (r string, exists bool) {
 // OldUpstream returns the old "upstream" field's value of the Site entity.
 // If the Site object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *SiteMutation) OldUpstream(ctx context.Context) (v string, err error) {
+func (m *SiteMutation) OldUpstream(ctx context.Context) (v *string, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldUpstream is only allowed on UpdateOne operations")
 	}
@@ -5117,9 +5117,22 @@ func (m *SiteMutation) OldUpstream(ctx context.Context) (v string, err error) {
 	return oldValue.Upstream, nil
 }
 
+// ClearUpstream clears the value of the "upstream" field.
+func (m *SiteMutation) ClearUpstream() {
+	m.upstream = nil
+	m.clearedFields[site.FieldUpstream] = struct{}{}
+}
+
+// UpstreamCleared returns if the "upstream" field was cleared in this mutation.
+func (m *SiteMutation) UpstreamCleared() bool {
+	_, ok := m.clearedFields[site.FieldUpstream]
+	return ok
+}
+
 // ResetUpstream resets all changes to the "upstream" field.
 func (m *SiteMutation) ResetUpstream() {
 	m.upstream = nil
+	delete(m.clearedFields, site.FieldUpstream)
 }
 
 // SetEnabled sets the "enabled" field.
@@ -5471,6 +5484,9 @@ func (m *SiteMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *SiteMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(site.FieldUpstream) {
+		fields = append(fields, site.FieldUpstream)
+	}
 	if m.FieldCleared(site.FieldAppService) {
 		fields = append(fields, site.FieldAppService)
 	}
@@ -5488,6 +5504,9 @@ func (m *SiteMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *SiteMutation) ClearField(name string) error {
 	switch name {
+	case site.FieldUpstream:
+		m.ClearUpstream()
+		return nil
 	case site.FieldAppService:
 		m.ClearAppService()
 		return nil

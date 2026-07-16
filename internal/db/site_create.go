@@ -61,6 +61,14 @@ func (_c *SiteCreate) SetUpstream(v string) *SiteCreate {
 	return _c
 }
 
+// SetNillableUpstream sets the "upstream" field if the given value is not nil.
+func (_c *SiteCreate) SetNillableUpstream(v *string) *SiteCreate {
+	if v != nil {
+		_c.SetUpstream(*v)
+	}
+	return _c
+}
+
 // SetEnabled sets the "enabled" field.
 func (_c *SiteCreate) SetEnabled(v bool) *SiteCreate {
 	_c.mutation.SetEnabled(v)
@@ -186,9 +194,6 @@ func (_c *SiteCreate) check() error {
 	if _, ok := _c.mutation.Domain(); !ok {
 		return &ValidationError{Name: "domain", err: errors.New(`db: missing required field "Site.domain"`)}
 	}
-	if _, ok := _c.mutation.Upstream(); !ok {
-		return &ValidationError{Name: "upstream", err: errors.New(`db: missing required field "Site.upstream"`)}
-	}
 	if _, ok := _c.mutation.Enabled(); !ok {
 		return &ValidationError{Name: "enabled", err: errors.New(`db: missing required field "Site.enabled"`)}
 	}
@@ -245,7 +250,7 @@ func (_c *SiteCreate) createSpec() (*Site, *sqlgraph.CreateSpec) {
 	}
 	if value, ok := _c.mutation.Upstream(); ok {
 		_spec.SetField(site.FieldUpstream, field.TypeString, value)
-		_node.Upstream = value
+		_node.Upstream = &value
 	}
 	if value, ok := _c.mutation.Enabled(); ok {
 		_spec.SetField(site.FieldEnabled, field.TypeBool, value)

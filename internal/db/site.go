@@ -24,8 +24,8 @@ type Site struct {
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// Public domain (e.g. api.example.com). Wildcards not supported.
 	Domain string `json:"domain,omitempty"`
-	// Upstream URL or host:port for reverse_proxy.
-	Upstream string `json:"upstream,omitempty"`
+	// Upstream URL or host:port for reverse_proxy. Only set for free-upstream sites; app-linked sites compute upstream at render time from the stable network alias.
+	Upstream *string `json:"upstream,omitempty"`
 	// When false, site is omitted from generated Caddyfile.
 	Enabled bool `json:"enabled,omitempty"`
 	// Listener scheme. http forces Caddy to bind :80 and skip auto-HTTPS for this site.
@@ -117,7 +117,8 @@ func (_m *Site) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field upstream", values[i])
 			} else if value.Valid {
-				_m.Upstream = value.String
+				_m.Upstream = new(string)
+				*_m.Upstream = value.String
 			}
 		case site.FieldEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -195,8 +196,10 @@ func (_m *Site) String() string {
 	builder.WriteString("domain=")
 	builder.WriteString(_m.Domain)
 	builder.WriteString(", ")
-	builder.WriteString("upstream=")
-	builder.WriteString(_m.Upstream)
+	if v := _m.Upstream; v != nil {
+		builder.WriteString("upstream=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Enabled))

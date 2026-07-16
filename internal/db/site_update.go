@@ -63,6 +63,12 @@ func (_u *SiteUpdate) SetNillableUpstream(v *string) *SiteUpdate {
 	return _u
 }
 
+// ClearUpstream clears the value of the "upstream" field.
+func (_u *SiteUpdate) ClearUpstream() *SiteUpdate {
+	_u.mutation.ClearUpstream()
+	return _u
+}
+
 // SetEnabled sets the "enabled" field.
 func (_u *SiteUpdate) SetEnabled(v bool) *SiteUpdate {
 	_u.mutation.SetEnabled(v)
@@ -213,6 +219,9 @@ func (_u *SiteUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Upstream(); ok {
 		_spec.SetField(site.FieldUpstream, field.TypeString, value)
 	}
+	if _u.mutation.UpstreamCleared() {
+		_spec.ClearField(site.FieldUpstream, field.TypeString)
+	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(site.FieldEnabled, field.TypeBool, value)
 	}
@@ -305,6 +314,12 @@ func (_u *SiteUpdateOne) SetNillableUpstream(v *string) *SiteUpdateOne {
 	if v != nil {
 		_u.SetUpstream(*v)
 	}
+	return _u
+}
+
+// ClearUpstream clears the value of the "upstream" field.
+func (_u *SiteUpdateOne) ClearUpstream() *SiteUpdateOne {
+	_u.mutation.ClearUpstream()
 	return _u
 }
 
@@ -487,6 +502,9 @@ func (_u *SiteUpdateOne) sqlSave(ctx context.Context) (_node *Site, err error) {
 	}
 	if value, ok := _u.mutation.Upstream(); ok {
 		_spec.SetField(site.FieldUpstream, field.TypeString, value)
+	}
+	if _u.mutation.UpstreamCleared() {
+		_spec.ClearField(site.FieldUpstream, field.TypeString)
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(site.FieldEnabled, field.TypeBool, value)

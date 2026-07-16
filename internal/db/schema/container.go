@@ -17,9 +17,14 @@ func (Container) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("docker_id").
 			Comment("Docker container ID."),
+		// name is the on-the-wire container name, e.g. nanoku-myapp-<hex>.
+		// It is informational — the network alias (nanoku-<app> for
+		// docker, nanoku-<app>-<service> for compose) is the routing
+		// identity and does not rotate when the container does. UNIQUE
+		// removed: nothing else keys on the literal name anymore, so a
+		// stale row from a failed deploy no longer blocks the next one.
 		field.String("name").
-			Unique().
-			Comment("Container name, e.g. nanoku-myapp."),
+			Comment("Container name (e.g. nanoku-myapp-<hex>). Informational only; routing uses the network alias."),
 		field.String("image").
 			Comment("Resolved image reference."),
 		field.Enum("status").
