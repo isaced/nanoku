@@ -1,36 +1,24 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { Suspense, useState } from 'react'
-import { App, Button, Space, Table, Tag, Tooltip } from 'antd'
-import {
-  Container as ContainerIcon,
-  Pencil,
-  Play,
-  Plus,
-  RefreshCw,
-  Rocket,
-  Square,
-  Trash2,
-} from 'lucide-react'
+import { App, Button, Table, Tag } from 'antd'
+import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ensureAuth, isAuthenticated } from '../lib/auth'
-import { containerStatusMeta } from '../lib/containerStatus'
 import {
-  appLifecycle,
   useAction,
   useDeleteApp,
   useDeployApp,
-  useRestartApp,
-  useStartApp,
-  useStopApp,
   useSuspenseApps,
   useSuspenseStatus,
+  useAppActions,
 } from '../lib/hooks'
 import type { App as AppType } from '../lib/types'
 import { AppDetail } from '../components/AppDetailDrawer'
 import { AppEditorModal, type AppEditorSaveResult } from '../components/AppEditor'
+import { AppRowActions } from '../components/AppRowActions'
+import { AppStatusCell } from '../components/AppStatusCell'
 import { RouteError } from '../components/RouteError'
 import { RouteFallback } from '../components/RouteFallback'
-import { StatusTag } from '../components/StatusTag'
 
 export const Route = createFileRoute('/apps')({
   beforeLoad: async () => {
@@ -62,10 +50,8 @@ function AppsPageContent() {
   const appsQuery = useSuspenseApps()
   const statusQuery = useSuspenseStatus()
   const deployApp = useDeployApp()
-  const startApp = useStartApp()
-  const stopApp = useStopApp()
-  const restartApp = useRestartApp()
   const deleteApp = useDeleteApp()
+  const lifecycle = useAppActions()
   const action = useAction()
 
   const apps = appsQuery.data
@@ -131,12 +117,6 @@ function AppsPageContent() {
           message.error(err.message)
         }
       },
-    })
-  }
-
-  function runAction(app: AppType, name: string, fn: () => Promise<unknown>) {
-    void action.run(fn(), {
-      success: t('toast.' + name, { name: app.name }),
     })
   }
 
@@ -236,7 +216,7 @@ function AppsPageContent() {
               title: t('table.status'),
               key: 'status',
               width: 220,
-              render: (_: unknown, row) => <StatusCell app={row} />,
+              render: (_: unknown, row) => <AppStatusCell app={row} />,
             },
             {
               title: '',
@@ -244,113 +224,20 @@ function AppsPageContent() {
               width: 240,
               align: 'right',
               render: (_: unknown, row) => (
-                <Space size={4}>
-                  {!row.container && (
-                    <Tooltip title={t('table.actions.deploy')}>
-                      <Button
-                        type="text"
-                        size="small"
-                        loading={deployApp.isPending && deployApp.variables === row.id}
-                        icon={<Rocket size={14} />}
-                        onClick={() => triggerDeploy(row)}
-                      />
-                    </Tooltip>
-                  )}
-                  {/* Lifecycle rules live in appLifecycle() so the
-                      list and the detail drawer don't drift. */}
-                  {(() => {
-                    const lc = appLifecycle(row.container)
-                    return (
-                      <>
-                        {lc.isLive && (
-                          <>
-                            <Tooltip title={t('table.actions.stop')}>
-                              <Button
-                                type="text"
-                                size="small"
-                                loading={
-                                  stopApp.isPending && stopApp.variables === row.id
-                                }
-                                icon={<Square size={14} />}
-                                onClick={() =>
-                                  runAction(row, 'stopped', () =>
-                                    stopApp.mutateAsync(row.id),
-                                  )
-                                }
-                              />
-                            </Tooltip>
-                            {!lc.isRestarting && (
-                              <Tooltip title={t('table.actions.restart')}>
-                                <Button
-                                  type="text"
-                                  size="small"
-                                  loading={
-                                    restartApp.isPending &&
-                                    restartApp.variables === row.id
-                                  }
-                                  icon={<RefreshCw size={14} />}
-                                  onClick={() =>
-                                    runAction(row, 'restarted', () =>
-                                      restartApp.mutateAsync(row.id),
-                                    )
-                                  }
-                                />
-                              </Tooltip>
-                            )}
-                          </>
-                        )}
-                        {lc.isStopped && (
-                          <Tooltip title={t('table.actions.start')}>
-                            <Button
-                              type="text"
-                              size="small"
-                              loading={
-                                startApp.isPending && startApp.variables === row.id
-                              }
-                              icon={<Play size={14} />}
-                              onClick={() =>
-                                runAction(row, 'started', () =>
-                                  startApp.mutateAsync(row.id),
-                                )
-                              }
-                            />
-                          </Tooltip>
-                        )}
-                      </>
-                    )
-                  })()}
-                  {row.container && (
-                    <Tooltip title={t('table.actions.redeploy')}>
-                      <Button
-                        type="text"
-                        size="small"
-                        loading={deployApp.isPending && deployApp.variables === row.id}
-                        icon={<ContainerIcon size={14} />}
-                        onClick={() => triggerDeploy(row)}
-                      />
-                    </Tooltip>
-                  )}
-                  <Tooltip title={t('table.actions.edit')}>
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<Pencil size={14} />}
-                      onClick={() => openEdit(row)}
-                    />
-                  </Tooltip>
-                  <Tooltip title={t('table.actions.delete')}>
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<Trash2 size={14} />}
-                      onClick={() => confirmDelete(row)}
-                    />
-                  </Tooltip>
-                </Space>
+                <AppRowActions
+                  app={row}
+                  actions={lifecycle}
+                  deployPending={
+                    deployApp.isPending && deployApp.variables === row.id
+                  }
+                  onTriggerDeploy={triggerDeploy}
+                  onEdit={openEdit}
+                  onDelete={confirmDelete}
+                />
               ),
-              },
-            ]}
-          />
+            },
+          ]}
+        />
         </div>
       </main>
 
@@ -374,20 +261,6 @@ function AppsPageContent() {
         />
       )}
     </div>
-  )
-}
-
-function StatusCell({ app }: { app: AppType }) {
-  const meta = containerStatusMeta(app.container?.status)
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <StatusTag {...meta} size="small" />
-      {app.container && (
-        <span className="mono text-[11px] text-[var(--fg-muted)] max-w-[8rem] truncate">
-          {app.container.name}
-        </span>
-      )}
-    </span>
   )
 }
 
