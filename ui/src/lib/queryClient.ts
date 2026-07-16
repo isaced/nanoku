@@ -19,7 +19,15 @@ export function createAppQueryClient(
     defaultOptions: {
       queries: {
         staleTime: 30_000,
-        refetchOnWindowFocus: true,
+        // Disable focus-driven refetch. Each page already self-polls
+        // (Dashboard 5s, Apps detail drawer 3s for deploys, System
+        // 30s for cleanup); letting TanStack Query also refetch on
+        // every focus event multiplies the request count and races
+        // with the in-page polling. A user returning to a tab sees
+        // fresh-enough data via the in-page poll + the 30s staleTime
+        // window; anything they actively want refreshed has a manual
+        // refresh button.
+        refetchOnWindowFocus: false,
         retry: 1,
         ...overrides.defaultOptions?.queries,
       },
