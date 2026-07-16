@@ -28,7 +28,7 @@ import {
 } from '../lib/hooks'
 import type { App as AppType } from '../lib/types'
 import { AppDetail } from '../components/AppDetailDrawer'
-import { AppEditorModal, type AppEditorSaveResult } from '../components/AppEditorModal'
+import { AppEditorModal, type AppEditorSaveResult } from '../components/AppEditor'
 import { TriggerTokenModal } from '../components/TriggerTokenModal'
 import { RouteError } from '../components/RouteError'
 import { RouteFallback } from '../components/RouteFallback'
