@@ -50,7 +50,7 @@
     "upstream": "上游",
     "upstreamRequired": "请填写上游",
     "upstreamExtraApp": "上游将自动从应用当前容器解析。",
-    "upstreamExtraAppService": "由 {{app}} 的 compose 堆栈解析为 nanoku-{{app}}-{{service}}-1:<port>。",
+    "upstreamExtraAppService": "由 {{app}} 的 compose 堆栈解析（自定义 container_name，或默认的 nanoku-{{app}}-{{service}}-1）。",
     "upstreamExtraFree": "host:port、URL 或 Docker 容器名",
     "upstreamPlaceholderApp": "（自动解析）",
     "upstreamPlaceholderFree": "localhost:3000",

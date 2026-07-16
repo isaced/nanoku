@@ -102,18 +102,26 @@ export function ExposedPortsEditor({
             className="flex items-center gap-2 border border-[var(--border)] rounded-md p-2 bg-[var(--bg-input)]"
           >
             <Input
-              className="!w-44 mono text-xs"
+              className="!w-40 mono text-xs"
               placeholder={t('editor.exposedPortNamePlaceholder')}
               value={row.name}
               onChange={(e) => setRow(i, { name: e.target.value })}
             />
             <InputNumber
-              className="!w-32"
+              className="!w-28"
               min={1}
               max={65535}
               placeholder="3000"
               value={row.port}
               onChange={(v) => setRow(i, { port: Number(v) || 0 })}
+            />
+            <Input
+              className="!w-48 mono text-xs"
+              placeholder={t('editor.exposedPortContainerNamePlaceholder')}
+              value={row.containerName ?? ''}
+              onChange={(e) =>
+                setRow(i, { containerName: e.target.value })
+              }
             />
             <span className="text-[10px] text-[var(--fg-muted)] flex-1">
               {t('editor.exposedPortExtra')}

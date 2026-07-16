@@ -105,13 +105,14 @@ export function serviceOptionLabel(name: string, port: number): string {
 // upstream input stays empty after `appId` changes — the user sees a
 // blank field, has no way to verify the value the server will compute
 // on submit, and for multi-service compose the server would 400 on
-// `appService` until they noticed. The compose branch uses the
-// canonical `nanoku-<app>-<service>-1:<port>` shape that compose
-// assigns by default; the docker branch needs the app's current
-// container name (carried on the App DTO as `container.name`) to
-// reconstruct the legacy `<container>:<port>` upstream. Returns ""
-// when the inputs are insufficient — callers should render that as
-// "not yet determined", not as an error.
+// `appService` until they noticed. The compose branch picks the
+// user-set ExposedPort.ContainerName (when present) and otherwise
+// falls back to the canonical `nanoku-<app>-<service>-1:<port>`
+// shape compose assigns by default; the docker branch needs the
+// app's current container name (carried on the App DTO as
+// `container.name`) to reconstruct the legacy `<container>:<port>`
+// upstream. Returns "" when the inputs are insufficient — callers
+// should render that as "not yet determined", not as an error.
 export function computeUpstreamForAppUI(
   app: AppType | undefined,
   appService: string | undefined,
@@ -122,7 +123,11 @@ export function computeUpstreamForAppUI(
     const ports = app.exposedPorts ?? []
     const ep = ports.find((p) => p.name === appService)
     if (!ep) return ''
-    return `nanoku-${app.name}-${appService}-1:${ep.port}`
+    const containerName = (ep.containerName ?? '').trim()
+    const host = containerName
+      ? containerName
+      : `nanoku-${app.name}-${appService}-1`
+    return `${host}:${ep.port}`
   }
   // docker mode
   if (!app.container) return ''
@@ -561,10 +566,10 @@ function SitesPageContent() {
               path. The conditional `rules` keeps the validator in
               sync with the field's editability. The shouldUpdate
               predicate watches both `appId` and `appService` so the
-              "Resolved as nanoku-<app>-<service>-1:<port>" hint
-              re-renders when the user switches service (without
-              that, the hint would lag the input). The input value
-              itself is kept in sync by the upstream-sync effect at
+              "Resolved from the compose stack" hint re-renders when
+              the user switches service (without that, the hint
+              would lag the input). The input value itself is kept
+              in sync by the upstream-sync effect at
               the top of the page — this block just renders it. */}
           <Form.Item
             noStyle
