@@ -1,8 +1,4 @@
 import {
-  useSuspenseQuery,
-  type UseSuspenseQueryResult,
-} from '@tanstack/react-query'
-import {
   Button,
   Empty,
   Progress,
@@ -24,10 +20,9 @@ import {
 } from 'lucide-react'
 import { Suspense, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { api } from '../lib/api'
+import { useSuspenseDashboard, useSuspenseStatus } from '../lib/hooks'
 import { containerStatusMeta } from '../lib/containerStatus'
-import { queryKeys } from '../lib/queryKeys'
-import type { Dashboard, Status } from '../lib/types'
+import type { Dashboard } from '../lib/types'
 import { RouteFallback } from './RouteFallback'
 import { SiteStatusBadge } from './SiteStatusBadge'
 import { StatusTag } from './StatusTag'
@@ -44,20 +39,6 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`
 }
 
-function useDashboardQuery(): UseSuspenseQueryResult<Dashboard> {
-  return useSuspenseQuery({
-    queryKey: queryKeys.dashboard.all(),
-    queryFn: api.dashboard,
-  })
-}
-
-function useStatusQuery(): UseSuspenseQueryResult<Status> {
-  return useSuspenseQuery({
-    queryKey: queryKeys.status.all(),
-    queryFn: api.status,
-  })
-}
-
 export function DashboardPage() {
   return (
     <Suspense fallback={<RouteFallback variant="page" />}>
@@ -70,8 +51,8 @@ function DashboardContent() {
   const { t } = useTranslation('dashboard')
   const [autoRefresh, setAutoRefresh] = useState(true)
 
-  const dashboardQuery = useDashboardQuery()
-  const statusQuery = useStatusQuery()
+  const dashboardQuery = useSuspenseDashboard()
+  const statusQuery = useSuspenseStatus()
 
   const data = dashboardQuery.data
 
