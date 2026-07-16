@@ -271,7 +271,7 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 			}
 			var missing []string
 			for _, ep := range ports {
-				expected := composeServiceContainerName(a.Name, ep.Name)
+				expected := resolveServiceContainerName(a.Name, ep.Name, ep.ContainerName)
 				if _, ok := running[expected]; !ok {
 					missing = append(missing, ep.Name)
 				}
