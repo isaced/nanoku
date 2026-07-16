@@ -127,7 +127,7 @@ export function CommandPalette({ items }: { items: CommandItem[] }) {
           ))
         )}
       </ul>
-      <div className="border-t border-[var(--border)] px-3 py-1.5 text-[10px] tracking-widest uppercase text-[var(--fg-muted)] flex items-center gap-3">
+      <div className="border-t border-[var(--border)] px-3 py-1.5 eyebrow flex items-center gap-3">
         <span>↑↓</span>
         <span>↵</span>
         <span>esc</span>

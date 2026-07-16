@@ -126,7 +126,7 @@ function SitesPageContent() {
       <main className="flex-1 px-8 py-8 max-w-6xl w-full mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-medium tracking-tight">{t('title')}</h1>
+            <h1 className="display-1">{t('title')}</h1>
             <p className="text-sm text-[var(--fg-muted)] mt-1">
               {sites.length === 0
                 ? t('subtitleEmpty')
@@ -258,7 +258,7 @@ function SitesPageContent() {
         </div>
 
         <div className="mt-8">
-          <h2 className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-3">
+          <h2 className="eyebrow">
             {t('generatedCaddyfile')}
           </h2>
           <CaddyfilePreview />

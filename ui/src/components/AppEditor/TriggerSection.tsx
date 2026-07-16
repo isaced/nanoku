@@ -50,7 +50,7 @@ export function TriggerSection({
       ) : (
         <div className="space-y-3">
           <div>
-            <div className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-1">
+            <div className="eyebrow">
               {t('trigger.url')}
             </div>
             <CopyableValue value={url} label={t('trigger.urlLabel')} />

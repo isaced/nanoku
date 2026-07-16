@@ -41,7 +41,7 @@ export function LogViewer({
     <div className="relative">
       <div className="flex items-center gap-2 mb-2">
         <StatusDot status={status} />
-        <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
+        <span className="eyebrow">
           {t(`status.${status}`)}
         </span>
         {error && (

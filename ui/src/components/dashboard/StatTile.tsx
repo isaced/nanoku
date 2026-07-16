@@ -22,7 +22,7 @@ export function StatTile({
     <div className="border border-[var(--border)] rounded-lg bg-[var(--bg-elevated)] p-4">
       <div className="flex items-center gap-2 text-[var(--fg-muted)] mb-2">
         {icon}
-        <span className="text-[10px] tracking-widest uppercase">{label}</span>
+        <span className="eyebrow">{label}</span>
       </div>
       <div className="text-2xl font-medium tracking-tight text-[var(--fg)] mono">
         {value}

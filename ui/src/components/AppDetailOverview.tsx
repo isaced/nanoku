@@ -80,7 +80,7 @@ export function AppDetailOverview({
         <div className="border border-[var(--border)] rounded-md p-3 bg-[var(--bg-input)]/40">
           <div className="flex items-center gap-2 mb-2">
             <Bell size={13} className="text-[var(--fg-muted)]" />
-            <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
+            <span className="eyebrow">
               {t('detail.trigger')}
             </span>
             <Tag color="green" className="!m-0 ml-auto">
@@ -181,7 +181,7 @@ function ReadOnlyBlock({
   return (
     <div className="border border-[var(--border)] rounded-md p-3 bg-[var(--bg-input)]/40">
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)]">
+        <span className="eyebrow">
           {title}
         </span>
         <Tag className="!m-0">{count}</Tag>
@@ -212,7 +212,7 @@ function Field({
           {icon}
         </span>
       )}
-      <span className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] w-32 shrink-0 leading-none">
+      <span className="eyebrow">
         {label}
       </span>
       <span className={`${mono ? 'mono text-xs' : 'text-sm'} leading-none`}>{value}</span>

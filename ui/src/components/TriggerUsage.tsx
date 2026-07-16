@@ -27,13 +27,13 @@ export function TriggerUsage({
         </div>
       )}
       <div>
-        <div className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-1">
+        <div className="eyebrow">
           {t('trigger.curlTitle')}
         </div>
         <CodeBlock value={curl} />
       </div>
       <div>
-        <div className="text-[11px] tracking-widest uppercase text-[var(--fg-muted)] mb-1">
+        <div className="eyebrow">
           <Trans
             ns="apps"
             i18nKey="trigger.yamlTitle"

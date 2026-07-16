@@ -78,22 +78,84 @@ body {
   font-family:
     'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
     'Helvetica Neue', Arial, sans-serif;
+  /* The OpenType features that make Inter feel "designed" rather
+     than default. cv11 = single-storey 'a', ss01 = curly 'l',
+     cv05 = alternate 'i', cv02 = open 'g'. cv11 + ss01 alone moves
+     the family noticeably more "premium" without any colour work. */
   font-feature-settings:
-    'cv11',
-    'ss01';
+    'cv11' 1,
+    'ss01' 1,
+    'cv05' 1,
+    'cv02' 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: -0.005em;
   transition: background 150ms ease, color 150ms ease;
 }
 
 code,
-.mono {
+.mono,
+.mono-tab {
   font-family:
     'JetBrains Mono', 'SF Mono', Menlo, Monaco, Consolas,
     'Liberation Mono', 'Courier New', monospace;
   font-feature-settings:
     'liga' 0,
     'calt' 0;
+  /* tnum = tabular numerals. Tabular figures keep columns of
+     numbers (CPU%, mem bytes) aligned across rows in the
+     dashboard / apps table. The .mono class opts in. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Typography utilities. We add these on top of Tailwind's text
+   scale so the rest of the codebase can use them without
+   pulling in a typography plugin. The names are short so the
+   call sites read naturally. */
+
+/* .display-1 — hero / page title. Vercel/Linear use a tight
+   tracking + slightly heavier weight for the page title; we
+   use the same recipe (tracking-tight + 600 weight). */
+.display-1 {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--fg);
+}
+
+/* .display-2 — section heading. The h2 above the "Apps" /
+   "Sites" sections on the dashboard. */
+.display-2 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+  color: var(--fg);
+}
+
+/* .eyebrow — the small uppercase labels above section headers
+   ("GENERATED CADDYFILE", "RUNNING CONTAINERS"). The
+   uppercase + 0.08em tracking is a Linear convention; the
+   0.04em we used previously was too tight to read at 11px. */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+/* .meta — the small mono bits under field labels (timestamps,
+   container names, paths). Sets tabular figures so the dashes
+   in the time fields line up. */
+.meta {
+  font-size: 11px;
+  letter-spacing: 0;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* antd override: <a> defaults to primary blue. We only want this inside the
@@ -147,11 +209,12 @@ header .ant-menu-horizontal > .ant-menu-item-selected:hover::after {
   .nk-apps-table .ant-table-thead > tr > th {
     font-weight: 500;
     font-size: 11px;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--fg-muted);
     background: transparent;
     border-bottom: 1px solid var(--border);
+    font-variant-numeric: tabular-nums;
   }
   .nk-apps-table .ant-table-thead > tr > th::before {
     display: none;

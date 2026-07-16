@@ -57,8 +57,8 @@ export function AppCard({ app }: { app: Dashboard['apps'][number] }) {
       ) : (
         <div className="space-y-2.5">
           <div>
-            <div className="flex items-center justify-between text-[10px] tracking-widest uppercase text-[var(--fg-muted)] mb-1">
-              <span className="inline-flex items-center gap-1">
+            <div className="flex items-center justify-between mb-1">
+              <span className="eyebrow inline-flex items-center gap-1">
                 <Cpu size={10} /> CPU
               </span>
               <span className="mono">{stats.cpuPerc.toFixed(1)}%</span>
@@ -71,8 +71,8 @@ export function AppCard({ app }: { app: Dashboard['apps'][number] }) {
             />
           </div>
           <div>
-            <div className="flex items-center justify-between text-[10px] tracking-widest uppercase text-[var(--fg-muted)] mb-1">
-              <span className="inline-flex items-center gap-1">
+            <div className="flex items-center justify-between mb-1">
+              <span className="eyebrow inline-flex items-center gap-1">
                 <MemoryStick size={10} /> MEM
               </span>
               <span className="mono">

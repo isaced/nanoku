@@ -20,7 +20,7 @@ export function MemCard({ summary }: { summary: Dashboard['summary'] }) {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 text-[var(--fg-muted)]">
           <MemoryStick size={14} />
-          <span className="text-[10px] tracking-widest uppercase">
+          <span className="eyebrow">
             {t('memoryCard.title', { count: summary.containerCount })}
           </span>
         </div>

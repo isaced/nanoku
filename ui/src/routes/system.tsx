@@ -91,7 +91,7 @@ function SystemPageContent() {
       <main className="flex-1 px-8 py-8 max-w-6xl w-full mx-auto w-full">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-medium tracking-tight">{t('title')}</h1>
+            <h1 className="display-1">{t('title')}</h1>
             <p className="text-sm text-[var(--fg-muted)] mt-1">{t('subtitle')}</p>
           </div>
           <Space>
