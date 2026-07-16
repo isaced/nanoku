@@ -308,6 +308,44 @@ func TestContainerLogs_StdCopyDemux(t *testing.T) {
 	}
 }
 
+// TestContainerLogs_PreservesStreamOrder exercises the contract the
+// UI relies on: when the engine emits stdout and stderr frames
+// interleaved on the wire, the buffered endpoint returns them in
+// that order — not "all stdout, then all stderr" the way two
+// separate buffers concatenated naively would.
+//
+// This guards against a regression to the old `stdout.String() +
+// stderr.String()` implementation, which broke log readability for
+// apps that print progress to stdout and warnings to stderr.
+func TestContainerLogs_PreservesStreamOrder(t *testing.T) {
+	var payload bytes.Buffer
+	// Interleave three stdout / stderr frames in the order the engine
+	// would emit them. StdCopy processes frames in wire order.
+	stdcopy.NewStdWriter(&payload, stdcopy.Stdout).Write([]byte("starting\n"))
+	stdcopy.NewStdWriter(&payload, stdcopy.Stderr).Write([]byte("warn: old config\n"))
+	stdcopy.NewStdWriter(&payload, stdcopy.Stdout).Write([]byte("ready\n"))
+
+	fd := newFakeDaemon()
+	defer fd.Close()
+	fd.dispatch = func(w http.ResponseWriter, r *http.Request, _ string) {
+		if strings.HasPrefix(r.URL.Path, "/containers/") && strings.HasSuffix(r.URL.Path, "/logs") {
+			w.Header().Set("Content-Type", "application/vnd.docker.raw-stream")
+			_, _ = w.Write(payload.Bytes())
+			return
+		}
+		http.NotFound(w, r)
+	}
+	m := newTestManager(t, fd, Config{})
+	out, err := m.ContainerLogs(context.Background(), "nanoku-app", 100)
+	if err != nil {
+		t.Fatalf("ContainerLogs: %v", err)
+	}
+	want := "starting\nwarn: old config\nready\n"
+	if out != want {
+		t.Errorf("ContainerLogs order: got %q, want %q", out, want)
+	}
+}
+
 func TestPullImage_ReadsStream(t *testing.T) {
 	fd := newFakeDaemon()
 	defer fd.Close()

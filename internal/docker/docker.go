@@ -615,12 +615,31 @@ func (m *Manager) ContainerLogs(ctx context.Context, name string, tail int) (str
 	}
 	defer rc.Close()
 
-	var stdout, stderr bytes.Buffer
-	if _, err := stdcopy.StdCopy(&stdout, &stderr, rc); err != nil {
+	// stdcopy.StdCopy demuxes the engine's framed stream into two
+	// writers — but the buffered endpoints want stdout+stderr in the
+	// original emission order, not "all of stdout then all of stderr".
+	// We hand both writers a shared single buffer so each frame lands
+	// in stream order, the way the live tail (ContainerLogsStream)
+	// already does via lineWriter. Without this, an interleaved line
+	// (e.g. server prints "starting" to stdout then "err" to stderr
+	// immediately) would show up as "starting\n...err" instead of
+	// "starting\nerr" — confusing the operator.
+	var merged bytes.Buffer
+	mw := &mergingWriter{w: &merged}
+	if _, err := stdcopy.StdCopy(mw, mw, rc); err != nil {
 		return "", fmt.Errorf("container logs %s: demux: %w", name, err)
 	}
-	return stdout.String() + stderr.String(), nil
+	return merged.String(), nil
 }
+
+// mergingWriter is a tiny io.Writer that forwards every Write to an
+// underlying shared writer. stdcopy.StdCopy takes two destinations
+// (one per stream); both pointed at the same mergingWriter, the writes
+// land in the order the demuxer emits them, which matches the wire
+// order. The buffer it's wrapping is the one returned to the caller.
+type mergingWriter struct{ w io.Writer }
+
+func (m *mergingWriter) Write(p []byte) (int, error) { return m.w.Write(p) }
 
 // LogStream is the live tail of a container's logs. Lines is a buffered
 // channel of newline-terminated log lines (the stdcopy stdout/stderr
