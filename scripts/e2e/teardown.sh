@@ -30,9 +30,18 @@ docker rm -f "$E2E_CADDY_CONTAINER" >/dev/null 2>&1 || true
 docker network rm "$E2E_CADDY_NETWORK" >/dev/null 2>&1 || true
 docker volume rm "$E2E_CADDY_VOLUME" >/dev/null 2>&1 || true
 
-echo "removing workdir $E2E_WORKDIR ..."
-if [ -d "$E2E_WORKDIR" ]; then
-  rm -rf "$E2E_WORKDIR"
+# Remove the workdir unless an escape hatch is set. CI sets
+# E2E_SKIP_WORKDIR_RM=1 so a failed run's server.log / Caddyfile /
+# nanoku.db / deploy-logs/ survive for the workflow's upload-artifact
+# step. Docker cleanup above still runs regardless, so the runner stays
+# clean either way. Local `make test-e2e` leaves this unset -> wiped.
+if [ -z "${E2E_SKIP_WORKDIR_RM:-}" ]; then
+  echo "removing workdir $E2E_WORKDIR ..."
+  if [ -d "$E2E_WORKDIR" ]; then
+    rm -rf "$E2E_WORKDIR"
+  fi
+else
+  echo "E2E_SKIP_WORKDIR_RM set; keeping workdir $E2E_WORKDIR for artifact upload"
 fi
 
 echo "done"

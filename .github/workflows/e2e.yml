@@ -1,14 +1,18 @@
 name: e2e
 
-# 端到端测试:启真 nanoku + 调 curl 串通测核心 API 链路 + 真实 docker 容器 + caddy 反代
-# 用 ubuntu-latest runner(自带 docker),跟 .github/workflows/test.yml(单测)分开。
-# 跑 make test-e2e。
+# End-to-end tests: start a real nanoku + curl through the core API
+# chain, real docker containers, and the caddy reverse proxy. Runs on
+# ubuntu-latest (docker is preinstalled). Separate from test.yml (unit
+# tests). Runs `make test-e2e`.
+#
+# Triggers on push/PR to both main and dev so regressions are caught
+# during development, not just at PR-to-main time.
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 permissions:
   contents: read
@@ -17,6 +21,13 @@ jobs:
   e2e:
     name: e2e (ubuntu-latest)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Keep the e2e workdir after teardown so a failed run's logs
+      # (server.log, Caddyfile, nanoku.db, deploy-logs/) survive for
+      # the upload-artifact step below. teardown.sh still cleans up
+      # docker containers/network/volume regardless.
+      E2E_SKIP_WORKDIR_RM: "1"
 
     steps:
       - uses: actions/checkout@v4
@@ -46,4 +57,19 @@ jobs:
 
       - name: Run E2E
         run: make test-e2e
-        # 默认会留 server.log 在 /tmp/nanoku-e2e/server.log,失败时方便查
+
+      # On failure, upload the e2e workdir for diagnosis. Paths are
+      # listed explicitly so .env (which holds NANOKU_SECRET_KEY and
+      # E2E_ADMIN_PASSWORD) is never included in the artifact.
+      - name: Upload e2e logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: |
+            /tmp/nanoku-e2e/server.log
+            /tmp/nanoku-e2e/Caddyfile
+            /tmp/nanoku-e2e/nanoku.db
+            /tmp/nanoku-e2e/deploy-logs
+          if-no-files-found: warn
+          retention-days: 7
