@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# scripts/e2e/run-all.sh — 串行跑所有 test-*.sh,汇总结果。
+# scripts/e2e/run-all.sh - Run all test-*.sh serially, aggregate results.
 #
-# 用法: ./run-all.sh [test-glob]
-#   不带参数跑 test-*.sh;带参数 (如 'test-1*') 跑子集。
+# Usage: ./run-all.sh [test-glob]
+#   No args runs test-*.sh; pass a glob (e.g. 'test-1*') to run a subset.
 #
-# 行为:
-#   1. ./setup.sh 启 nanoku(失败立即退出)
+# Behavior:
+#   1. ./setup.sh starts nanoku (aborts immediately on failure)
 #   2. trap teardown.sh
-#   3. 跑每个 test-*.sh,统计 PASS / FAIL / SKIP 计数
-#   4. 不因单 case 失败就停,跑完全部再统一退
-#   5. 把所有 test 的 stdio 实时显示(失败时上下文看得见)
+#   3. Run each test-*.sh, tallying PASS / FAIL / SKIP counts
+#   4. Don't stop on a single case failure; run all then exit once
+#   5. Stream each test's stdio live (so failure context is visible)
 
 set -u
 
@@ -26,13 +26,13 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# 启服务
+# Start services
 if ! bash "$SCRIPT_DIR/setup.sh"; then
   echo -e "${RED}setup failed, aborting${NC}" >&2
   exit 1
 fi
 
-# 跑测试
+# Run tests
 shopt -s nullglob
 tests=("$SCRIPT_DIR"/$GLOB_PATTERN)
 shopt -u nullglob
@@ -57,12 +57,12 @@ for t in "${tests[@]}"; do
   echo
   echo -e "${BOLD}▶ ${name}${NC}"
   start=$(date +%s)
-  # 子 shell 跑,每个 case 自己的 E2E_* 计数隔离
+  # Run in a subshell so each case's E2E_* counters are isolated
   (
-    # 重新 source 让子 shell 拿到 E2E_BASE_URL 等
+    # Re-source so the subshell gets E2E_BASE_URL etc.
     # shellcheck source=lib.sh
     source "$SCRIPT_DIR/lib.sh"
-    # 注入测试名给 e2e_test_ip 用(让 IP 稳定可复现)
+    # Inject the test name for e2e_test_ip (keeps IPs stable and reproducible)
     export E2E_TEST_NAME="$name"
     bash "$t"
   )

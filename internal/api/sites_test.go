@@ -536,9 +536,47 @@ func TestUpstreamFor_StableAcrossContainerRoll(t *testing.T) {
 	}
 	after := upstreamFor(a, nil)
 	if after != before {
-		t.Errorf("upstream changed after container roll: %q → %q (must be stable)", before, after)
+		t.Errorf("upstream changed after container roll: %q -> %q (must be stable)", before, after)
 	}
 	if after != "nanoku-blog:80" {
 		t.Errorf("upstream = %q, want nanoku-blog:80 (alias form)", after)
+	}
+}
+
+// TestDeleteSite_NotFoundReturns404 guards against the regression where
+// DeleteSite routed the ent NotFound error through writeDBErr, which only
+// maps constraint violations (409) - everything else, including NotFound,
+// fell through to 500. Deleting a non-existent site must return 404 so
+// the UI can distinguish "already gone" from a real server fault, and so
+// the E2E "delete non-existent returns 404" assertion holds.
+func TestDeleteSite_NotFoundReturns404(t *testing.T) {
+	h := newSiteTestHandlers(t)
+	req := httptest.NewRequest(http.MethodDelete, "/api/sites/999999", nil)
+	req.SetPathValue("id", "999999")
+	w := httptest.NewRecorder()
+	h.DeleteSite(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 (site not found); body = %s", w.Code, w.Body.String())
+	}
+}
+
+// TestDeleteSite_ExistingReturns204 is the happy-path counterpart: a
+// real site is removed and the Caddyfile regen (skipped in tests) runs.
+func TestDeleteSite_ExistingReturns204(t *testing.T) {
+	h := newSiteTestHandlers(t)
+	s := mustSeedSite(t, h, "delete-me.test", nil, nil, true)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/sites/"+strconv.Itoa(s.ID), nil)
+	req.SetPathValue("id", strconv.Itoa(s.ID))
+	w := httptest.NewRecorder()
+	h.DeleteSite(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("status = %d, want 204; body = %s", w.Code, w.Body.String())
+	}
+	// Confirm the row is actually gone.
+	if exists, err := h.DB.Site.Query().Where(site.IDEQ(s.ID)).Exist(context.Background()); err != nil {
+		t.Fatalf("exist check: %v", err)
+	} else if exists {
+		t.Error("site row still present after delete")
 	}
 }

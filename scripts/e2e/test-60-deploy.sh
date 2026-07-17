@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# test-60-deploy.sh — POST /api/apps/{id}/deployments 拉真镜像 + 起容器
+# test-60-deploy.sh - POST /api/apps/{id}/deployments pull real image + start container
 #
-# 真跑 docker(nginx:alpine,本地已 pull),验证:
+# Runs docker for real (nginx:alpine, already pulled locally), verifies:
 #   - 202 accepted
-#   - 轮询直到 deploy status = success(或 timeout)
-#   - /api/apps/{id}/containers 出现新容器,状态 running
-#   - 实际 docker 容器存在且运行
+#   - Poll until deploy status = success (or timeout)
+#   - /api/apps/{id}/containers shows new container, status running
+#   - Actual docker container exists and is running
 
 set -u
 # shellcheck source=lib.sh
@@ -17,7 +17,7 @@ if ! require_docker; then
   exit 0
 fi
 
-# 拉测试镜像(若已存在,跳过)
+# Pull test image (skip if already present)
 echo "preparing test image nginx:alpine ..."
 docker_pull_if_missing "nginx:alpine"
 
@@ -26,7 +26,7 @@ e2e_login
 SUFFIX="$$-$(date +%s%N)"
 APP="e2e-deploy-$SUFFIX"
 
-# 创建 app
+# Create app
 create_body=$(jq -nc --arg n "$APP" --arg i "nginx:alpine" '{name:$n, image:$i, port:8080}')
 create_resp=$(api POST /api/apps "$create_body")
 app_id=$(echo "$create_resp" | sed '$d' | jq -r '.id')
@@ -38,13 +38,13 @@ pass "setup: app=$APP id=$app_id"
 
 cleanup() {
     e2e_login
-  # 先 stop 容器再删 app
+  # Stop container before deleting app
   docker_cleanup_app "$APP"
   api_status DELETE "/api/apps/$app_id" >/dev/null 2>&1
 }
 trap cleanup EXIT
 
-# ---- 触发 deploy ------------------------------------------
+# ---- Trigger deploy ------------------------------------------
 section "POST /api/apps/$app_id/deployments"
 
 deploy_resp=$(api POST "/api/apps/$app_id/deployments" "")
@@ -54,9 +54,9 @@ body=$(echo "$deploy_resp" | sed '$d')
 assert_status "$status" 202 "deploy accepted"
 deploy_id=$(echo "$body" | jq -r '.id // .deployId // empty')
 if [ -z "$deploy_id" ] || [ "$deploy_id" = "null" ]; then
-  # 一些实现是 204 No Content,看 body
+  # Some implementations return 204 No Content, check body
   if [ -z "$body" ] || [ "$body" = "{}" ]; then
-    # 没问题,deploy 已经入队,从 history 拿 ID
+    # No problem, deploy already enqueued, get ID from history
     sleep 2
     hist_body=$(api_body GET "/api/apps/$app_id/deployments")
     deploy_id=$(echo "$hist_body" | jq -r '.[0].id // empty')
@@ -66,7 +66,7 @@ if [ -n "$deploy_id" ] && [ "$deploy_id" != "null" ]; then
   pass "deployId: $deploy_id"
 fi
 
-# ---- 轮询 deploy status -----------------------------------
+# ---- Poll deploy status -----------------------------------
 section "wait for deploy to finish"
 
 timeout=90
@@ -92,14 +92,14 @@ case "$final_status" in
   success) pass "deploy status: success" ;;
   failed)
     fail "deploy status: failed"
-    # 尝试拿错误信息
+    # Try to get error message
     err=$(echo "$hist_body" | jq -r '.[0].error // "no error msg"')
     echo -e "  ${BOLD}error:${NC} $err"
     ;;
   *) fail "unexpected final status: $final_status" ;;
 esac
 
-# ---- 容器真在跑 -----------------------------------------
+# ---- Container actually running -----------------------------------------
 section "container actually running"
 
 if [ "$final_status" = "success" ]; then
@@ -115,7 +115,7 @@ if [ "$final_status" = "success" ]; then
     fail "no containers reported despite success status"
   fi
 
-  # 真去 docker 查
+  # Query docker directly
   real_status=$(docker inspect "nanoku-$APP" --format '{{.State.Running}} {{.State.Status}}' 2>/dev/null)
   if [ -n "$real_status" ]; then
     pass "real docker container: $real_status"

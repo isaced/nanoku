@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# scripts/e2e/teardown.sh — 停 nanoku,删 E2E 创建的容器/网络/卷,清临时目录。
+# scripts/e2e/teardown.sh - Stop nanoku, remove containers/networks/volumes created by E2E, clean the temp dir.
 #
-# 用法: ./teardown.sh
-# 幂等:可以重复跑(没有就不删)。
+# Usage: ./teardown.sh
+# Idempotent: safe to run repeatedly (no-op if absent).
 
 set -u
 # shellcheck source=lib.sh
@@ -17,8 +17,8 @@ if [ -n "$labeled" ]; then
   docker rm -f $labeled >/dev/null 2>&1 || true
 fi
 
-# 任何 nanoku-* 前缀的容器也清(测试里 deploy 的 app 容器)
-# 用 docker ps -a 拿所有相关容器
+# Also clean any nanoku-* prefixed containers (app containers deployed during tests)
+# Use docker ps -a to list all relevant containers
 app_containers=$(docker ps -aq --filter "label=nanoku.managed=true" --filter "label=nanoku.role=app" 2>/dev/null || true)
 if [ -n "$app_containers" ]; then
   echo "removing app containers ..."

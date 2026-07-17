@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# test-33-apps-trigger.sh — Trigger token rotate + DB 加密 + List/Get 不返回
+# test-33-apps-trigger.sh — Trigger token rotate + DB encryption + List/Get do not return it
 #
-# 不需要 caddy / docker 真的起来(只测 token rotation 和持久化)
+# Does not need caddy / docker actually running (only tests token rotation and persistence)
 
 set -u
 # shellcheck source=lib.sh
@@ -33,14 +33,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ---- 初始无 token -------------------------------------------
+# ---- initially no token -------------------------------------------
 section "initially no trigger token"
 
 get_body=$(api_body GET "/api/apps/$app_id")
 assert_jq "$get_body" '.triggerConfigured' "false" "triggerConfigured false at create"
 assert_jq "$get_body" '.triggerToken' "null" "triggerToken null at create"
 
-# ---- rotate 第一次: 返回 token -------------------------------
+# ---- first rotate: returns token -------------------------------
 section "first rotate: returns token + persisted"
 
 rotate_resp=$(api POST "/api/apps/$app_id/rotate-trigger-token")
@@ -53,24 +53,24 @@ if [ -z "$token1" ] || [ "$token1" = "null" ]; then
   fail "rotate did not return a token"
   e2e_summary_and_exit
 fi
-# token 长度合理(应该 40+ 字符)
+# token length reasonable (should be 40+ chars)
 if [ "${#token1}" -lt 20 ]; then
   fail "token looks too short: $token1"
 else
   pass "token returned (length=${#token1})"
 fi
 
-# 验证 Get 现在显示 triggerConfigured=true
+# verify Get now shows triggerConfigured=true
 get_body=$(api_body GET "/api/apps/$app_id")
 assert_jq "$get_body" '.triggerConfigured' "true" "triggerConfigured true after rotate"
-# Get 仍然不返回 token
+# Get still does not return token
 assert_jq "$get_body" '.triggerToken' "null" "Get still omits triggerToken"
 
-# List 也仍然不返回
+# List also still omits it
 list_body=$(api_body GET /api/apps)
 assert_jq "$list_body" ".[] | select(.id == $app_id) | .triggerToken" "null" "List omits triggerToken"
 
-# ---- DB 里是加密的 -----------------------------------------
+# ---- encrypted in DB -----------------------------------------
 section "trigger token encrypted in DB"
 
 if command -v sqlite3 >/dev/null 2>&1; then
@@ -87,10 +87,10 @@ else
   skip "sqlite3 not installed"
 fi
 
-# ---- rotate 第二次: token 变了 -------------------------------
+# ---- second rotate: token changes -------------------------------
 section "second rotate: token changes"
 
-# 拿 token1 后,rotate
+# after getting token1, rotate
 rotate_resp=$(api POST "/api/apps/$app_id/rotate-trigger-token")
 token2=$(echo "$rotate_resp" | sed '$d' | jq -r '.triggerToken')
 if [ -z "$token2" ] || [ "$token2" = "null" ]; then

@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# scripts/e2e/setup.sh — 准备临时 .env / DB 目录,后台启 nanoku,等到 /healthz 通。
+# scripts/e2e/setup.sh - Prepare a temp .env / DB dir, start nanoku in the background, wait until /healthz responds.
 #
-# 用法: ./setup.sh
-# 退出: 0 成功,非 0 失败
+# Usage: ./setup.sh
+# Exit: 0 success, non-zero failure
 #
-# 副作用:
-#   - $E2E_WORKDIR (默认 /tmp/nanoku-e2e.XXXXXX) 写一堆临时文件
-#   - 后台启 `go run .` 监听 :18080,PID 写在 $E2E_SERVER_PID_FILE
-#   - 让 nanoku 走真 docker(dm 初始化),这样 caddy 容器和 app 部署能跑
+# Side effects:
+#   - $E2E_WORKDIR (default /tmp/nanoku-e2e.XXXXXX) gets a bunch of temp files written to it
+#   - Start `go run .` in the background listening on :18080; PID stored in $E2E_SERVER_PID_FILE
+#   - Let nanoku use real docker (dm initialized) so caddy container and app deployment work
 #
-# 这里不主动调 caddy 容器启停,nanoku 自己 ensure。但 caddy 容器 / 网络 / volume
-# 全部用 nanoku-e2e-* 命名空间,跟本地 dev 隔离。
+# This script doesn't start/stop the caddy container itself; nanoku ensures it. But the caddy
+# container / network / volume all use the nanoku-e2e-* namespace, isolated from local dev.
 
 set -u
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
-# ---- 前置检查 -----------------------------------------------------------
+# ---- Preconditions -----------------------------------------------------------
 if ! command -v go >/dev/null 2>&1; then
   echo -e "${RED}go not found in PATH${NC}" >&2
   exit 1
@@ -30,13 +30,13 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 if ! require_docker; then
-  echo -e "${RED}docker not available; cannot run E2E (test-00 等基础 case 不需要,但 test-60/61/70 需要)${NC}" >&2
-  echo "  → 在 GitHub Actions ubuntu-latest runner 上跑是 OK 的,本地缺 docker 时请装" >&2
+  echo -e "${RED}docker not available; cannot run E2E (test-00 and other basic cases don't need it, but test-60/61/70 do)${NC}" >&2
+  echo "  -> OK on GitHub Actions ubuntu-latest runners; install docker locally if missing" >&2
   exit 1
 fi
 
-# 提前拉 caddy:2 镜像,docker hub 经常 EOF,setup 里 retry 几次比 nanoku 内部拉稳。
-# 这步放在 mkdir 之前,失败不会留半个 workdir。
+# Pre-pull the caddy:2 image; docker hub often hits EOF. Retrying here is more reliable than letting nanoku pull it internally.
+# Done before mkdir so a failure won't leave a half-created workdir.
 echo "pre-pulling caddy:2 (may retry on EOF) ..."
 for attempt in 1 2 3 4 5; do
   if docker pull --quiet "$E2E_CADDY_IMAGE" >/dev/null 2>&1; then
@@ -50,17 +50,17 @@ for attempt in 1 2 3 4 5; do
   fi
 done
 
-# ---- 准备目录 -----------------------------------------------------------
+# ---- Prepare directories -----------------------------------------------------------
 mkdir -p "$E2E_WORKDIR" "$E2E_DEPLOY_LOG_DIR"
-# 注意:不 touch Caddyfile。docker.EnsureCaddyContainer 自己会调 ensureCaddyfileExists
-# 写一个占位(空文件会让 caddy 报 "EOF" 启动失败)。
+# Note: don't touch the Caddyfile. docker.EnsureCaddyContainer calls ensureCaddyfileExists itself
+# to write a placeholder (an empty file makes caddy fail with "EOF" on startup).
 
-# ---- 写临时 .env --------------------------------------------------------
-# NANOKU_LISTEN=:18080         admin API 端口
-# NANOKU_CADDY_HTTP_PORT=18080 caddy :80 映射到 host 的端口(我们 E2E 里直接 curl 这个)
-# 用 e2e 命名空间,跟本地 dev 完全隔离
+# ---- Write temp .env --------------------------------------------------------
+# NANOKU_LISTEN=:18080         admin API port
+# NANOKU_CADDY_HTTP_PORT=18080 caddy :80 mapped to host port (E2E curls this directly)
+# Use the e2e namespace, fully isolated from local dev
 cat > "$E2E_ENV" <<EOF
-# 给 nanoku 用的(NANOKU_*)
+# For nanoku (NANOKU_*)
 NANOKU_LISTEN=:18080
 NANOKU_DB=${E2E_DB}
 NANOKU_CADDYFILE=${E2E_CADDYFILE}
@@ -73,11 +73,11 @@ NANOKU_CADDY_NETWORK=${E2E_CADDY_NETWORK}
 NANOKU_CADDY_VOLUME=${E2E_CADDY_VOLUME}
 NANOKU_CADDY_IMAGE=${E2E_CADDY_IMAGE}
 NANOKU_KEEP_DEPLOY_DAYS=1
-# 让 clientIP 信任 X-Forwarded-For。E2E 用它给每个 case 分配"独立 IP",绕开
-# /api/login 的 5/min 限流(per-IP)。生产里只在反向代理后面才该开。
+# Make clientIP trust X-Forwarded-For. E2E uses this to give each case a "dedicated IP", bypassing
+# the /api/login 5/min rate limit (per-IP). In production only enable behind a reverse proxy.
 NANOKU_TRUST_PROXY=true
 
-# 给 E2E 测试脚本用的(E2E_*),lib.sh 会 source 这个文件
+# For E2E test scripts (E2E_*); lib.sh sources this file
 E2E_BASE_URL=${E2E_BASE_URL}
 E2E_ADMIN_USER=${E2E_ADMIN_USER}
 E2E_ADMIN_PASSWORD=${E2E_ADMIN_PASSWORD}
@@ -97,22 +97,23 @@ E2E_SERVER_LOG=${E2E_SERVER_LOG}
 E2E_SERVER_PID_FILE=${E2E_SERVER_PID_FILE}
 EOF
 
-# ---- 启 nanoku ----------------------------------------------------------
-# 在仓库根目录跑,因为有 go.mod、internal/api/ui.go (go:embed dist) 等
+# ---- Start nanoku ----------------------------------------------------------
+# Run from repo root, since go.mod, internal/api/ui.go (go:embed dist), etc. live there
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-# 把 caddy 容器的 :80 端口 publish 到 host 的 E2E_CADDY_HTTP_PORT,这样 E2E 可以直接 curl
-# 这部分通过临时 patch 不优雅(要改 docker manager),所以我们直接在 nanoku 启动后
-# 用 docker run 命令确保端口发布?更简单:让 caddy 容器用 host 网络,这样直接 :80 就能访问
-# 但 host 网络需要 --network=host,在 Docker 里需要特权。
+# Publishing caddy container's :80 to host E2E_CADDY_HTTP_PORT so E2E can curl directly
+# would be ugly via a temp patch (requires changing the docker manager), so after nanoku starts
+# should we run `docker run` to ensure the port is published? Simpler: let caddy use host
+# networking so :80 is directly reachable -- but host networking needs --network=host, which
+# requires privileges under Docker.
 #
-# 折中:让 nanoku 正常起 caddy(走 nanoku-net 网络),然后我们 E2E 里:
-#   1. 用 `docker exec` 进 caddy 容器去 curl
-#   2. 或者把 caddy 容器端口映射出来 —— 需要 patch docker.EnsureCaddyContainer
+# Compromise: let nanoku start caddy normally (on the nanoku-net network), then in E2E:
+#   1. `docker exec` into the caddy container to curl
+#   2. Or map the caddy container port out -- requires patching docker.EnsureCaddyContainer
 #
-# 选了 (1) 路线:proxy 测试走 `docker exec caddy curl ...`,避免改源码。
-# 这样 nanoku 完全不感知我们在测它,所有外部访问都从 caddy 容器内发起。
+# Chose route (1): proxy tests go through `docker exec caddy curl ...`, avoiding source changes.
+# This way nanoku is unaware it's being tested; all external access originates inside the caddy container.
 
 echo "starting nanoku (log: $E2E_SERVER_LOG) ..."
 set -a
@@ -120,14 +121,12 @@ set -a
 source "$E2E_ENV"
 set +a
 
-# nohup 让它脱离 shell;重定向 stdio 避免阻塞
-# (注意:orbstack 环境下,nohup 启动的 nanoku 偶发会触发 caddy 容器创建后
-# ~1.2s 被 SIGKILL(暂时查不到原因,跟 nohup/parent exit 有关)。先不用 nohup。)
-go run . > "$E2E_SERVER_LOG" 2>&1 &
-SERVER_BG_PID=$!
-echo "$SERVER_BG_PID" > "$E2E_SERVER_PID_FILE"
+# First start: truncate the old log. start_server appends with >>, so ensure_caddy_up's
+# restart retries keep each boot's log.
+: > "$E2E_SERVER_LOG"
+start_server
 
-# ---- 等就绪 -------------------------------------------------------------
+# ---- Wait for readiness -------------------------------------------------------------
 echo "waiting for /healthz ..."
 if ! wait_for_server 120; then
   echo -e "${RED}server failed to start${NC}" >&2
@@ -136,29 +135,42 @@ if ! wait_for_server 120; then
 fi
 echo -e "${GREEN}server up${NC}  pid=$(cat "$E2E_SERVER_PID_FILE")  url=$E2E_BASE_URL"
 
-# ---- 清理任何残留的旧 E2E 容器(上次没清干净) -------------------------
-# 拿 label 删,避免误伤
+# ---- Clean up any leftover E2E containers (previous run didn't clean up) -------------------------
+# Delete by label to avoid collateral damage
 local_remaining=$(docker ps -aq --filter "label=nanoku-e2e=true" 2>/dev/null || true)
 if [ -n "$local_remaining" ]; then
   echo "removing leftover e2e containers: $local_remaining"
   docker rm -f $local_remaining >/dev/null 2>&1 || true
 fi
-# caddy 容器也清掉,让 nanoku 重 ensure
-docker rm -f "$E2E_CADDY_CONTAINER" >/dev/null 2>&1 || true
+# Note: don't docker rm -f nanoku-e2e-caddy here. nanoku created it at boot time
+# (main.go EnsureCaddyContainer), and HTTP /api/system/reconcile
+# won't recreate caddy (ApplyReconcile only clears the current_container edge, it doesn't call
+# EnsureCaddyContainer). Force-removing it = nobody can bring it back up = E2E will hang.
+# What really needs cleaning is stale instances from a previous run that didn't exit cleanly: check
+# state and only remove if it exists but isn't running, so nanoku boot recreates it.
+caddy_state=$(docker inspect "$E2E_CADDY_CONTAINER" --format '{{.State.Status}}' 2>/dev/null || true)
+if [ -n "$caddy_state" ] && [ "$caddy_state" != "running" ]; then
+  echo "removing stale caddy container (state=$caddy_state)"
+  docker rm -f "$E2E_CADDY_CONTAINER" >/dev/null 2>&1 || true
+fi
+# Same for network: only remove when nothing is using it
 docker network rm "$E2E_CADDY_NETWORK" >/dev/null 2>&1 || true
 
-# 触发一次 ensure(直接重启 server 即可,或者调 reconcile 接口)。
-# 简单做法:让 test-00 调一次 reconcile 把它 ensure 起来;或者我们在 setup 末尾重启一次 server。
-# 但重启会让 caddy 拉镜像,慢。算了,test-60/70 调一次 /api/system/reconcile POST 即可触发 ensure。
-
 echo
-# 主动 reconcile 触发 caddy 容器起来。某些环境下 nanoku 启动时 caddy
-# ensure 会失败(已知:macOS + OrbStack 下 caddy 启动后 ~1s 被 SIGKILL),
-# 这里最多重试 30s。caddy 起不来就 hard fail,test-20/60/61/70 会跟着红,
-# 方便用户看到具体哪个 endpoint 挂在哪一步。
-echo "ensuring caddy container is up (may retry) ..."
-if ! ensure_caddy_up 30; then
+# Wait for the caddy container to be running. EnsureCaddyContainer at nanoku boot is the only
+# path that creates/starts caddy (HTTP reconcile doesn't do this), so here we just wait
+# for it to be ready and no longer call /api/system/reconcile.
+# Known issue: under macOS + OrbStack the caddy container is occasionally SIGKILL'd (exit 137)
+# ~1s after boot. In that case restarting nanoku re-triggers EnsureCaddyContainer, so here we
+# retry restart a few times before timing out.
+echo "ensuring caddy container is up (may restart nanoku) ..."
+if ! ensure_caddy_up 60; then
   echo -e "${RED}caddy not up after retries; aborting E2E setup${NC}" >&2
+  echo "--- last 30 lines of server log ---" >&2
+  tail -30 "$E2E_SERVER_LOG" >&2 2>/dev/null || true
+  echo "--- caddy container state ---" >&2
+  docker inspect "$E2E_CADDY_CONTAINER" --format '{{.State.Status}} (exitCode={{.State.ExitCode}})' >&2 2>/dev/null || echo "  (no container)" >&2
+  docker logs "$E2E_CADDY_CONTAINER" 2>&1 | tail -20 >&2 || true
   stop_server
   exit 1
 fi

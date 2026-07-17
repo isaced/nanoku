@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# test-32-apps-volumes.sh — App volume PUT 覆盖 + 顺序按 ID
+# test-32-apps-volumes.sh — App volume PUT overwrite + order by ID
 #
-# 不依赖 caddy,但需要 docker (h.Docker 在 PUT 时校验 mount 合法性)
+# Does not depend on caddy, but requires docker (h.Docker validates mount validity on PUT)
 
 set -u
 # shellcheck source=lib.sh
@@ -33,13 +33,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ---- 初始 volumes 为空 --------------------------------------
+# ---- initial volumes empty --------------------------------------
 section "initial volumes empty"
 
 get_body=$(api_body GET "/api/apps/$app_id/volumes")
 assert_jq "$get_body" 'length' "0" "no volumes initially"
 
-# ---- PUT 2 个 named volume ----------------------------------
+# ---- PUT 2 named volumes ----------------------------------
 section "PUT named volumes"
 
 vols=$(jq -nc '[
@@ -51,12 +51,12 @@ assert_status "$put_status" 200 "PUT volumes"
 
 list_body=$(api_body GET "/api/apps/$app_id/volumes")
 assert_jq "$list_body" 'length' "2" "2 volumes"
-# 顺序按 ID 升序
+# order by ID ascending
 assert_jq "$list_body" ".[0].source" "data-pg" "first volume source"
 assert_jq "$list_body" ".[0].target" "/var/lib/postgresql/data" "first volume target"
 assert_jq "$list_body" ".[1].source" "cache-redis" "second volume source"
 
-# ---- PUT 整组替换(不是 merge) ----------------------------
+# ---- PUT full replace (not merge) ----------------------------
 section "PUT full replace"
 
 vols2=$(jq -nc '[
@@ -69,7 +69,7 @@ list_body=$(api_body GET "/api/apps/$app_id/volumes")
 assert_jq "$list_body" 'length' "1" "1 volume after replace"
 assert_jq "$list_body" ".[0].source" "only-one" "new volume"
 
-# ---- unnamed volume 自动命名 ------------------------------
+# ---- unnamed volume auto-named ------------------------------
 section "unnamed volume gets auto name"
 
 vols3=$(jq -nc '[
@@ -81,7 +81,7 @@ assert_status "$put_status" 200 "PUT unnamed"
 list_body=$(api_body GET "/api/apps/$app_id/volumes")
 assert_jq "$list_body" ".[0].source" "nanoku-$APP-vol-0" "auto-named volume"
 
-# ---- bind mount 也行 ----------------------------------------
+# ---- bind mount accepted ----------------------------------------
 section "bind mount accepted"
 
 vols4=$(jq -nc '[
@@ -95,13 +95,13 @@ assert_jq "$list_body" ".[0].type" "bind" "bind type"
 assert_jq "$list_body" ".[0].source" "/tmp" "bind source"
 assert_jq "$list_body" ".[0].readOnly" "true" "readOnly"
 
-# ---- 非法 type 400 -----------------------------------------
+# ---- invalid type 400 -----------------------------------------
 section "invalid type rejected"
 
 status=$(api_status PUT "/api/apps/$app_id/volumes" '[{"type":"nfs","target":"/x"}]')
 assert_status "$status" 400 "type=nfs rejected"
 
-# ---- 重复 target 400 ---------------------------------------
+# ---- duplicate target 400 ---------------------------------------
 section "duplicate target rejected"
 
 status=$(api_status PUT "/api/apps/$app_id/volumes" '[
@@ -110,7 +110,7 @@ status=$(api_status PUT "/api/apps/$app_id/volumes" '[
 ]')
 assert_status "$status" 400 "duplicate target"
 
-# ---- 删 app 时 volumes 一起清 -----------------------------
+# ---- volumes cleaned up on app delete -----------------------------
 section "no orphan volumes after app delete"
 
 cleanup

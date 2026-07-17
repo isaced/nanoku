@@ -1,21 +1,21 @@
 # shellcheck shell=bash
-# scripts/e2e/lib.sh — 公共函数 / 状态变量,被 setup.sh / teardown.sh / test-*.sh / run-all.sh source。
+# scripts/e2e/lib.sh - shared functions / state variables, sourced by setup.sh / teardown.sh / test-*.sh / run-all.sh.
 #
-# 设计原则:
-#   - 不 set -e。assert_* 失败时累加 E2E_FAIL_COUNT,不中断,这样单 case 失败
-#     不影响 run-all.sh 跑完全部再汇总。
-#   - 颜色靠 NO_COLOR / 是否 TTY 自动降级,日志重定向下没有乱码。
-#   - workdir 固定 /tmp/nanoku-e2e,所有进程共享(setup / test / teardown)。
-#     E2E 不会并行跑(慢,人为不会同时开两个),固定路径最稳。
-#     想并行用 E2E_WORKDIR 环境变量覆盖。
+# Design principles:
+#   - Do NOT set -e. assert_* failures increment E2E_FAIL_COUNT instead of aborting, so a single
+#     failing case does not stop run-all.sh from running all cases and then summarizing.
+#   - Colors auto-downgrade based on NO_COLOR / TTY detection, so redirected logs stay clean.
+#   - workdir is fixed at /tmp/nanoku-e2e, shared by all processes (setup / test / teardown).
+#     E2E does not run in parallel (it's slow, and nobody launches two at once), so a fixed path
+#     is safest. Override with the E2E_WORKDIR env var to run in parallel.
 
-# 防止重复 source
+# Guard against duplicate sourcing
 if [ -n "${E2E_LIB_SOURCED:-}" ]; then
   return 0
 fi
 E2E_LIB_SOURCED=1
 
-# ---- 路径 / 命名空间 ----------------------------------------------------
+# ---- Paths / namespace -------------------------------------------------
 E2E_WORKDIR="${E2E_WORKDIR:-/tmp/nanoku-e2e}"
 E2E_COOKIE="$E2E_WORKDIR/cookies.txt"
 E2E_ENV="$E2E_WORKDIR/.env"
@@ -25,9 +25,9 @@ E2E_DB="$E2E_WORKDIR/nanoku.db"
 E2E_CADDYFILE="$E2E_WORKDIR/Caddyfile"
 E2E_DEPLOY_LOG_DIR="$E2E_WORKDIR/deploy-logs"
 
-# ---- 自动 source setup.sh 写的 .env --------------------------------------
-# setup.sh 在 $E2E_ENV 里写了 E2E_* 变量(密码、secret key、端口等)。
-# test-*.sh 是单独的 bash 进程,继承不到 setup.sh 的 env,需要从这里读。
+# ---- Auto-source the .env written by setup.sh --------------------------
+# setup.sh writes E2E_* variables (passwords, secret key, ports, etc.) into $E2E_ENV.
+# test-*.sh runs as a separate bash process and does not inherit setup.sh's env, so it reads them here.
 if [ -f "$E2E_ENV" ]; then
   set -a
   # shellcheck disable=SC1090
@@ -36,23 +36,23 @@ if [ -f "$E2E_ENV" ]; then
 fi
 
 E2E_BASE_URL="${E2E_BASE_URL:-http://127.0.0.1:18080}"
-E2E_CADDY_HTTP_PORT="${E2E_CADDY_HTTP_PORT:-18080}"   # caddy :80 映射到 host 的端口
+E2E_CADDY_HTTP_PORT="${E2E_CADDY_HTTP_PORT:-18080}"   # host port that caddy :80 maps to
 E2E_CADDY_ADMIN_PORT="${E2E_CADDY_ADMIN_PORT:-18019}"
 
-# setup.sh 启动时设这些,test-*.sh 从 .env 读到。
-# 这里给的是 fallback(单独跑 test-*.sh 不走 setup 的场景)。
+# These are set by setup.sh at startup; test-*.sh reads them from .env.
+# Values below are fallbacks (for the case of running test-*.sh standalone, without setup).
 E2E_ADMIN_USER="${E2E_ADMIN_USER:-admin}"
 E2E_ADMIN_PASSWORD="${E2E_ADMIN_PASSWORD:-e2e-test-pass}"
-# SECRET_KEY fallback:用 E2E_WORKDIR 派生,这样跨进程一致
+# SECRET_KEY fallback: derived from E2E_WORKDIR so it stays consistent across processes
 E2E_SECRET_KEY="${E2E_SECRET_KEY:-e2e-default-secret-key-please-override-in-setup}"
 
-# caddy 容器/网络用 e2e 命名,避免跟本地 dev 撞
+# caddy container/network use e2e names to avoid colliding with local dev
 E2E_CADDY_CONTAINER="nanoku-e2e-caddy"
 E2E_CADDY_NETWORK="nanoku-e2e-net"
 E2E_CADDY_VOLUME="nanoku-e2e-data"
 E2E_CADDY_IMAGE="${E2E_CADDY_IMAGE:-caddy:2}"
 
-# ---- 颜色 / 输出 --------------------------------------------------------
+# ---- Colors / output ---------------------------------------------------
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
   RED='\033[0;31m'
   GREEN='\033[0;32m'
@@ -64,7 +64,7 @@ else
   RED='' GREEN='' YELLOW='' BLUE='' BOLD='' NC=''
 fi
 
-# ---- 计数 ---------------------------------------------------------------
+# ---- Counters ----------------------------------------------------------
 E2E_PASS_COUNT=0
 E2E_FAIL_COUNT=0
 E2E_SKIP_COUNT=0
@@ -94,8 +94,8 @@ case_done() {
   echo -e "  ${BOLD}(${elapsed}s)${NC}"
 }
 
-# ---- HTTP 包装 ----------------------------------------------------------
-# 协议:返回的 stdout 是 "body\n<status_code>" 两部分。sed '$d' 取 body,tail -1 取 code。
+# ---- HTTP wrappers -----------------------------------------------------
+# Convention: stdout is "body\n<status_code>" (two parts). sed '$d' extracts body, tail -1 extracts the code.
 
 api() {
   local method=$1; shift
@@ -118,8 +118,8 @@ api() {
 api_body() { api "$@" | sed '$d'; }
 api_status() { api "$@" | tail -1; }
 
-# 不带 cookie 发送(测未登录),但仍写 cookie jar(让 login 这种 endpoint 的
-# Set-Cookie 能落到 jar 里,后续用 api() 自动带上)
+# Send without a cookie (for testing unauthenticated requests), but still write to the cookie jar
+# (so Set-Cookie from endpoints like login lands in the jar and is auto-attached by later api() calls)
 api_unauthed() {
   local method=$1; shift
   local path=$1; shift
@@ -141,7 +141,7 @@ api_unauthed() {
 api_unauthed_body() { api_unauthed "$@" | sed '$d'; }
 api_unauthed_status() { api_unauthed "$@" | tail -1; }
 
-# 带 Authorization: Bearer
+# With Authorization: Bearer
 api_bearer() {
   local token=$1; shift
   local method=$1; shift
@@ -164,7 +164,7 @@ api_bearer() {
   fi
 }
 
-# 带 X-Forwarded-For 模拟不同 client IP(绕开限流)
+# Attach X-Forwarded-For to simulate different client IPs (bypass rate limiting)
 api_as_ip() {
   local ip=$1; shift
   local method=$1; shift
@@ -187,27 +187,27 @@ api_as_ip() {
   fi
 }
 
-# 用一个基于测试文件名的稳定 IP,绕开 /api/login 限流(per-IP 5/min)。
-# 每个 test-NN-*.sh 拿到一个独立 IP,跨 case 不互相串限流预算。
-# 依赖 setup.sh 开了 NANOKU_TRUST_PROXY=true。
+# Use a stable IP derived from the test file name to bypass the /api/login rate limit (per-IP 5/min).
+# Each test-NN-*.sh gets its own IP, so cases do not share/consume each other's rate-limit budget.
+# Requires setup.sh to have set NANOKU_TRUST_PROXY=true.
 #
-# 用法:my_ip=$(e2e_test_ip)  →  api_as_ip "$my_ip" POST /api/login ...
+# Usage: my_ip=$(e2e_test_ip)  ->  api_as_ip "$my_ip" POST /api/login ...
 e2e_test_ip() {
-  # 优先用 $E2E_TEST_NAME(由 run-all.sh 注入),否则 fallback 到 $0
+  # Prefer $E2E_TEST_NAME (injected by run-all.sh), otherwise fall back to $0
   local name="${E2E_TEST_NAME:-$(basename "$0" .sh)}"
-  # hash 成 4 个 hex 段
+  # Hash into 4 hex segments
   local hash
   hash=$(printf '%s' "$name" | shasum -a 1 | cut -c1-8)
-  # 172.16/16 私有段,取后两段(避免高位超 255)
+  # 172.16/16 private range, take the last two octets (avoids high bytes exceeding 255)
   local hi=$((16#${hash:0:4}))
   local lo=$((16#${hash:4:4}))
-  # clamp 到 0-255(以防万一)
+  # Clamp to 0-255 (just in case)
   hi=$((hi % 256))
   lo=$((lo % 256))
   printf '172.16.%d.%d\n' "$hi" "$lo"
 }
 
-# 用 e2e_test_ip 登入(自动带 cookie),后续 api() 用 cookie jar
+# Log in using e2e_test_ip (auto-attaches cookie); subsequent api() calls reuse the cookie jar
 e2e_login() {
   : > "$E2E_COOKIE"
   api_as_ip "$(e2e_test_ip)" POST /api/login "$(jq -nc --arg u "$E2E_ADMIN_USER" --arg p "$E2E_ADMIN_PASSWORD" '{username:$u,password:$p}')" >/dev/null
@@ -215,7 +215,7 @@ e2e_login() {
 api_bearer_body() { api_bearer "$@" | sed '$d'; }
 api_bearer_status() { api_bearer "$@" | tail -1; }
 
-# CORS 预检
+# CORS preflight
 api_cors_preflight() {
   local origin=${1:-http://example.com}
   curl -sS -i -X OPTIONS \
@@ -225,14 +225,14 @@ api_cors_preflight() {
     "$E2E_BASE_URL/api/login"
 }
 
-# 走 caddy 反代(不经过 nanoku),用 Host header 模拟域名
+# Go through the caddy reverse proxy (bypassing nanoku), using a Host header to simulate a domain
 curl_proxy() {
   local domain=$1
   local path=${2:-/}
   curl -sS -i -H "Host: $domain" "http://127.0.0.1:${E2E_CADDY_HTTP_PORT}${path}"
 }
 
-# ---- 断言 ---------------------------------------------------------------
+# ---- Assertions --------------------------------------------------------
 assert_status() {
   local actual=$1 expected=$2 label=${3:-status}
   if [ "$actual" = "$expected" ]; then
@@ -301,14 +301,14 @@ require_docker() {
   return 0
 }
 
-# 用完一个 app 容器立刻清掉
+# Clean up an app container immediately after use
 docker_cleanup_app() {
   local name=$1
   [ -z "$name" ] && return 0
   docker rm -f "nanoku-${name}" >/dev/null 2>&1 || true
 }
 
-# 拉取一个测试用镜像(若本地有就跳过)
+# Pull a test image (skip if already present locally)
 docker_pull_if_missing() {
   local image=$1
   if ! docker image inspect "$image" >/dev/null 2>&1; then
@@ -317,7 +317,7 @@ docker_pull_if_missing() {
   fi
 }
 
-# ---- 服务器管理 ---------------------------------------------------------
+# ---- Server management -------------------------------------------------
 wait_for_server() {
   local timeout=${1:-120}
   local start=$(date +%s)
@@ -350,13 +350,13 @@ stop_server() {
     fi
     rm -f "$E2E_SERVER_PID_FILE"
   fi
-  # 兜底:go run 把编译产物放 $GOCACHE/build,杀 go run 父进程不一定带掉 nanoku 二进制子进程。
-  # 用 E2E 独有的 Caddyfile 路径做精准匹配(任何持有这个路径的进程都是 E2E 的),
-  # 不会误伤 dev 用的 nanoku。
+  # Fallback: `go run` puts the build artifact in $GOCACHE/build; killing the `go run` parent does
+  # not always take down the nanoku binary child process. Use the E2E-specific Caddyfile path for a
+  # precise match (any process holding this path is an E2E process), so we don't kill dev nanoku.
   if [ -n "$E2E_CADDYFILE" ] && [ -e "$E2E_CADDYFILE" ]; then
     pkill -f "$E2E_CADDYFILE" 2>/dev/null || true
   fi
-  # 兜底:任何还占着 E2E 端口的进程
+  # Fallback: any process still holding an E2E port
   local port_pids
   port_pids=$(lsof -ti tcp:18080 2>/dev/null || true)
   if [ -n "$port_pids" ]; then
@@ -383,31 +383,89 @@ wait_for_caddy() {
   done
 }
 
-# 主动 reconcile 一下,确保 caddy 容器被 ensure 起来(部分 orbstack 环境下
-# nanoku 自启时的 caddy ensure 会因为一些时序问题被 SIGKILL,需要显式重试)
+# caddy_status prints the container's State.Status (exitCode is useful when not running;
+# under OrbStack a SIGKILL'd container shows exited exitCode=137). Empty string if no container.
+caddy_status() {
+  docker inspect "$E2E_CADDY_CONTAINER" --format '{{.State.Status}}' 2>/dev/null || true
+}
+
+# start_server launches nanoku (`go run .`) in the background from the repo root and writes the PID
+# to the pid file. Shared by setup.sh's first launch and ensure_caddy_up's restart-retry path.
+# Preconditions: the caller has already sourced $E2E_ENV (NANOKU_* must enter the environment), and
+# has truncated/cleared $E2E_SERVER_LOG to the desired state (this function appends with >>, keeping
+# pre-restart boot logs so it's easy to see later which boot attempt failed).
+start_server() {
+  local repo_root
+  repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  (
+    cd "$repo_root"
+    # Do not use nohup: historically, nohup under orbstack occasionally triggered the caddy container being SIGKILL'd.
+    go run . >> "$E2E_SERVER_LOG" 2>&1 &
+    echo $! > "$E2E_SERVER_PID_FILE"
+  )
+}
+
+# ensure_caddy_up waits for the caddy container created by EnsureCaddyContainer during nanoku boot
+# to enter the running state.
+#
+# Key background: HTTP POST /api/system/reconcile (ApplyReconcile) does NOT create/start the caddy
+# container -- it only clears the stale current_container edge. The only path that creates caddy is
+# dm.EnsureCaddyContainer during main.go boot. So this function no longer calls
+# /api/system/reconcile (an earlier version did, and unauthed -> 401, so it never worked).
+#
+# Known issue: on macOS + OrbStack the caddy container is occasionally SIGKILL'd ~1s after boot
+# (State.Status=exited, ExitCode=137). The only reliable recovery is to restart nanoku so boot
+# re-runs EnsureCaddyContainer. So within the timeout window this function will restart nanoku up
+# to E2E_CADDY_RESTART_ATTEMPTS times.
 ensure_caddy_up() {
-  local timeout=${1:-30}
+  local timeout=${1:-60}
   local start=$(date +%s)
-  # 先用 login 拿 session
-  : > "$E2E_COOKIE"
-  api_unauthed POST /api/login "$(jq -nc --arg u "$E2E_ADMIN_USER" --arg p "$E2E_ADMIN_PASSWORD" '{username:$u,password:$p}')" >/dev/null
+  local max_restarts=${E2E_CADDY_RESTART_ATTEMPTS:-3}
+  local restarts=0
+  local last_status=""
   while true; do
-    # 调一次 reconcile,会触发 caddy ensure + reload
-    api_unauthed POST /api/system/reconcile "" >/dev/null 2>&1
     if docker inspect "$E2E_CADDY_CONTAINER" --format '{{.State.Running}}' 2>/dev/null | grep -q true; then
       return 0
     fi
     local now=$(date +%s)
     if [ $((now - start)) -ge "$timeout" ]; then
-      echo -e "${YELLOW}caddy container not up after ${timeout}s${NC}" >&2
-      docker logs "$E2E_CADDY_CONTAINER" 2>&1 | head -20 >&2 || true
+      echo -e "${YELLOW}caddy container not up after ${timeout}s (last status: ${last_status:-none})${NC}" >&2
       return 1
     fi
-    sleep 2
+    # Container is not running. Check its current state:
+    #  - empty (no container): boot hasn't reached EnsureCaddyContainer yet, keep waiting
+    #  - created/exited/paused/restarting: possibly OrbStack SIGKILL, or boot's start hasn't
+    #    finished yet. Give it some time, but if it's stuck, restart nanoku.
+    last_status=$(caddy_status)
+    if [ -n "$last_status" ] && [ "$last_status" != "running" ]; then
+      # Container exists but isn't running. Wait briefly in case it's still starting.
+      sleep 2
+      local s2
+      s2=$(caddy_status)
+      if [ "$s2" != "running" ]; then
+        # Still not up. If restart budget remains, restart nanoku to re-trigger boot ensure.
+        if [ "$restarts" -lt "$max_restarts" ]; then
+          restarts=$((restarts + 1))
+          echo -e "  ${YELLOW}caddy stuck ($s2), restarting nanoku (attempt $restarts/$max_restarts)${NC}" >&2
+          # Remove the broken container so boot recreates it (EnsureCaddyContainer will attempt
+          # ContainerStart on an exited container, but a SIGKILL'd container is often killed again
+          # on start; recreating a clean one is more reliable)
+          docker rm -f "$E2E_CADDY_CONTAINER" >/dev/null 2>&1 || true
+          stop_server
+          start_server
+          if ! wait_for_server 120; then
+            echo -e "  ${RED}nanoku did not come back up after restart${NC}" >&2
+            return 1
+          fi
+          # boot has re-run EnsureCaddyContainer; loop continues waiting for it to be running
+        fi
+      fi
+    fi
+    sleep 1
   done
 }
 
-# ---- 终态汇总 -----------------------------------------------------------
+# ---- Final summary -----------------------------------------------------
 e2e_summary_and_exit() {
   echo
   echo -e "${BOLD}──────────────────────────────────${NC}"

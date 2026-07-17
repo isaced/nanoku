@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# test-11-rate-limit.sh — /api/login 5/min per IP 限流验证
+# test-11-rate-limit.sh — verify /api/login rate limit of 5/min per IP
 #
-# 用一个全新的 IP(随机 RFC1919 地址),连发 7 次错密码,断言第 6 次开始 429。
-# 依赖 setup.sh 开了 NANOKU_TRUST_PROXY=true。
+# Use a brand-new IP (random RFC1919 address) and send 7 wrong-password requests in a row,
+# asserting that 429 starts from the 6th attempt.
+# Depends on setup.sh having NANOKU_TRUST_PROXY=true.
 
 set -u
 # shellcheck source=lib.sh
@@ -10,7 +11,7 @@ source "$(dirname "$0")/lib.sh"
 
 case_start
 
-# 随机 IP,不跟任何已有 case 撞
+# Random IP so it does not collide with any existing case
 RANDOM_IP="192.168.$((RANDOM % 255)).$((RANDOM % 255))"
 
 section "rate limit: 7 wrong logins from $RANDOM_IP"
@@ -26,7 +27,7 @@ for i in 1 2 3 4 5 6 7; do
 done
 
 if [ -n "$got_429_at" ]; then
-  # 第 6 次或更后开始 429 都算通过(限流阈值是 5,前 5 次允许,第 6 次挡)
+  # 429 starting at the 6th attempt or later counts as a pass (threshold is 5: the first 5 are allowed, the 6th is blocked)
   if [ "$got_429_at" -ge 6 ]; then
     pass "rate limit triggered at attempt $got_429_at (>= 6, as expected)"
   else
@@ -36,7 +37,7 @@ else
   fail "rate limit never triggered after 7 attempts"
 fi
 
-# 同一 IP 再试一次仍是 429
+# Retrying once more with the same IP should still be 429
 final=$(api_as_ip "$RANDOM_IP" POST /api/login "$(jq -nc --arg u "$E2E_ADMIN_USER" --arg p "WRONG" '{username:$u,password:$p}')" | tail -1)
 assert_status "$final" 429 "still 429 after limit hit"
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # test-20-sites.sh — Site CRUD + toggle
 #
-# 依赖 caddy 容器(创建/更新/删除 site 会触发 regenerateAndReload)。
-# caddy 起不来就 hard fail,方便用户看到具体哪个 endpoint 挂了。
+# Depends on the caddy container (create/update/delete site triggers regenerateAndReload).
+# If caddy fails to start, hard fail so the user can see which endpoint is down.
 
 set -u
 # shellcheck source=lib.sh
@@ -10,10 +10,10 @@ source "$(dirname "$0")/lib.sh"
 
 case_start
 
-# 登录拿 session
+# Log in to get a session
 e2e_login
 
-# ---- 创建一个上游站点(free upstream,不走 app) -----------------------
+# ---- Create a free-upstream site (no app) -----------------------
 section "create free-upstream site"
 
 domain="e2e-$(date +%s).test"
@@ -30,14 +30,14 @@ assert_jq "$create_body_resp" '.upstream' "$upstream" "site upstream"
 assert_jq "$create_body_resp" '.enabled' "true" "site default enabled"
 assert_jq "$create_body_resp" '.scheme' "http" "site scheme"
 
-# ---- 列出 -----------------------------------------------------
+# ---- List -----------------------------------------------------
 section "list sites"
 
 list_body=$(api_body GET /api/sites)
-# 至少包含我们刚建的
+# At least contains the one we just created
 assert_jq_exists "$list_body" ".[] | select(.id == $site_id)" "site appears in list"
 
-# ---- 更新 -----------------------------------------------------
+# ---- Update -----------------------------------------------------
 section "update site domain"
 
 new_domain="e2e-$(date +%s)-u.test"
@@ -45,9 +45,9 @@ update_body=$(jq -nc --arg d "$new_domain" '{domain:$d}')
 update_status=$(api_status PUT "/api/sites/$site_id" "$update_body")
 assert_status "$update_status" 200 "update site"
 
-# 验证更新后是新的 domain
+# Verify the new domain after update
 get_body=$(api_body GET "/api/sites/$site_id" 2>/dev/null || echo "{}")
-# 没 GET 单个 site 的 handler,通过 list 验证
+# No GET handler for a single site, verify via list
 list_body=$(api_body GET /api/sites)
 assert_jq "$list_body" ".[] | select(.id == $site_id) | .domain" "$new_domain" "site domain updated"
 
@@ -59,35 +59,37 @@ assert_status "$toggle_status" 200 "toggle"
 list_body=$(api_body GET /api/sites)
 assert_jq "$list_body" ".[] | select(.id == $site_id) | .enabled" "false" "site disabled after toggle"
 
-# 再 toggle 回来
+# Toggle back
 toggle_status=$(api_status POST "/api/sites/$site_id/toggle")
 assert_status "$toggle_status" 200 "toggle back"
 list_body=$(api_body GET /api/sites)
 assert_jq "$list_body" ".[] | select(.id == $site_id) | .enabled" "true" "site re-enabled"
 
-# ---- 验证 caddy 收到新 Caddyfile --------------------------------
+# ---- Verify caddy received the new Caddyfile --------------------------------
 section "caddyfile reflects site"
 
+# /api/caddyfile returns text/plain (not JSON), use assert_contains instead of
+# assert_jq_exists (jq parsing a non-JSON body fails and falsely reports missing).
 caddyfile_body=$(api_body GET /api/caddyfile)
-assert_jq_exists "$caddyfile_body" "$new_domain" "caddyfile contains site domain"
-assert_jq_exists "$caddyfile_body" "$upstream" "caddyfile contains upstream"
+assert_contains "$caddyfile_body" "$new_domain" "caddyfile contains site domain"
+assert_contains "$caddyfile_body" "$upstream" "caddyfile contains upstream"
 
-# ---- 非法 domain ---------------------------------------------
+# ---- Invalid domain ---------------------------------------------
 section "invalid domain rejected"
 
-# 缺 domain
+# Missing domain
 status=$(api_status POST /api/sites "$(jq -nc --arg u "x:y" '{upstream:$u}')")
 assert_status "$status" 400 "missing domain"
 
-# 非法 name
+# Invalid name
 status=$(api_status POST /api/sites "$(jq -nc '{domain:"not a domain", upstream:"x:y"}')")
 assert_status "$status" 400 "invalid domain format"
 
-# 缺 upstream 和 appId
+# Missing upstream and appId
 status=$(api_status POST /api/sites "$(jq -nc '{domain:"foo.test"}')")
 assert_status "$status" 400 "missing upstream/appId"
 
-# ---- 删除 ---------------------------------------------------
+# ---- Delete ---------------------------------------------------
 section "delete site"
 
 del_status=$(api_status DELETE "/api/sites/$site_id")
@@ -95,7 +97,7 @@ assert_status "$del_status" 204 "delete"
 list_body=$(api_body GET /api/sites)
 assert_jq "$list_body" "[.[] | select(.id == $site_id)] | length" "0" "site removed from list"
 
-# 删除不存在的 id → 404
+# Delete non-existent id -> 404
 del_status=$(api_status DELETE "/api/sites/999999")
 assert_status "$del_status" 404 "delete non-existent returns 404"
 

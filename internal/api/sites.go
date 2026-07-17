@@ -400,6 +400,10 @@ func (h *Handlers) DeleteSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.DB.Site.DeleteOneID(id).Exec(r.Context()); err != nil {
+		if isNotFound(err) {
+			writeErr(w, http.StatusNotFound, errors.New("site not found"))
+			return
+		}
 		writeDBErr(w, err)
 		return
 	}

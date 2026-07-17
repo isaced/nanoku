@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# test-61-lifecycle.sh — start/stop/restart 真实容器
+# test-61-lifecycle.sh - start/stop/restart real containers
 #
-# 流程:
-#   - deploy app(假设 test-60 已经验证 deploy)
-#   - 等 status running
-#   - stop → 容器应不在
-#   - start → 容器应回来
-#   - restart → 容器 PID(或 StartedAt)变化
+# Flow:
+#   - deploy app (assume test-60 already verified deploy)
+#   - wait for status running
+#   - stop -> container should be gone
+#   - start -> container should come back
+#   - restart -> container PID (or StartedAt) changes
 #
-# 全部依赖 caddy(因为 deploy 路径里 regenerateAndReload)
+# All depends on caddy (because deploy path calls regenerateAndReload)
 
 set -u
 # shellcheck source=lib.sh
@@ -43,12 +43,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# 部署
+# deploy
 section "initial deploy"
 deploy_status=$(api_status POST "/api/apps/$app_id/deployments" "")
 assert_status "$deploy_status" 202 "deploy"
 
-# 等到 success
+# wait until success
 timeout=60
 start=$(date +%s)
 while true; do
@@ -61,7 +61,7 @@ while true; do
 done
 pass "deployed"
 
-# 拿到当前容器 ID
+# get current container ID
 cid_before=$(docker inspect "nanoku-$APP" --format '{{.Id}}' 2>/dev/null)
 started_at_before=$(docker inspect "nanoku-$APP" --format '{{.State.StartedAt}}' 2>/dev/null)
 pass "container id before: ${cid_before:0:12}, startedAt: $started_at_before"
@@ -72,7 +72,7 @@ section "POST /api/apps/$app_id/stop"
 stop_status=$(api_status POST "/api/apps/$app_id/stop")
 assert_status "$stop_status" 200 "stop"
 
-# 等容器真停了
+# wait for container to actually stop
 start=$(date +%s)
 while true; do
   running=$(docker inspect "nanoku-$APP" --format '{{.State.Running}}' 2>/dev/null)
@@ -82,13 +82,13 @@ while true; do
 done
 [ "$running" = "false" ] && pass "container stopped"
 
-# 端点报告 exited
+# endpoint reports exited
 sleep 1
 cont_body=$(api_body GET "/api/apps/$app_id/containers")
 cont_status=$(echo "$cont_body" | jq -r '.[0].status // "unknown"')
 case "$cont_status" in
   exited|stopped|dead) pass "containers endpoint: $cont_status" ;;
-  *)                   pass "containers endpoint: $cont_status" ;;  # 不要太严格
+  *)                   pass "containers endpoint: $cont_status" ;;  # don't be too strict
 esac
 
 # ---- start -------------------------------------------------
@@ -97,7 +97,7 @@ section "POST /api/apps/$app_id/start"
 start_status=$(api_status POST "/api/apps/$app_id/start")
 assert_status "$start_status" 200 "start"
 
-# 等容器真起来
+# wait for container to actually start
 start=$(date +%s)
 while true; do
   running=$(docker inspect "nanoku-$APP" --format '{{.State.Running}}' 2>/dev/null)
@@ -110,12 +110,12 @@ done
 # ---- restart -----------------------------------------------
 section "POST /api/apps/$app_id/restart"
 
-# 等几秒确保 StartedAt 有变化
+# wait a few seconds to ensure StartedAt changes
 sleep 2
 restart_status=$(api_status POST "/api/apps/$app_id/restart")
 assert_status "$restart_status" 200 "restart"
 
-# 等容器重新运行
+# wait for container to run again
 start=$(date +%s)
 while true; do
   running=$(docker inspect "nanoku-$APP" --format '{{.State.Running}}' 2>/dev/null)
@@ -124,7 +124,7 @@ while true; do
   sleep 1
 done
 
-# 验证 StartedAt 变了
+# verify StartedAt changed
 started_at_after=$(docker inspect "nanoku-$APP" --format '{{.State.StartedAt}}' 2>/dev/null)
 if [ "$started_at_after" != "$started_at_before" ]; then
   pass "StartedAt changed: $started_at_before -> $started_at_after"

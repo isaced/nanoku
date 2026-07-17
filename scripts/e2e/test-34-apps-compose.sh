@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-34-apps-compose.sh — compose 模式 app(内联 YAML)
+# test-34-apps-compose.sh — compose mode app (inline YAML)
 
 set -u
 # shellcheck source=lib.sh
@@ -16,13 +16,13 @@ e2e_login
 SUFFIX="$$-$(date +%s%N)"
 APP="e2e-cmpapp-$SUFFIX"
 
-# ---- 缺 composePath 和 composeContent 应 400 -----------------
+# ---- missing composePath and composeContent should 400 -----------------
 section "validation: compose mode needs content or path"
 
 status=$(api_status POST /api/apps "$(jq -nc --arg n "$APP" '{name:$n, deployMethod:"compose"}')")
 assert_status "$status" 400 "compose mode without content/path"
 
-# ---- 内联 compose YAML --------------------------------------
+# ---- inline compose YAML --------------------------------------
 section "create compose app with inline YAML"
 
 compose_yaml='services:
@@ -39,12 +39,12 @@ create_body_resp=$(echo "$create_resp" | sed '$d')
 assert_status "$create_status" 201 "create compose app"
 app_id=$(echo "$create_body_resp" | jq -r '.id')
 assert_jq "$create_body_resp" '.deployMethod' "compose" "deployMethod=compose"
-# composeContent 至少包含 services + nginx:alpine(精确 byte 对齐很脆弱,nanoku 写文件时可能 trim 尾随空白)
+# composeContent must contain at least services + nginx:alpine (exact byte alignment is fragile; nanoku may trim trailing whitespace when writing the file)
 assert_jq_exists "$create_body_resp" '.composeContent | select(contains("nginx:alpine") and contains("services:"))' "composeContent contains services + image"
-# composeFile 应自动生成(在 $NANOKU_COMPOSE_DIR 下)
+# composeFile should be auto-generated (under $NANOKU_COMPOSE_DIR)
 assert_jq_exists "$create_body_resp" '.composeFile' "composeFile auto-generated"
 
-# 验证文件真的写到磁盘了
+# verify the file was actually written to disk
 if [ -n "$app_id" ] && [ "$app_id" != "null" ]; then
   cleanup() {
     : > "$E2E_COOKIE"
@@ -56,7 +56,7 @@ if [ -n "$app_id" ] && [ "$app_id" != "null" ]; then
   compose_file=$(echo "$create_body_resp" | jq -r '.composeFile')
   if [ -f "$compose_file" ]; then
     pass "compose file exists on disk: $compose_file"
-    # 比较时去掉尾部空白(diff -q 对尾随 newline 敏感)
+    # strip trailing whitespace when comparing (diff -q is sensitive to trailing newlines)
     on_disk=$(tr -d '\n' < "$compose_file")
     expected=$(printf '%s' "$compose_yaml" | tr -d '\n')
     if [ "$on_disk" = "$expected" ]; then
@@ -71,7 +71,7 @@ if [ -n "$app_id" ] && [ "$app_id" != "null" ]; then
   fi
 fi
 
-# ---- composePath 模式 ----------------------------------------
+# ---- composePath mode ----------------------------------------
 section "create compose app with path"
 
 APP2="e2e-cmppath-$SUFFIX"
@@ -88,7 +88,7 @@ assert_status "$create_status" 201 "create with composePath"
 
 app2_id=$(api_body GET "/api/apps" | jq -r ".[] | select(.name==\"$APP2\") | .id")
 if [ -n "$app2_id" ] && [ "$app2_id" != "null" ]; then
-  # 用嵌套 function 避免 trap 字符串里的 jq 转义问题
+  # use a nested function to avoid jq escaping issues in the trap string
   cleanup2() {
     : > "$E2E_COOKIE"
     e2e_login
