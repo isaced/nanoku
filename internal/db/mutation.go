@@ -1977,7 +1977,7 @@ func (m *ContainerMutation) DockerID() (r string, exists bool) {
 // OldDockerID returns the old "docker_id" field's value of the Container entity.
 // If the Container object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ContainerMutation) OldDockerID(ctx context.Context) (v string, err error) {
+func (m *ContainerMutation) OldDockerID(ctx context.Context) (v *string, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldDockerID is only allowed on UpdateOne operations")
 	}
@@ -1991,9 +1991,22 @@ func (m *ContainerMutation) OldDockerID(ctx context.Context) (v string, err erro
 	return oldValue.DockerID, nil
 }
 
+// ClearDockerID clears the value of the "docker_id" field.
+func (m *ContainerMutation) ClearDockerID() {
+	m.docker_id = nil
+	m.clearedFields[container.FieldDockerID] = struct{}{}
+}
+
+// DockerIDCleared returns if the "docker_id" field was cleared in this mutation.
+func (m *ContainerMutation) DockerIDCleared() bool {
+	_, ok := m.clearedFields[container.FieldDockerID]
+	return ok
+}
+
 // ResetDockerID resets all changes to the "docker_id" field.
 func (m *ContainerMutation) ResetDockerID() {
 	m.docker_id = nil
+	delete(m.clearedFields, container.FieldDockerID)
 }
 
 // SetName sets the "name" field.
@@ -2522,6 +2535,9 @@ func (m *ContainerMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *ContainerMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(container.FieldDockerID) {
+		fields = append(fields, container.FieldDockerID)
+	}
 	if m.FieldCleared(container.FieldStartedAt) {
 		fields = append(fields, container.FieldStartedAt)
 	}
@@ -2542,6 +2558,9 @@ func (m *ContainerMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *ContainerMutation) ClearField(name string) error {
 	switch name {
+	case container.FieldDockerID:
+		m.ClearDockerID()
+		return nil
 	case container.FieldStartedAt:
 		m.ClearStartedAt()
 		return nil

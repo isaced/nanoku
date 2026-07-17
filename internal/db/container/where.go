@@ -225,6 +225,16 @@ func DockerIDHasSuffix(v string) predicate.Container {
 	return predicate.Container(sql.FieldHasSuffix(FieldDockerID, v))
 }
 
+// DockerIDIsNil applies the IsNil predicate on the "docker_id" field.
+func DockerIDIsNil() predicate.Container {
+	return predicate.Container(sql.FieldIsNull(FieldDockerID))
+}
+
+// DockerIDNotNil applies the NotNil predicate on the "docker_id" field.
+func DockerIDNotNil() predicate.Container {
+	return predicate.Container(sql.FieldNotNull(FieldDockerID))
+}
+
 // DockerIDEqualFold applies the EqualFold predicate on the "docker_id" field.
 func DockerIDEqualFold(v string) predicate.Container {
 	return predicate.Container(sql.FieldEqualFold(FieldDockerID, v))

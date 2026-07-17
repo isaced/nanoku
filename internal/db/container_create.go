@@ -56,6 +56,14 @@ func (_c *ContainerCreate) SetDockerID(v string) *ContainerCreate {
 	return _c
 }
 
+// SetNillableDockerID sets the "docker_id" field if the given value is not nil.
+func (_c *ContainerCreate) SetNillableDockerID(v *string) *ContainerCreate {
+	if v != nil {
+		_c.SetDockerID(*v)
+	}
+	return _c
+}
+
 // SetName sets the "name" field.
 func (_c *ContainerCreate) SetName(v string) *ContainerCreate {
 	_c.mutation.SetName(v)
@@ -212,9 +220,6 @@ func (_c *ContainerCreate) check() error {
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		return &ValidationError{Name: "updated_at", err: errors.New(`db: missing required field "Container.updated_at"`)}
 	}
-	if _, ok := _c.mutation.DockerID(); !ok {
-		return &ValidationError{Name: "docker_id", err: errors.New(`db: missing required field "Container.docker_id"`)}
-	}
 	if _, ok := _c.mutation.Name(); !ok {
 		return &ValidationError{Name: "name", err: errors.New(`db: missing required field "Container.name"`)}
 	}
@@ -265,7 +270,7 @@ func (_c *ContainerCreate) createSpec() (*Container, *sqlgraph.CreateSpec) {
 	}
 	if value, ok := _c.mutation.DockerID(); ok {
 		_spec.SetField(container.FieldDockerID, field.TypeString, value)
-		_node.DockerID = value
+		_node.DockerID = &value
 	}
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(container.FieldName, field.TypeString, value)

@@ -23,8 +23,8 @@ type Container struct {
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
-	// Docker container ID.
-	DockerID string `json:"docker_id,omitempty"`
+	// Docker container ID. Set for docker-mode deploys; nil for compose-mode (no single primary container).
+	DockerID *string `json:"docker_id,omitempty"`
 	// Container name (e.g. nanoku-myapp-<hex>). Informational only; routing uses the network alias.
 	Name string `json:"name,omitempty"`
 	// Resolved image reference.
@@ -144,7 +144,8 @@ func (_m *Container) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field docker_id", values[i])
 			} else if value.Valid {
-				_m.DockerID = value.String
+				_m.DockerID = new(string)
+				*_m.DockerID = value.String
 			}
 		case container.FieldName:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -256,8 +257,10 @@ func (_m *Container) String() string {
 	builder.WriteString("updated_at=")
 	builder.WriteString(_m.UpdatedAt.Format(time.ANSIC))
 	builder.WriteString(", ")
-	builder.WriteString("docker_id=")
-	builder.WriteString(_m.DockerID)
+	if v := _m.DockerID; v != nil {
+		builder.WriteString("docker_id=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("name=")
 	builder.WriteString(_m.Name)

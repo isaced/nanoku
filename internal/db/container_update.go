@@ -50,6 +50,12 @@ func (_u *ContainerUpdate) SetNillableDockerID(v *string) *ContainerUpdate {
 	return _u
 }
 
+// ClearDockerID clears the value of the "docker_id" field.
+func (_u *ContainerUpdate) ClearDockerID() *ContainerUpdate {
+	_u.mutation.ClearDockerID()
+	return _u
+}
+
 // SetName sets the "name" field.
 func (_u *ContainerUpdate) SetName(v string) *ContainerUpdate {
 	_u.mutation.SetName(v)
@@ -276,6 +282,9 @@ func (_u *ContainerUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.DockerID(); ok {
 		_spec.SetField(container.FieldDockerID, field.TypeString, value)
 	}
+	if _u.mutation.DockerIDCleared() {
+		_spec.ClearField(container.FieldDockerID, field.TypeString)
+	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(container.FieldName, field.TypeString, value)
 	}
@@ -421,6 +430,12 @@ func (_u *ContainerUpdateOne) SetNillableDockerID(v *string) *ContainerUpdateOne
 	if v != nil {
 		_u.SetDockerID(*v)
 	}
+	return _u
+}
+
+// ClearDockerID clears the value of the "docker_id" field.
+func (_u *ContainerUpdateOne) ClearDockerID() *ContainerUpdateOne {
+	_u.mutation.ClearDockerID()
 	return _u
 }
 
@@ -679,6 +694,9 @@ func (_u *ContainerUpdateOne) sqlSave(ctx context.Context) (_node *Container, er
 	}
 	if value, ok := _u.mutation.DockerID(); ok {
 		_spec.SetField(container.FieldDockerID, field.TypeString, value)
+	}
+	if _u.mutation.DockerIDCleared() {
+		_spec.ClearField(container.FieldDockerID, field.TypeString)
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(container.FieldName, field.TypeString, value)

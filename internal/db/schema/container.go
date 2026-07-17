@@ -15,8 +15,18 @@ func (Container) Mixin() []ent.Mixin {
 
 func (Container) Fields() []ent.Field {
 	return []ent.Field{
+		// docker_id is the on-the-wire Docker engine container ID
+		// returned by POST /containers/create. It is *optional* and
+		// *nillable* because the compose deploy path produces a
+		// stack of containers (one per service) and the current
+		// schema records only one Container row per deploy — there
+		// is no single "primary" container to key on. The docker
+		// deploy path captures the ID and sets it; the compose
+		// path leaves it nil.
 		field.String("docker_id").
-			Comment("Docker container ID."),
+			Optional().
+			Nillable().
+			Comment("Docker container ID. Set for docker-mode deploys; nil for compose-mode (no single primary container)."),
 		// name is the on-the-wire container name, e.g. nanoku-myapp-<hex>.
 		// It is informational — the network alias (nanoku-<app> for
 		// docker, nanoku-<app>-<service> for compose) is the routing

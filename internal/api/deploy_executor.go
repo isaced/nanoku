@@ -200,7 +200,13 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 
 	var (
 		containerName string
-		primaryImg    = image
+		// dockerID is the on-the-wire engine container ID returned
+		// by POST /containers/create. The docker branch captures it
+		// here; the compose branch leaves it empty (SetNillable
+		// then turns that into NULL, since compose produces one
+		// container per service with no single primary ID).
+		dockerID   string
+		primaryImg = image
 	)
 	if a.DeployMethod == "compose" {
 		project, filePath := h.resolveComposeFile(a)
@@ -307,10 +313,11 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 			if merr != nil {
 				return fmt.Errorf("load mounts: %w", merr)
 			}
-			_, name, err := h.Docker.CreateAppContainer(ctx, a.Name, image, appPort(a), envKVs, 0, mounts)
+			id, name, err := h.Docker.CreateAppContainer(ctx, a.Name, image, appPort(a), envKVs, 0, mounts)
 			if err != nil {
 				return fmt.Errorf("create container: %w", err)
 			}
+			dockerID = id
 			containerName = name
 			return nil
 		}); err != nil {
@@ -341,8 +348,15 @@ func (h *Handlers) executeDeploy(parentCtx context.Context, appID, deployID int,
 	// fire here. The Container.Create below must use the same name
 	// the docker engine actually created (compose path may have
 	// produced a slightly different name from the docker one).
+	//
+	// SetNillableDockerID is the difference between the docker and
+	// compose branches: docker captures the engine-returned ID in
+	// `dockerID` (above); compose leaves it empty, which SetNillable
+	// translates to NULL — the field is now Optional().Nillable()
+	// precisely to express "no single primary container exists for
+	// this stack".
 	cont, err := h.DB.Container.Create().
-		SetDockerID("").
+		SetNillableDockerID(&dockerID).
 		SetName(containerName).
 		SetImage(primaryImg).
 		SetStatus("running").
