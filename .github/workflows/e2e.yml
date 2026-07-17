@@ -3,7 +3,9 @@ name: e2e
 # End-to-end tests: start a real nanoku + curl through the core API
 # chain, real docker containers, and the caddy reverse proxy. Runs on
 # ubuntu-latest (docker is preinstalled). Separate from test.yml (unit
-# tests). Runs `make test-e2e`.
+# tests) so the two signals are easy to read independently — unit test
+# failures (logic bugs) and e2e failures (integration / env bugs)
+# warrant different attention. Runs `make test-e2e`.
 #
 # Triggers on push/PR to both main and dev so regressions are caught
 # during development, not just at PR-to-main time.
@@ -30,30 +32,12 @@ jobs:
       E2E_SKIP_WORKDIR_RM: "1"
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      # Shared setup (checkout + go + node + ui deps + ui build) lives
+      # in .github/actions/setup-build — keep this in sync with test.yml.
+      - name: Setup
+        uses: ./.github/actions/setup-build
         with:
           go-version: "1.26"
-          cache: true
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "26"
-          cache: "npm"
-          cache-dependency-path: ui/package-lock.json
-
-      # go:embed all:dist in internal/api/ui.go requires the UI build output to
-      # exist, so build it before `go run .` (setup.sh spawns the server).
-      - name: Install UI dependencies
-        working-directory: ui
-        run: npm ci
-
-      - name: Build UI
-        working-directory: ui
-        run: npm run build
 
       - name: Run E2E
         run: make test-e2e

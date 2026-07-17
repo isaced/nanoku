@@ -1,10 +1,15 @@
 name: test
 
+# Unit tests: go vet + go test -race + go build. Fast (~45s), runs on
+# push/PR to both main and dev so regressions are caught during
+# development, not just at PR-to-main time. End-to-end tests live in
+# e2e.yml.
+
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 permissions:
   contents: read
@@ -20,30 +25,12 @@ jobs:
         go-version: ["1.26"]
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      # Shared setup (checkout + go + node + ui deps + ui build) lives
+      # in .github/actions/setup-build — keep this in sync with e2e.yml.
+      - name: Setup
+        uses: ./.github/actions/setup-build
         with:
           go-version: ${{ matrix.go-version }}
-          cache: true
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "26"
-          cache: "npm"
-          cache-dependency-path: ui/package-lock.json
-
-      # go:embed all:dist in internal/api/ui.go requires the UI build output to
-      # exist, so build it before running `go test ./...`.
-      - name: Install UI dependencies
-        working-directory: ui
-        run: npm ci
-
-      - name: Build UI
-        working-directory: ui
-        run: npm run build
 
       - name: go vet
         run: go vet ./...
