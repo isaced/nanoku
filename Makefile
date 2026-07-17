@@ -13,7 +13,7 @@ export NANOKU_LISTEN := $(LISTEN)
 export NANOKU_DB := $(DB)
 export NANOKU_CADDYFILE := $(CADDYFILE)
 
-.PHONY: all dev build build-ui build-go run clean ent-generate
+.PHONY: all dev build build-ui build-go run clean ent-generate test-e2e
 
 all: build
 
@@ -69,3 +69,13 @@ ent-generate:
 
 clean:
 	mavis-trash bin internal/api/dist
+
+# 端到端测试:启 nanoku + 跑 curl/jq 通测核心 API 链路。
+# 需要 docker(deploy/caddy 反代相关 case)。无 docker 时 caddy + deploy case
+# 会 SKIP(auth / apps CRUD / system 等不依赖 docker 的仍会跑)。
+test-e2e:
+	bash scripts/e2e/run-all.sh
+
+# 只跑指定子集(例: make test-e2e-only GLOB='test-1*')
+test-e2e-only:
+	bash scripts/e2e/run-all.sh '$(GLOB)'

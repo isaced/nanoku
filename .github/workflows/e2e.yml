@@ -1,0 +1,49 @@
+name: e2e
+
+# 端到端测试:启真 nanoku + 调 curl 串通测核心 API 链路 + 真实 docker 容器 + caddy 反代
+# 用 ubuntu-latest runner(自带 docker),跟 .github/workflows/test.yml(单测)分开。
+# 跑 make test-e2e。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: e2e (ubuntu-latest)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: "npm"
+          cache-dependency-path: ui/package-lock.json
+
+      # go:embed all:dist in internal/api/ui.go requires the UI build output to
+      # exist, so build it before `go run .` (setup.sh spawns the server).
+      - name: Install UI dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Build UI
+        working-directory: ui
+        run: npm run build
+
+      - name: Run E2E
+        run: make test-e2e
+        # 默认会留 server.log 在 /tmp/nanoku-e2e/server.log,失败时方便查
