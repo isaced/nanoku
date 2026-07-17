@@ -5,6 +5,18 @@
 // without throwing — tests that care about the SSE behavior install their
 // own FakeEventSource via a per-file beforeEach.
 
+import { afterEach } from 'vitest'
+import { cleanup } from '@testing-library/react'
+
+// Auto-cleanup the rendered DOM between tests. Without this, queries like
+// `getByText` walk every node ever rendered (since the jsdom document is
+// never reset), and a test that expects "one matching element" finds the
+// previous test's leftover render too. Tests that need extra teardown can
+// still register their own `afterEach` — vitest runs them in order.
+afterEach(() => {
+  cleanup()
+})
+
 class ResizeObserverStub {
   observe() {}
   unobserve() {}
