@@ -105,31 +105,29 @@ bash scripts/e2e/teardown.sh # 清
 
 `.github/workflows/e2e.yml` 用 `ubuntu-latest` runner(自带 docker),直接跑 `make test-e2e`。详见 workflow 文件。
 
-## 已知环境问题
+## 失败语义
 
-### OrbStack: caddy 容器被 SIGKILL
+**没有 graceful skip**。任何 case 失败,`run-all.sh` 都会红色标出来,
+exit code = 失败 case 数,方便 CI 立刻感知,方便人肉定位。
+不通过单 case 不影响其他 case 跑完 — 跑完全部再统一汇总。
+
+## 已知环境问题(本地调试时可能会撞上)
+
+### macOS + OrbStack: caddy 容器被 SIGKILL
 
 在 macOS + OrbStack 环境下,nanoku 自己 ensure 起来的 caddy 容器会
 在启动后约 1 秒被 SIGKILL(exit code 137),docker events 里能看到但查
-不到明确的 killer。caddy 镜像本身没问题(`docker run` 直接跑就稳)。
+不到明确的 killer。`docker run caddy:2` 直接跑同一个镜像就稳。
 
 猜测跟 OrbStack 的容器管理策略有关(可能与 bind mount、netd、
 systemd-style daemon 行为冲突),没在 Linux / Docker Desktop 上复现。
 
-**当前 E2E 的处理**:
-- `setup.sh` 会重试 30 秒尝试拉起 caddy。失败时打印 warning,
-  test 仍继续。
-- 依赖 caddy 容器在跑(`/api/sites*`、`/api/apps/{id}/deployments`、
-  caddy 反代测试)的 case 用 `require_caddy` helper,caddy 不在就
-  **自动 SKIP**(不 fail),所以 caddy 受影响的环境跑 `run-all.sh`
-  不会全红,只是少几个 case。
-- Linux CI / Docker Desktop 上没有这个问题,所有 case 正常跑。
+**症状**:`setup.sh` 在 "ensuring caddy container is up" 那步重试 30s
+后 abort(整个 setup fail,exit 1)。后续的 caddy 依赖 case(test-20 /
+60 / 61 / 70)根本不会跑,报错信息直接指向上面。
 
-**用户能做什么**:
-- Linux 上跑完整测试
-- macOS + Docker Desktop(不是 OrbStack)上跑完整测试
-- macOS + OrbStack 上接受部分 case skip(主要是反代相关)
-
-调试时如果 caddy 起不来,直接看 `cat $E2E_WORKDIR/server.log`,
-里面会有 nanoku 启动时 caddy ensure 的日志。
+**调试**:
+- `cat $E2E_WORKDIR/server.log` 看 nanoku 启动时 caddy ensure 的日志
+- `docker inspect nanoku-e2e-caddy` 看容器最终状态
+- `docker system events --since 5m | grep caddy` 看是不是有 kill 事件
 

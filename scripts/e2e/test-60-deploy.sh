@@ -17,10 +17,6 @@ if ! require_docker; then
   exit 0
 fi
 
-if ! require_caddy; then
-  exit 0
-fi
-
 # 拉测试镜像(若已存在,跳过)
 echo "preparing test image nginx:alpine ..."
 docker_pull_if_missing "nginx:alpine"

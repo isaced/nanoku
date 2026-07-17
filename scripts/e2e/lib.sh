@@ -301,19 +301,6 @@ require_docker() {
   return 0
 }
 
-# 依赖 nanoku 管理的 caddy 容器(由 setup.sh 通过 nanoku 自身拉起)。
-# 在 OrbStack 等环境里 caddy 容器可能被 SIGKILL,这种情况 test 主动 SKIP。
-require_caddy() {
-  if ! require_docker; then
-    return 1
-  fi
-  if ! docker inspect "$E2E_CADDY_CONTAINER" --format '{{.State.Running}}' 2>/dev/null | grep -q true; then
-    skip "caddy container not running (this env may not support it; see README)"
-    return 1
-  fi
-  return 0
-}
-
 # 用完一个 app 容器立刻清掉
 docker_cleanup_app() {
   local name=$1

@@ -20,10 +20,6 @@ if ! require_docker; then
   exit 0
 fi
 
-if ! require_caddy; then
-  exit 0
-fi
-
 docker_pull_if_missing "nginx:alpine"
 
 e2e_login

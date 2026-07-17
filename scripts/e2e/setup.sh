@@ -152,14 +152,17 @@ docker network rm "$E2E_CADDY_NETWORK" >/dev/null 2>&1 || true
 # 但重启会让 caddy 拉镜像,慢。算了,test-60/70 调一次 /api/system/reconcile POST 即可触发 ensure。
 
 echo
-# 主动 reconcile 触发 caddy 容器起来。OrbStack 等环境下 nanoku 启动时 caddy
-# ensure 会被 SIGKILL(查不到明确原因),用 reconcile 重试直到起来。
+# 主动 reconcile 触发 caddy 容器起来。某些环境下 nanoku 启动时 caddy
+# ensure 会失败(已知:macOS + OrbStack 下 caddy 启动后 ~1s 被 SIGKILL),
+# 这里最多重试 30s。caddy 起不来就 hard fail,test-20/60/61/70 会跟着红,
+# 方便用户看到具体哪个 endpoint 挂在哪一步。
 echo "ensuring caddy container is up (may retry) ..."
-if ensure_caddy_up 30; then
-  echo -e "  ${GREEN}caddy up${NC}"
-else
-  echo -e "  ${YELLOW}WARN: caddy not up after retries. test-60/61/70 (docker + proxy) will fail.${NC}"
+if ! ensure_caddy_up 30; then
+  echo -e "${RED}caddy not up after retries; aborting E2E setup${NC}" >&2
+  stop_server
+  exit 1
 fi
+echo -e "  ${GREEN}caddy up${NC}"
 
 echo
 echo "E2E environment ready"

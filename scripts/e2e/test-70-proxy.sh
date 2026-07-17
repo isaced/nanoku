@@ -23,10 +23,6 @@ if ! require_docker; then
   exit 0
 fi
 
-if ! require_caddy; then
-  exit 0
-fi
-
 # 拉一个小而稳的镜像。E2E_CADDY_HTTP_PORT 在 lib.sh 里定义(默认 18080)
 # 注意:这会跟 nanoku admin 端口冲突!改成别的端口
 E2E_CADDY_HTTP_PORT=${E2E_CADDY_HTTP_PORT:-18080}

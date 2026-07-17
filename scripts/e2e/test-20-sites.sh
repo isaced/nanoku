@@ -2,17 +2,13 @@
 # test-20-sites.sh — Site CRUD + toggle
 #
 # 依赖 caddy 容器(创建/更新/删除 site 会触发 regenerateAndReload)。
-# 没有 caddy 自动 SKIP。
+# caddy 起不来就 hard fail,方便用户看到具体哪个 endpoint 挂了。
 
 set -u
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
 case_start
-
-if ! require_caddy; then
-  exit 0
-fi
 
 # 登录拿 session
 e2e_login
