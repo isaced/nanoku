@@ -25,6 +25,17 @@ if [ -n "$app_containers" ]; then
   docker rm -f $app_containers >/dev/null 2>&1 || true
 fi
 
+# Capture caddy container logs to the workdir before removing it. Goes into
+# the e2e-logs artifact on CI failure (see .github/workflows/e2e.yml). Helpful
+# when the proxy test fails because caddy wasn't bound to :80 — without this
+# the caddy stderr/stdout (the only place caddy reports bind errors) is lost
+# the instant `docker rm` runs. Best-effort: never fail teardown over it.
+if [ -n "${E2E_WORKDIR:-}" ] && [ -d "$E2E_WORKDIR" ]; then
+  if docker inspect "$E2E_CADDY_CONTAINER" >/dev/null 2>&1; then
+    docker logs "$E2E_CADDY_CONTAINER" >"$E2E_WORKDIR/caddy.log" 2>&1 || true
+  fi
+fi
+
 echo "removing caddy container / network / volume ..."
 docker rm -f "$E2E_CADDY_CONTAINER" >/dev/null 2>&1 || true
 docker network rm "$E2E_CADDY_NETWORK" >/dev/null 2>&1 || true

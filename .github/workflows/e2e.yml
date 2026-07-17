@@ -68,6 +68,7 @@ jobs:
           name: e2e-logs
           path: |
             /tmp/nanoku-e2e/server.log
+            /tmp/nanoku-e2e/caddy.log
             /tmp/nanoku-e2e/Caddyfile
             /tmp/nanoku-e2e/nanoku.db
             /tmp/nanoku-e2e/deploy-logs
