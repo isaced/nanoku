@@ -32,8 +32,12 @@ jobs:
       E2E_SKIP_WORKDIR_RM: "1"
 
     steps:
-      # Shared setup (checkout + go + node + ui deps + ui build) lives
-      # in .github/actions/setup-build — keep this in sync with test.yml.
+      # Must run before the local composite action: GH needs the repo
+      # on disk to resolve ./.github/actions/setup-build/action.yml.
+      - uses: actions/checkout@v4
+
+      # Shared setup (go + node + ui deps + ui build) lives in
+      # .github/actions/setup-build — keep this in sync with test.yml.
       - name: Setup
         uses: ./.github/actions/setup-build
         with:

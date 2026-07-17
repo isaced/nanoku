@@ -1,11 +1,16 @@
 name: setup-build
 description: |
-  Checkout, install Go + Node, install UI deps, build the UI. The UI
-  build is required because internal/api/ui.go go:embeds the dist
-  output — without it, go test ./... and `go run .` both fail to
-  compile. Used by both test.yml (unit tests) and e2e.yml (end-to-end
-  tests) so the two workflows stay in lockstep on Go/Node versions
-  and on what "ready to test" means.
+  Install Go + Node, install UI deps, build the UI. The UI build is
+  required because internal/api/ui.go go:embeds the dist output —
+  without it, go test ./... and `go run .` both fail to compile.
+  Used by both test.yml (unit tests) and e2e.yml (end-to-end tests)
+  so the two workflows stay in lockstep on Go/Node versions and on
+  what "ready to test" means.
+
+  The caller MUST run actions/checkout before this — GH can't
+  resolve a local composite action until the repo is on disk, so
+  the checkout can't live inside this action. test.yml and e2e.yml
+  put `actions/checkout@v4` as their first step.
 
 inputs:
   go-version:
@@ -15,8 +20,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@v4
-
     - uses: actions/setup-go@v5
       with:
         go-version: ${{ inputs.go-version }}
