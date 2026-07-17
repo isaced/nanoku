@@ -8,6 +8,19 @@ to your registry, and POSTs the nanoku trigger endpoint — which
 pulls, swaps the container, and reloads Caddy for HTTPS. "git push
 → deployed", on your own machine.
 
+## 📸 Preview
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/dashboard.png" alt="Dashboard" /><br /><sub align="center"><b>Dashboard</b> — sites, apps, live CPU / memory across all containers</sub></td>
+    <td width="50%"><img src="docs/screenshots/sites.png" alt="Sites" /><br /><sub align="center"><b>Sites</b> — domain → upstream routing, auto-generated Caddyfile</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/apps-editor.png" alt="Apps editor" /><br /><sub align="center"><b>Apps editor</b> — Docker or Docker Compose, env, registry, trigger token</sub></td>
+    <td width="50%"><img src="docs/screenshots/apps-logs.png" alt="Live logs" /><br /><sub align="center"><b>Live logs</b> — SSE-streamed deploy / app / system logs</sub></td>
+  </tr>
+</table>
+
 ## ✨ Features
 
 - **Single binary** — Go server + embedded React admin UI in one executable
