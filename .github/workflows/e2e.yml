@@ -34,7 +34,7 @@ jobs:
     steps:
       # Must run before the local composite action: GH needs the repo
       # on disk to resolve ./.github/actions/setup-build/action.yml.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Shared setup (go + node + ui deps + ui build) lives in
       # .github/actions/setup-build — keep this in sync with test.yml.
@@ -51,7 +51,7 @@ jobs:
       # E2E_ADMIN_PASSWORD) is never included in the artifact.
       - name: Upload e2e logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-logs
           path: |

@@ -27,7 +27,7 @@ jobs:
     steps:
       # Must run before the local composite action: GH needs the repo
       # on disk to resolve ./.github/actions/setup-build/action.yml.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Shared setup (go + node + ui deps + ui build) lives in
       # .github/actions/setup-build — keep this in sync with e2e.yml.
@@ -46,7 +46,7 @@ jobs:
         run: go build -o /tmp/nanoku-bin .
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nanoku-linux-amd64
           path: /tmp/nanoku-bin
