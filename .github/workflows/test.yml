@@ -1,4 +1,4 @@
-name: test
+name: "Unit tests"
 
 # Unit tests: go vet + go test -race + go build. Fast (~45s), runs on
 # push/PR to both main and dev so regressions are caught during
@@ -31,7 +31,7 @@ jobs:
 
       # Shared setup (go + node + ui deps + ui build) lives in
       # .github/actions/setup-build — keep this in sync with e2e.yml.
-      - name: Setup
+      - name: Bootstrap Go + Node + UI
         uses: ./.github/actions/setup-build
         with:
           go-version: ${{ matrix.go-version }}

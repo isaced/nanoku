@@ -1,4 +1,4 @@
-name: e2e
+name: "E2E tests"
 
 # End-to-end tests: start a real nanoku + curl through the core API
 # chain, real docker containers, and the caddy reverse proxy. Runs on
@@ -38,7 +38,7 @@ jobs:
 
       # Shared setup (go + node + ui deps + ui build) lives in
       # .github/actions/setup-build — keep this in sync with test.yml.
-      - name: Setup
+      - name: Bootstrap Go + Node + UI
         uses: ./.github/actions/setup-build
         with:
           go-version: "1.26"
