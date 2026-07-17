@@ -22,7 +22,12 @@ E2E_ENV="$E2E_WORKDIR/.env"
 E2E_SERVER_LOG="$E2E_WORKDIR/server.log"
 E2E_SERVER_PID_FILE="$E2E_WORKDIR/server.pid"
 E2E_DB="$E2E_WORKDIR/nanoku.db"
-E2E_CADDYFILE="$E2E_WORKDIR/Caddyfile"
+# Caddyfile lives in its own subdir because the caddy container bind-mounts
+# the directory (not the file) into /etc/caddy — a directory mount
+# re-resolves on every access, so atomic renames propagate to the
+# container; a file mount doesn't on Linux. See internal/docker/docker.go
+# EnsureCaddyContainer.
+E2E_CADDYFILE="$E2E_WORKDIR/caddy-dir/Caddyfile"
 E2E_DEPLOY_LOG_DIR="$E2E_WORKDIR/deploy-logs"
 
 # ---- Auto-source the .env written by setup.sh --------------------------

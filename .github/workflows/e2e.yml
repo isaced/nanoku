@@ -69,7 +69,7 @@ jobs:
           path: |
             /tmp/nanoku-e2e/server.log
             /tmp/nanoku-e2e/caddy.log
-            /tmp/nanoku-e2e/Caddyfile
+            /tmp/nanoku-e2e/caddy-dir/Caddyfile
             /tmp/nanoku-e2e/nanoku.db
             /tmp/nanoku-e2e/deploy-logs
           if-no-files-found: warn

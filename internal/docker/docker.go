@@ -289,6 +289,28 @@ func (m *Manager) EnsureCaddyContainer(ctx context.Context, caddyfileHostPath st
 	}
 	caddyfileHostPath = abs
 
+	// We mount the caddyfile's *parent directory* into the caddy
+	// container (not the file itself). On Linux, a file bind mount
+	// captures the inode at ContainerCreate time, so a later
+	// `os.Rename(tmp, caddyfile)` — which is how caddy.WriteAtomic
+	// does its atomic write — replaces the inode the mount is
+	// pointing at, and caddy keeps reading the original (empty)
+	// file forever. The "I added a site but caddy isn't serving
+	// it" bug that bit our e2e on GitHub Actions.
+	//
+	// Mounting the parent directory makes the container resolve
+	// `/etc/caddy/Caddyfile` on every access, so atomic renames
+	// inside the host dir are picked up immediately. The host
+	// directory is dedicated to caddy (just the Caddyfile lives
+	// there) so the mount doesn't leak unrelated host files into
+	// the container.
+	caddyfileDir := filepath.Dir(caddyfileHostPath)
+	absDir, err := filepath.Abs(caddyfileDir)
+	if err != nil {
+		return fmt.Errorf("resolve caddyfile dir: %w", err)
+	}
+	caddyfileDir = absDir
+
 	// The bind mount below needs the host file to exist BEFORE the
 	// container is created. Docker silently accepts a mount of a
 	// non-existent source and the container will then see an empty
@@ -299,6 +321,7 @@ func (m *Manager) EnsureCaddyContainer(ctx context.Context, caddyfileHostPath st
 	// with no log signal from our side. Pre-create the file with
 	// a valid (empty) Caddyfile so the mount is real, then let
 	// the normal regen path overwrite it as sites get added.
+	// (ensureCaddyfileExists also MkdirAll's the parent dir.)
 	if err := ensureCaddyfileExists(caddyfileHostPath); err != nil {
 		return fmt.Errorf("seed caddyfile at %s: %w", caddyfileHostPath, err)
 	}
@@ -339,7 +362,13 @@ func (m *Manager) EnsureCaddyContainer(ctx context.Context, caddyfileHostPath st
 	host := &container.HostConfig{
 		RestartPolicy: container.RestartPolicy{Name: "unless-stopped"},
 		Mounts: []mount.Mount{
-			{Type: mount.TypeBind, Source: caddyfileHostPath, Target: "/etc/caddy/Caddyfile", ReadOnly: true},
+			// Directory mount: see the long comment above for why
+			// this is a dir and not a file. The caddy image's own
+			// /etc/caddy (which only holds a default Caddyfile)
+			// gets fully overlaid by our host dir, which is fine —
+			// caddy reads /etc/caddy/Caddyfile at startup, and the
+			// placeholder we just wrote into the dir IS that file.
+			{Type: mount.TypeBind, Source: caddyfileDir, Target: "/etc/caddy", ReadOnly: true},
 			{Type: mount.TypeVolume, Source: m.volumeName, Target: "/data"},
 			{Type: mount.TypeVolume, Source: m.volumeName, Target: "/config"},
 		},

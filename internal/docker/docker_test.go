@@ -1220,15 +1220,19 @@ func TestEnsureCaddyContainer_ResolvesRelativeCaddyfilePath(t *testing.T) {
 		t.Fatalf("expected at least one mount in create body, got %s", createBody)
 	}
 	got := parsed.HostConfig.Mounts[0]
-	if got.Target != "/etc/caddy/Caddyfile" {
-		t.Errorf("mount target = %q, want /etc/caddy/Caddyfile", got.Target)
+	// We mount the caddyfile's parent directory (not the file) so atomic
+	// renames inside it propagate to the caddy container on Linux — see
+	// the long comment in EnsureCaddyContainer.
+	if got.Target != "/etc/caddy" {
+		t.Errorf("mount target = %q, want /etc/caddy", got.Target)
 	}
 	if !filepath.IsAbs(got.Source) {
 		t.Errorf("mount source %q is not absolute — relative path was passed through unchanged", got.Source)
 	}
-	wantSource := filepath.Join(dir, "Caddyfile")
+	// ./Caddyfile resolves to <cwd>/Caddyfile, so its parent is just <cwd>.
+	wantSource := dir
 	if got.Source != wantSource {
-		t.Errorf("mount source = %q, want %q (relative path must resolve against cwd)", got.Source, wantSource)
+		t.Errorf("mount source = %q, want %q (the caddyfile's parent dir)", got.Source, wantSource)
 	}
 }
 
