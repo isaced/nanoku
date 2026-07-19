@@ -211,7 +211,21 @@
     "addVar": "Add var",
     "keyPlaceholder": "KEY",
     "valuePlaceholder": "value",
-    "composeModeHint": "Compose mode — edit volumes in the compose YAML instead."
+    "composeModeHint": "Compose mode — edit volumes in the compose YAML instead.",
+    "tabFiles": "Files",
+    "filesName": "Name",
+    "filesSize": "Size",
+    "filesMode": "Mode",
+    "filesModTime": "Modified",
+    "filesUp": "Up",
+    "filesBack": "Back",
+    "filesRefresh": "Refresh",
+    "filesDownload": "Download",
+    "filesLink": "link",
+    "filesEmpty": "Empty directory",
+    "filesLoadError": "Failed to load",
+    "filesTooLarge": "File too large to view",
+    "filesTooLargeHint": "Use Download to pull it."
   },
   "volumeEditor": {
     "type": "Type",

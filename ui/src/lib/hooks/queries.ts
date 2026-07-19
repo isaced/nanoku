@@ -4,6 +4,8 @@ import { queryKeys } from '../queryKeys'
 import type {
   App,
   CleanupStatus,
+  ContainerFileContent,
+  ContainerFileListing,
   ContainerInfo,
   Dashboard,
   Deploy,
@@ -106,6 +108,40 @@ export function useAppContainers(
     queryKey: queryKeys.apps.containers(id ?? -1),
     queryFn: () => api.appContainers(id as number),
     enabled: (opts.enabled ?? false) && id != null,
+  })
+}
+
+export function useAppContainerFiles(
+  id: number | null | undefined,
+  container: string | null | undefined,
+  path: string,
+  opts: { enabled?: boolean } = {},
+): UseQueryResult<ContainerFileListing> {
+  return useQuery({
+    queryKey: queryKeys.apps.files(id ?? -1, container ?? '', path),
+    queryFn: () => api.listAppContainerFiles(id as number, container as string, path),
+    enabled: (opts.enabled ?? false) && id != null && container != null && container !== '',
+  })
+}
+
+export function useAppContainerFile(
+  id: number | null | undefined,
+  container: string | null | undefined,
+  path: string | null | undefined,
+  opts: { enabled?: boolean } = {},
+): UseQueryResult<ContainerFileContent> {
+  return useQuery({
+    queryKey: queryKeys.apps.fileContent(id ?? -1, container ?? '', path ?? ''),
+    queryFn: () => api.readAppContainerFile(id as number, container as string, path as string),
+    // The file content is gated on a non-empty path so we
+    // don't fire a request to "?path=" on initial mount.
+    enabled:
+      (opts.enabled ?? false) &&
+      id != null &&
+      container != null &&
+      container !== '' &&
+      path != null &&
+      path !== '',
   })
 }
 

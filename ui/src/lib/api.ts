@@ -2,6 +2,8 @@ import type {
   App,
   AppInput,
   CleanupStatus,
+  ContainerFileContent,
+  ContainerFileListing,
   ContainerInfo,
   Dashboard,
   Deploy,
@@ -111,6 +113,23 @@ export const api = {
     ),
   appContainers: (id: number) =>
     request<ContainerInfo[]>(`/api/apps/${id}/containers`),
+  // File-browser endpoints. The list endpoint takes a path
+  // query string (defaulting to "/" on the server when
+  // omitted). The read endpoint returns a JSON envelope with
+  // base64-encoded content; the UI decodes it for display.
+  // Download is a separate URL — the browser handles the
+  // octet-stream with Content-Disposition natively, so we
+  // just point an <a download> at it. The cookie auth rides
+  // along on the download request because the server uses
+  // SameSite=Strict cookies within the same origin.
+  listAppContainerFiles: (id: number, container: string, path: string) =>
+    request<ContainerFileListing>(
+      `/api/apps/${id}/containers/${encodeURIComponent(container)}/files?path=${encodeURIComponent(path)}`,
+    ),
+  readAppContainerFile: (id: number, container: string, path: string) =>
+    request<ContainerFileContent>(
+      `/api/apps/${id}/containers/${encodeURIComponent(container)}/file?path=${encodeURIComponent(path)}`,
+    ),
   listAppEnv: (id: number) => request<EnvVar[]>(`/api/apps/${id}/env`),
   replaceAppEnv: (id: number, vars: EnvVar[]) =>
     request<{ count: number; hint: string; appId: number }>(

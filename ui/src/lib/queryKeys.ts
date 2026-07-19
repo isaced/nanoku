@@ -14,6 +14,10 @@ export const queryKeys = {
     logs: (id: number, tail: number, container?: string) =>
       ['apps', id, 'logs', tail, container ?? ''] as const,
     containers: (id: number) => ['apps', id, 'containers'] as const,
+    files: (id: number, container: string, path: string) =>
+      ['apps', id, 'files', container, path] as const,
+    fileContent: (id: number, container: string, path: string) =>
+      ['apps', id, 'file', container, path] as const,
   },
   sites: {
     all: () => ['sites'] as const,

@@ -211,7 +211,21 @@
     "addVar": "添加变量",
     "keyPlaceholder": "KEY",
     "valuePlaceholder": "value",
-    "composeModeHint": "Compose 模式 — 请在 compose YAML 中编辑 volumes。"
+    "composeModeHint": "Compose 模式 — 请在 compose YAML 中编辑 volumes。",
+    "tabFiles": "文件",
+    "filesName": "名称",
+    "filesSize": "大小",
+    "filesMode": "权限",
+    "filesModTime": "修改时间",
+    "filesUp": "上一级",
+    "filesBack": "返回",
+    "filesRefresh": "刷新",
+    "filesDownload": "下载",
+    "filesLink": "链接",
+    "filesEmpty": "空目录",
+    "filesLoadError": "加载失败",
+    "filesTooLarge": "文件过大,无法预览",
+    "filesTooLargeHint": "请使用下载获取。"
   },
   "volumeEditor": {
     "type": "类型",
