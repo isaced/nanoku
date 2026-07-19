@@ -16,11 +16,12 @@ import { RouteFallback } from './RouteFallback'
 import { StatusTag } from './StatusTag'
 import { AppDetailOverview } from './AppDetailOverview'
 import { AppDetailDeploys } from './AppDetailDeploys'
+import { AppDetailFiles } from './AppDetailFiles'
 import { AppDetailLogs } from './AppDetailLogs'
 
 const DEPLOY_POLL_INTERVAL_MS = 3000
 
-type TabKey = 'overview' | 'deploys' | 'logs'
+type TabKey = 'overview' | 'deploys' | 'logs' | 'files'
 
 export function AppDetail({
   appId,
@@ -172,6 +173,18 @@ function AppDetailContent({
               appId={appId}
               hasContainer={!!app.container}
               deployMethod={app.deployMethod}
+            />
+          ),
+        },
+        {
+          key: 'files',
+          label: t('detail.tabFiles'),
+          children: (
+            <AppDetailFiles
+              appId={appId}
+              hasContainer={!!app.container}
+              deployMethod={app.deployMethod}
+              currentContainerName={app.container?.name}
             />
           ),
         },

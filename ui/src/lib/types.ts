@@ -57,6 +57,46 @@ export type ContainerInfo = {
   status: string;
 };
 
+/** ContainerFile is a single entry in a container directory listing,
+ * returned by GET /api/apps/{id}/containers/{name}/files. The mode
+ * string follows `ls -l` convention (e.g. "-rw-r--r--") and the size
+ * is bytes. modTime is the RFC 3339 timestamp the server parsed from
+ * `ls`'s month+day fields with the current year; it can be a zero
+ * string if the upstream column was unparseable. */
+export type ContainerFile = {
+  name: string;
+  size: number;
+  mode: string;
+  modTime: string;
+  isDir: boolean;
+  isLink: boolean;
+  linkTarget?: string;
+};
+
+/** ContainerFileListing is the wrapper returned by the file-browser
+ * list endpoint. We wrap entries in an object (rather than returning
+ * a bare array) so the API can grow extra fields — e.g. a "truncated"
+ * flag if we ever cap large directory reads — without breaking
+ * existing clients. */
+export type ContainerFileListing = {
+  path: string;
+  entries: ContainerFile[];
+};
+
+/** ContainerFileContent is the response from the text-view path of
+ * the file endpoint (no ?download=1). The content is base64-encoded
+ * JSON-side because raw bytes don't survive a JSON string round-trip
+ * (NULs, embedded newlines, surrogate pairs). The UI decodes back
+ * to bytes and renders as utf-8 text. */
+export type ContainerFileContent = {
+  path: string;
+  size: number;
+  mode: string;
+  modTime: string;
+  content: string;
+  encoding: 'base64';
+};
+
 export type Volume = {
   type: 'volume' | 'bind';
   source: string;

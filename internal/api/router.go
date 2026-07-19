@@ -90,6 +90,8 @@ func adminMux(h *Handlers) *http.ServeMux {
 	mux.HandleFunc("GET /api/apps/{id}/logs", h.AppLogs)
 	mux.HandleFunc("GET /api/apps/{id}/logs/stream", h.AppLogsStream)
 	mux.HandleFunc("GET /api/apps/{id}/containers", h.AppContainers)
+	mux.HandleFunc("GET /api/apps/{id}/containers/{name}/files", h.AppContainerFiles)
+	mux.HandleFunc("GET /api/apps/{id}/containers/{name}/file", h.AppContainerFile)
 	mux.HandleFunc("GET /api/apps/{id}/env", h.ListAppEnvVars)
 	mux.HandleFunc("PUT /api/apps/{id}/env", h.ReplaceAppEnvVars)
 	mux.HandleFunc("GET /api/apps/{id}/volumes", h.ListAppVolumes)
