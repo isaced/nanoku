@@ -431,3 +431,161 @@ func TestParseLsOutput_IgnoresNoise(t *testing.T) {
 		t.Errorf("entry[0] = %q, want 'real'", out[0].Name)
 	}
 }
+
+// TestParseLsOutput_BusyboxYearFormat covers the case
+// `ls` reports an old file with a 4-digit year in the
+// time slot (the "older than 6 months" rule). The
+// parser shouldn't choke — the year just looks like
+// another token after the day, the line still parses,
+// and the modtime falls back to the zero time because
+// the time slot isn't a real time. The check is just
+// "the entry survives" — we don't try to recover the
+// year value because the UI's relative-time formatter
+// already handles that gracefully.
+func TestParseLsOutput_BusyboxYearFormat(t *testing.T) {
+	out := parseLsOutput("total 4\n" +
+		"-rw-r--r-- 1 0 0 123 Jan  1 2023 old.log\n")
+	if len(out) != 1 {
+		t.Fatalf("got %d entries, want 1: %+v", len(out), out)
+	}
+	if out[0].Name != "old.log" {
+		t.Errorf("entry[0] = %q, want 'old.log'", out[0].Name)
+	}
+	if out[0].Size != 123 {
+		t.Errorf("size = %d, want 123", out[0].Size)
+	}
+}
+
+// TestParseLsOutput_FilenameWithSpaces checks that
+// `ls` filenames containing whitespace are joined
+// back into a single name. The mode+8-fields contract
+// is what makes this safe: fields[8:] is always the
+// name portion, and we re-join with single spaces.
+// (The " -> target" tail is handled by the same join.)
+func TestParseLsOutput_FilenameWithSpaces(t *testing.T) {
+	out := parseLsOutput("total 4\n" +
+		"-rw-r--r-- 1 0 0 0 Jan  1 00:00 file with spaces.txt\n")
+	if len(out) != 1 {
+		t.Fatalf("got %d entries, want 1: %+v", len(out), out)
+	}
+	if out[0].Name != "file with spaces.txt" {
+		t.Errorf("entry[0] = %q, want 'file with spaces.txt'", out[0].Name)
+	}
+}
+
+// TestParseLsOutput_LinkTargetRoundtrip ensures the
+// "name -> target" tail of a symlink line splits on
+// the FIRST occurrence only — a target path that
+// itself contains " -> " would be unusual, but we
+// want the contract to be "first arrow wins".
+func TestParseLsOutput_LinkTargetRoundtrip(t *testing.T) {
+	out := parseLsOutput("total 4\n" +
+		"lrwxrwxrwx 1 0 0 7 Jan  1 00:00 a -> b -> c\n")
+	if len(out) != 1 {
+		t.Fatalf("got %d entries, want 1: %+v", len(out), out)
+	}
+	if out[0].Name != "a" {
+		t.Errorf("name = %q, want 'a'", out[0].Name)
+	}
+	if out[0].LinkTarget != "b -> c" {
+		t.Errorf("linkTarget = %q, want 'b -> c'", out[0].LinkTarget)
+	}
+	if !out[0].IsLink {
+		t.Errorf("IsLink = false, want true")
+	}
+}
+
+// TestParseLsDate covers the date parser directly.
+// It should produce a time in the current year for
+// a valid "Mon Day" pair, and the zero time for
+// gibberish input.
+func TestParseLsDate(t *testing.T) {
+	t.Run("valid month day", func(t *testing.T) {
+		got := parseLsDate("Jan", "15")
+		if got.IsZero() {
+			t.Fatalf("parseLsDate(Jan, 15) = zero time, want non-zero")
+		}
+		if got.Month() != time.January || got.Day() != 15 {
+			t.Errorf("got %v, want Jan 15 (this year)", got)
+		}
+	})
+	t.Run("invalid month", func(t *testing.T) {
+		got := parseLsDate("NotAMonth", "5")
+		if !got.IsZero() {
+			t.Errorf("got %v, want zero time", got)
+		}
+	})
+}
+
+// TestContainerStatPath_DelegatesToSDK checks that
+// the thin wrapper around cli.ContainerStatPath adds
+// the absolute-path guard without mangling the result.
+// We wire the fake to return a canned PathStat and
+// assert the same struct (modulo the abs guard) comes
+// back.
+func TestContainerStatPath_DelegatesToSDK(t *testing.T) {
+	ffd := newFakeFileDaemon()
+	defer ffd.Close()
+	m := newTestManagerForFiles(t, ffd)
+
+	ffd.statResponse = container.PathStat{
+		Name:  "hello.txt",
+		Size:  42,
+		Mode:  os.FileMode(0o644),
+		Mtime: time.Now(),
+	}
+
+	stat, err := m.ContainerStatPath(context.Background(), "id", "/app/hello.txt")
+	if err != nil {
+		t.Fatalf("ContainerStatPath: %v", err)
+	}
+	if stat.Size != 42 {
+		t.Errorf("size = %d, want 42", stat.Size)
+	}
+	if stat.Name != "hello.txt" {
+		t.Errorf("name = %q, want 'hello.txt'", stat.Name)
+	}
+}
+
+// TestContainerStatPath_RejectsRelativePath is the
+// symmetry check with ReadContainerFile / ListContainerDir:
+// relative paths are refused at the boundary so the SDK
+// never gets a `..`-laden or $CWD-dependent value.
+func TestContainerStatPath_RejectsRelativePath(t *testing.T) {
+	m := newTestManagerForFiles(t, newFakeFileDaemon())
+	if _, err := m.ContainerStatPath(context.Background(), "id", "relative"); err == nil {
+		t.Fatal("expected error for relative path, got nil")
+	}
+}
+
+// TestListContainerDir_StderrFallback is the error-message
+// path: when `ls` exits non-zero and there's no stderr
+// in the framed stream, the wrapper falls back to
+// stdout for the user-visible detail. We can't easily
+// shape that scenario through the docker SDK (stderr
+// and stdout both arrive in the same stream), but we
+// can at least confirm the error includes the exit
+// code, which is the contract for callers that map
+// the error to "path not found".
+func TestListContainerDir_StderrFallback(t *testing.T) {
+	ffd := newFakeFileDaemon()
+	defer ffd.Close()
+	m := newTestManagerForFiles(t, ffd)
+
+	ffd.lsResponse = "ls: cannot open directory '/app': Permission denied\n"
+	ffd.lsExitCode = 2
+
+	_, err := m.ListContainerDir(context.Background(), "id", "/app")
+	if err == nil {
+		t.Fatal("expected error when ls fails, got nil")
+	}
+	// The error should mention the exit code (so callers
+	// can decide whether 1 == "not found" vs 2 == "denied")
+	// and surface the stderr text.
+	if !strings.Contains(err.Error(), "exit 2") {
+		t.Errorf("err = %v, want it to mention 'exit 2'", err)
+	}
+	if !strings.Contains(err.Error(), "Permission denied") {
+		t.Errorf("err = %v, want it to include stderr text", err)
+	}
+}

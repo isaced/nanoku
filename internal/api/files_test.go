@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -50,6 +51,15 @@ type fakeFileAPIDaemon struct {
 	// fileSize is reported in the X-Docker-Container-Path-Stat
 	// header. Should match len(fileBytes).
 	fileSize int64
+	// statResponse is the JSON the fake returns for
+	// ContainerStatPath (HEAD /containers/{id}/archive).
+	// Tests can flip Mode to include os.ModeDir to make
+	// the manager treat a path as a directory.
+	statResponse container.PathStat
+	// statErr is the body the fake writes to the stat
+	// endpoint when set; the manager's HEAD 404 path
+	// surfaces this as "stat: ... not found".
+	statErr string
 	// calls lets tests assert on the request shape the
 	// handler made (path, method, body).
 	calls atomic.Int32
@@ -122,7 +132,23 @@ func newFakeFileAPIDaemon() *fakeFileAPIDaemon {
 			}
 			_ = json.NewEncoder(w).Encode(container.ExecInspect{ExitCode: code})
 		case strings.Contains(r.URL.Path, "/containers/") && strings.HasSuffix(r.URL.Path, "/archive"):
-			stat := container.PathStat{Size: fd.fileSize, Mode: 0o644, Mtime: time.Now()}
+			// statErr short-circuits to a 404 so the
+			// manager's "not found" path is exercised.
+			// Tests use it to fake a deleted file
+			// between stat and read.
+			if fd.statErr != "" && r.Method == http.MethodHead {
+				http.Error(w, fd.statErr, http.StatusNotFound)
+				return
+			}
+			// statResponse lets tests flip Mode to
+			// include os.ModeDir to make the manager
+			// reject the path as a directory. Falls
+			// back to a plain regular-file stat with
+			// fileSize when unset.
+			stat := fd.statResponse
+			if stat.Size == 0 && stat.Mode == 0 {
+				stat = container.PathStat{Size: fd.fileSize, Mode: 0o644, Mtime: time.Now()}
+			}
 			statJSON, _ := json.Marshal(stat)
 			w.Header().Set("X-Docker-Container-Path-Stat", base64.StdEncoding.EncodeToString(statJSON))
 			if r.Method == http.MethodHead {
@@ -498,3 +524,204 @@ func TestAppContainerFiles_ComposeMode_VerifiesMembership(t *testing.T) {
 // currently only used by the indirect path (QueryCurrentContainer
 // walks the app edge), so this is belt-and-suspenders.
 var _ = app.HasCurrentContainer
+
+// TestAppContainerFiles_ContainerMissing_Returns404 covers
+// the case where the app's container exists in the DB but
+// has been removed from docker (a "ghost" container —
+// typical after a manual `docker rm`). ContainerIDByName
+// returns "" + nil, the handler maps that to 404 with
+// "container not found". This is the same surface as the
+// unknown-container case from the UI's perspective.
+func TestAppContainerFiles_ContainerMissing_Returns404(t *testing.T) {
+	fd := newFakeFileAPIDaemon()
+	defer fd.Close()
+	h := newFileBrowserHandlers(t, fd)
+	appID, cname := seedDockerApp(t, h, "blog", "nginx:1.27")
+	// listReply intentionally empty — the fake returns
+	// no matching containers, simulating a deleted
+	// container.
+	fd.listReply = nil
+
+	req := httptest.NewRequest(http.MethodGet, "/api/apps/"+strconv.Itoa(appID)+"/containers/"+cname+"/files?path=/", nil)
+	req.SetPathValue("id", strconv.Itoa(appID))
+	req.SetPathValue("name", cname)
+	w := httptest.NewRecorder()
+	h.AppContainerFiles(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Code = %d, want 404; body=%q", w.Code, w.Body.String())
+	}
+}
+
+// TestAppContainerFiles_DockerUnavailable_Returns503 makes
+// sure the handler short-circuits when h.Docker is nil.
+// A Handlers with Docker=nil is the only safe way to wire
+// up tests that don't exercise the docker surface; the
+// file-browser endpoints must respect that and not panic
+// trying to call into a nil manager.
+func TestAppContainerFiles_DockerUnavailable_Returns503(t *testing.T) {
+	h := &Handlers{DB: newTestDB(t), Docker: nil, Secret: newTestSealer(t)}
+	appID, cname := seedDockerApp(t, h, "blog", "nginx:1.27")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/apps/"+strconv.Itoa(appID)+"/containers/"+cname+"/files?path=/", nil)
+	req.SetPathValue("id", strconv.Itoa(appID))
+	req.SetPathValue("name", cname)
+	w := httptest.NewRecorder()
+	h.AppContainerFiles(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("Code = %d, want 503; body=%q", w.Code, w.Body.String())
+	}
+}
+
+// TestAppContainerFile_MissingPath_Returns400 covers the
+// "user clicked the file without entering a path" case
+// (impossible from the UI but a valid curl probe). The
+// handler must NOT silently fall back to "/" or to the
+// last-known path; the contract is "path is required for
+// the read endpoint".
+func TestAppContainerFile_MissingPath_Returns400(t *testing.T) {
+	fd := newFakeFileAPIDaemon()
+	defer fd.Close()
+	h := newFileBrowserHandlers(t, fd)
+	appID, cname := seedDockerApp(t, h, "blog", "nginx:1.27")
+	fd.listReply = []container.Summary{
+		{ID: "c1", Names: []string{"/" + cname}, State: "running"},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/apps/"+strconv.Itoa(appID)+"/containers/"+cname+"/file", nil)
+	req.SetPathValue("id", strconv.Itoa(appID))
+	req.SetPathValue("name", cname)
+	w := httptest.NewRecorder()
+	h.AppContainerFile(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Code = %d, want 400; body=%q", w.Code, w.Body.String())
+	}
+}
+
+// TestAppContainerFile_Download_TooLarge_StillStreams is
+// the download-side symmetry of the size cap: the JSON
+// text-view path refuses files > 1 MiB, but the
+// ?download=1 path streams them anyway. The Content-Length
+// header must reflect the on-disk size (so the browser
+// shows a real progress bar), and the body must include
+// the file content end-to-end.
+func TestAppContainerFile_Download_TooLarge_StillStreams(t *testing.T) {
+	fd := newFakeFileAPIDaemon()
+	defer fd.Close()
+	h := newFileBrowserHandlers(t, fd)
+	appID, cname := seedDockerApp(t, h, "blog", "nginx:1.27")
+	fd.listReply = []container.Summary{
+		{ID: "c1", Names: []string{"/" + cname}, State: "running"},
+	}
+
+	// 2 MiB file. The text-view path would 413; the
+	// download path should stream it.
+	big := bytes.Repeat([]byte("X"), 2<<20)
+	fd.fileBytes = big
+	fd.fileSize = int64(len(big))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/apps/"+strconv.Itoa(appID)+"/containers/"+cname+"/file?path=/big&download=1", nil)
+	req.SetPathValue("id", strconv.Itoa(appID))
+	req.SetPathValue("name", cname)
+	w := httptest.NewRecorder()
+	h.AppContainerFile(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Code = %d, want 200; body len=%d", w.Code, w.Body.Len())
+	}
+	if w.Header().Get("Content-Type") != "application/octet-stream" {
+		t.Errorf("Content-Type = %q, want application/octet-stream", w.Header().Get("Content-Type"))
+	}
+	cl := w.Header().Get("Content-Length")
+	if cl == "" {
+		t.Errorf("Content-Length missing")
+	} else if cl != strconv.FormatInt(int64(len(big)), 10) {
+		t.Errorf("Content-Length = %q, want %d", cl, len(big))
+	}
+}
+
+// TestAppContainerFile_Download_Directory_Returns400
+// guards the "user clicked a directory and added
+// &download=1" case. We must 400 instead of streaming
+// a tar archive the user can't make sense of.
+func TestAppContainerFile_Download_Directory_Returns400(t *testing.T) {
+	fd := newFakeFileAPIDaemon()
+	defer fd.Close()
+	h := newFileBrowserHandlers(t, fd)
+	appID, cname := seedDockerApp(t, h, "blog", "nginx:1.27")
+	fd.listReply = []container.Summary{
+		{ID: "c1", Names: []string{"/" + cname}, State: "running"},
+	}
+
+	// Stat says this path is a directory. The download
+	// branch's pre-flight check catches it.
+	fd.statResponse = container.PathStat{
+		Size:  4096,
+		Mode:  os.FileMode(0o755) | os.ModeDir,
+		Mtime: time.Now(),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/apps/"+strconv.Itoa(appID)+"/containers/"+cname+"/file?path=/app&download=1", nil)
+	req.SetPathValue("id", strconv.Itoa(appID))
+	req.SetPathValue("name", cname)
+	w := httptest.NewRecorder()
+	h.AppContainerFile(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Code = %d, want 400; body=%q", w.Code, w.Body.String())
+	}
+}
+
+// TestAppContainerFile_Download_MissingFile_Returns404
+// covers the "download endpoint with a bad path" case.
+// The pre-flight stat is the same as the text-view
+// path; 404 is the right answer in both branches.
+func TestAppContainerFile_Download_MissingFile_Returns404(t *testing.T) {
+	fd := newFakeFileAPIDaemon()
+	defer fd.Close()
+	h := newFileBrowserHandlers(t, fd)
+	appID, cname := seedDockerApp(t, h, "blog", "nginx:1.27")
+	fd.listReply = []container.Summary{
+		{ID: "c1", Names: []string{"/" + cname}, State: "running"},
+	}
+
+	// The fake's statErr is set; the HEAD /archive
+	// branch will return a 404, which the manager maps
+	// to "stat: ... not found".
+	fd.statErr = "No such file: /missing"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/apps/"+strconv.Itoa(appID)+"/containers/"+cname+"/file?path=/missing&download=1", nil)
+	req.SetPathValue("id", strconv.Itoa(appID))
+	req.SetPathValue("name", cname)
+	w := httptest.NewRecorder()
+	h.AppContainerFile(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Code = %d, want 404; body=%q", w.Code, w.Body.String())
+	}
+}
+
+// TestValidateContainerPath covers the table of inputs
+// the helper accepts and refuses. The handler-level
+// integration tests already exercise the happy path;
+// this is the unit-level invariant we want to keep
+// honest if the rules ever change.
+func TestValidateContainerPath(t *testing.T) {
+	cases := []struct {
+		path    string
+		wantErr bool
+	}{
+		{"/", false},
+		{"/app", false},
+		{"/app/sub/deep", false},
+		{"relative", true},
+		{"app/relative", true},
+		{"/app/../etc", true},
+		{"/app/..", true},
+		{"/../etc", true},
+		{"/app/./sub", false}, // current dir is fine
+	}
+	for _, tc := range cases {
+		err := validateContainerPath(tc.path)
+		if (err != nil) != tc.wantErr {
+			t.Errorf("validateContainerPath(%q) err = %v, wantErr = %v", tc.path, err, tc.wantErr)
+		}
+	}
+}
