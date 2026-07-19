@@ -155,6 +155,71 @@ func (m *Manager) ReadContainerFile(ctx context.Context, containerID, path strin
 	return buf.Bytes(), stat.Size, stat.Mode.String(), stat.Mtime, nil
 }
 
+// StreamContainerFile is the streaming variant of
+// ReadContainerFile. It returns a ReadCloser that yields
+// the file's bytes incrementally instead of buffering
+// the whole file into memory — required by the download
+// path, where the user can pull a multi-megabyte log and
+// we'd rather not OOM the process or hold the whole tar
+// archive in RAM. The returned closer must be Close()d
+// by the caller; the wrapper reaches through to the
+// underlying tar archive's body so the docker engine
+// doesn't leak the connection.
+//
+// Same pre-flight guards as ReadContainerFile (abs path,
+// not a directory) so the stream and the in-memory
+// reader reject the same set of paths. The size cap is
+// intentionally NOT applied here — streaming is the
+// mechanism by which oversized files reach the user.
+func (m *Manager) StreamContainerFile(ctx context.Context, containerID, path string) (io.ReadCloser, int64, error) {
+	if !filepath.IsAbs(path) {
+		return nil, 0, fmt.Errorf("path must be absolute: %q", path)
+	}
+	stat, err := m.cli.ContainerStatPath(ctx, containerID, path)
+	if err != nil {
+		return nil, 0, fmt.Errorf("stat %s: %w", path, err)
+	}
+	if stat.Mode.IsDir() {
+		return nil, 0, fmt.Errorf("path is a directory: %s", path)
+	}
+
+	rc, _, err := m.cli.CopyFromContainer(ctx, containerID, path)
+	if err != nil {
+		return nil, 0, fmt.Errorf("copy %s: %w", path, err)
+	}
+
+	tr := tar.NewReader(rc)
+	hdr, err := tr.Next()
+	if err != nil {
+		_ = rc.Close()
+		return nil, 0, fmt.Errorf("read tar header: %w", err)
+	}
+	if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA {
+		_ = rc.Close()
+		return nil, 0, fmt.Errorf("not a regular file: typeflag=%d", hdr.Typeflag)
+	}
+
+	// tarReadCloser bundles the tar reader with the
+	// underlying io.ReadCloser so the caller can read
+	// straight through to the network and only has to
+	// remember to call Close() once.
+	return &tarReadCloser{tr: tr, rc: rc}, stat.Size, nil
+}
+
+// tarReadCloser forwards Read to a tar.Reader and Close
+// to the underlying io.ReadCloser. The tar.Reader
+// doesn't expose Close (it's a stream parser, not a
+// resource owner), so the wrapper is the glue that lets
+// callers use the docker.Manager stream in idiomatic
+// `defer body.Close()` form.
+type tarReadCloser struct {
+	tr *tar.Reader
+	rc io.ReadCloser
+}
+
+func (t *tarReadCloser) Read(p []byte) (int, error) { return t.tr.Read(p) }
+func (t *tarReadCloser) Close() error               { return t.rc.Close() }
+
 // ContainerIDByName resolves a container name to its docker ID.
 // The resolution uses the same "name" filter as the rest of the
 // package: a single ContainerList call with a `name=<name>` filter

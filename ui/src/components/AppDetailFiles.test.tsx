@@ -439,4 +439,57 @@ describe('AppDetailFiles', () => {
     // that prefixes the Select) should not be present.
     expect(queryByText(/^Container:$/)).toBeNull()
   })
+
+  it('renders an em-dash for the Go zero-time mtime sentinel', async () => {
+    // Go's time.Time{} marshals to "0001-01-01T00:00:00Z"
+    // when the upstream `ls` mtime couldn't be parsed.
+    // The table's render function should treat that
+    // string as "no value" and show a dash, not the
+    // literal year-1 date.
+    vi.mocked(api.appContainers).mockResolvedValue([])
+    vi.mocked(api.listAppContainerFiles).mockResolvedValue({
+      path: '/',
+      entries: [
+        makeFile({ name: 'unknown-mtime.txt', modTime: '0001-01-01T00:00:00Z' }),
+        makeFile({ name: 'real-mtime.txt', modTime: '2024-06-15T12:00:00Z' }),
+      ],
+    })
+
+    const { container } = render(
+      <Providers>
+        <AppDetailFiles
+          appId={1}
+          hasContainer
+          deployMethod="docker"
+          currentContainerName="nanoku-web"
+        />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(container.textContent).toContain('unknown-mtime.txt')
+    })
+    // The bad-mtime row should NOT contain the literal
+    // "1/1/0001" string jsdom would produce from
+    // `new Date('0001-01-01T00:00:00Z').toLocaleString()`.
+    // We assert it shows the em-dash instead.
+    const rows = container.querySelectorAll('tr')
+    let foundDash = false
+    let foundYearOne = false
+    for (const row of Array.from(rows)) {
+      const text = row.textContent ?? ''
+      if (text.includes('unknown-mtime.txt') && text.includes('—')) {
+        foundDash = true
+      }
+      if (text.includes('0001')) {
+        foundYearOne = true
+      }
+    }
+    if (!foundDash) {
+      throw new Error('expected em-dash placeholder in unknown-mtime row')
+    }
+    if (foundYearOne) {
+      throw new Error('Go zero-time sentinel leaked into the rendered tree')
+    }
+  })
 })

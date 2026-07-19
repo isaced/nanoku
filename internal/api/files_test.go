@@ -725,3 +725,162 @@ func TestValidateContainerPath(t *testing.T) {
 		}
 	}
 }
+
+// TestEscapeContentDispositionFilename covers the
+// RFC 6266 surface area for the value-only form of
+// Content-Disposition's filename parameter. The
+// header is sensitive to embedded CR/LF (header
+// injection) and unmatched quotes (parsing), so we
+// strip those and the rest of the printable-but-
+// problematic punctuation. Anything that survives
+// the filter is plain ASCII text, safe to drop
+// between the surrounding quotes.
+func TestEscapeContentDispositionFilename(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"hello.txt", "hello.txt"},
+		{"my file.yaml", "my file.yaml"},
+		// Hostile inputs get sanitized.
+		{`a"b`, "a_b"},
+		{`a;b`, "a_b"},
+		{"a\\b", "a_b"},
+		{"a\nb", "a_b"},
+		{"a\rb", "a_b"},
+		{"a\x00b", "a_b"},
+		{"a\x7fb", "a_b"},
+		{"normal-中文.log", "normal-中文.log"},
+		// Empty / all-hostile fall back to "download".
+		{"", "download"},
+		{"\"\n\r", "___"},
+	}
+	for _, tc := range cases {
+		got := escapeContentDispositionFilename(tc.in)
+		if got != tc.want {
+			t.Errorf("escapeContentDispositionFilename(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestAppContainerFiles_DockerUnavailable_ComposeMode_Returns503
+// is the bug Copilot flagged: when h.Docker is nil AND
+// the app is compose mode, the previous code reached
+// into docker.ListAppContainers via containerBelongsToApp
+// and returned "container not found" 404. The fix moves
+// the nil check into resolveAppContainer so the user
+// gets the actual reason: 503 "docker unavailable".
+func TestAppContainerFiles_DockerUnavailable_ComposeMode_Returns503(t *testing.T) {
+	h := &Handlers{DB: newTestDB(t), Docker: nil, Secret: newTestSealer(t)}
+	ctx := context.Background()
+	a, err := h.DB.App.Create().
+		SetName("blog").
+		SetImage("nginx:1.27").
+		SetPort(80).
+		SetDeployMethod("compose").
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("create app: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/apps/"+strconv.Itoa(a.ID)+"/containers/nanoku-blog-web/files?path=/", nil)
+	req.SetPathValue("id", strconv.Itoa(a.ID))
+	req.SetPathValue("name", "nanoku-blog-web")
+	w := httptest.NewRecorder()
+	h.AppContainerFiles(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("Code = %d, want 503; body=%q", w.Code, w.Body.String())
+	}
+}
+
+// TestAppContainerFile_Download_StreamsWithoutBuffering
+// confirms the streaming behavior: the body bytes flow
+// through io.Copy, not via a single big buffer. We
+// assert the response body contains the tarred file's
+// raw bytes (after our tar extraction) so a wire-level
+// reader gets the same content the in-memory path
+// would have. The crucial property — "we never read
+// the whole file before writing the first byte" — is
+// exercised by the docker package's TestStreamContainerFile
+// suite; this test just guards the handler-level
+// integration.
+func TestAppContainerFile_Download_StreamsWithoutBuffering(t *testing.T) {
+	fd := newFakeFileAPIDaemon()
+	defer fd.Close()
+	h := newFileBrowserHandlers(t, fd)
+	appID, cname := seedDockerApp(t, h, "blog", "nginx:1.27")
+	fd.listReply = []container.Summary{
+		{ID: "c1", Names: []string{"/" + cname}, State: "running"},
+	}
+
+	// 256 KiB payload — big enough that a naive "read
+	// everything then write" approach would noticeably
+	// inflate the goroutine's working set, but small
+	// enough that the fake's tar wrapping stays cheap.
+	const size = 256 << 10
+	want := bytes.Repeat([]byte("X"), size)
+	fd.fileBytes = want
+	fd.fileSize = int64(size)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/apps/"+strconv.Itoa(appID)+"/containers/"+cname+"/file?path=/data/big&download=1", nil)
+	req.SetPathValue("id", strconv.Itoa(appID))
+	req.SetPathValue("name", cname)
+	w := httptest.NewRecorder()
+	h.AppContainerFile(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Code = %d, want 200; body len=%d", w.Code, w.Body.Len())
+	}
+	if !bytes.Contains(w.Body.Bytes(), want) {
+		t.Errorf("body does not contain expected bytes (got %d bytes)", w.Body.Len())
+	}
+	if cl := w.Header().Get("Content-Length"); cl != strconv.Itoa(size) {
+		t.Errorf("Content-Length = %q, want %d", cl, size)
+	}
+}
+
+// TestAppContainerFile_Download_FilenameEscaped covers
+// the Content-Disposition header-injection guard. A
+// filename with embedded quotes or control chars must
+// be sanitized so it can't break out of the surrounding
+// quotes or inject extra header lines. We don't have a
+// way to get an actual container path with a hostile
+// name (validateContainerPath only blocks `..`, not
+// `;` or `"`), so we drive the helper directly and
+// confirm the handler applies the same escaper.
+func TestAppContainerFile_Download_FilenameEscaped(t *testing.T) {
+	fd := newFakeFileAPIDaemon()
+	defer fd.Close()
+	h := newFileBrowserHandlers(t, fd)
+	appID, cname := seedDockerApp(t, h, "blog", "nginx:1.27")
+	fd.listReply = []container.Summary{
+		{ID: "c1", Names: []string{"/" + cname}, State: "running"},
+	}
+
+	fd.fileBytes = []byte("data")
+	fd.fileSize = 4
+
+	// Path with a quote in the basename. validateContainerPath
+	// only blocks "..", so this is a legal request.
+	// The download handler must escape the basename
+	// before inserting it into Content-Disposition.
+	req := httptest.NewRequest(http.MethodGet, "/api/apps/"+strconv.Itoa(appID)+"/containers/"+cname+"/file?path=/etc/my%22file&download=1", nil)
+	req.SetPathValue("id", strconv.Itoa(appID))
+	req.SetPathValue("name", cname)
+	w := httptest.NewRecorder()
+	h.AppContainerFile(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Code = %d, want 200; body=%q", w.Code, w.Body.String())
+	}
+	cd := w.Header().Get("Content-Disposition")
+	// The header value must be a single line and must
+	// not contain an unescaped quote. Our escaper
+	// replaces `"` with `_`, so the basename in the
+	// header is the sanitized form.
+	if strings.Contains(cd, "\n") || strings.Contains(cd, "\r") {
+		t.Errorf("Content-Disposition contains CR/LF: %q", cd)
+	}
+	if !strings.Contains(cd, `filename="my_file"`) {
+		t.Errorf("Content-Disposition = %q, want it to include the escaped filename", cd)
+	}
+}

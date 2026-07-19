@@ -31,6 +31,7 @@ package api
 import (
 	"encoding/base64"
 	"errors"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -67,10 +68,6 @@ func (h *Handlers) AppContainerFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := validateContainerPath(path); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
-		return
-	}
-	if h.Docker == nil {
-		writeErr(w, http.StatusServiceUnavailable, errors.New("docker unavailable"))
 		return
 	}
 
@@ -128,10 +125,6 @@ func (h *Handlers) AppContainerFile(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	if h.Docker == nil {
-		writeErr(w, http.StatusServiceUnavailable, errors.New("docker unavailable"))
-		return
-	}
 
 	containerID, err := h.Docker.ContainerIDByName(r.Context(), name)
 	if err != nil {
@@ -185,37 +178,90 @@ func (h *Handlers) AppContainerFile(w http.ResponseWriter, r *http.Request) {
 // text-view path is intentionally not applied here — the
 // download flow's whole point is to let the user pull
 // files larger than the inline viewer can handle.
+//
+// We use the streaming variant of ReadContainerFile
+// (StreamContainerFile) and io.Copy straight from the
+// docker engine's response into the http.ResponseWriter,
+// so the process never holds the whole file in memory.
+// For a 100 MiB log that means the RSS stays at kilobytes
+// during the transfer instead of jumping by 100 MiB.
 func (h *Handlers) streamContainerFile(w http.ResponseWriter, r *http.Request, containerID, path string) {
-	// We need a streaming source. ContainerStat is cheap and
-	// gives us the size for Content-Length and a clean 404
-	// if the path is gone.
-	stat, err := h.Docker.ContainerStatPath(r.Context(), containerID, path)
+	body, size, err := h.Docker.StreamContainerFile(r.Context(), containerID, path)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, errors.New("path not found"))
+		// Pre-stream stat / copy errors map to the same
+		// 4xx surfaces as the text-view path so the UI's
+		// error handling stays consistent. The string
+		// match mirrors the switch in AppContainerFile.
+		status := http.StatusNotFound
+		msg := err.Error()
+		switch {
+		case strings.Contains(msg, "is a directory"):
+			status = http.StatusBadRequest
+		case strings.Contains(msg, "not found") || strings.Contains(msg, "No such file"):
+			status = http.StatusNotFound
+		}
+		writeErr(w, status, err)
 		return
 	}
-	if stat.Mode.IsDir() {
-		writeErr(w, http.StatusBadRequest, errors.New("path is a directory"))
-		return
-	}
+	defer body.Close()
 
+	// Content-Length is set from the on-disk size so the
+	// browser can render an accurate progress bar. The
+	// engine's stat answer is trustworthy for regular
+	// files; only sparse files and similar oddities can
+	// deviate, and those are rare in the configs/logs
+	// the file browser is meant for.
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Length", strconv.FormatInt(stat.Size, 10))
-	w.Header().Set("Content-Disposition", `attachment; filename="`+filepath.Base(path)+`"`)
+	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	w.Header().Set("Content-Disposition", `attachment; filename="`+escapeContentDispositionFilename(filepath.Base(path))+`"`)
 	w.WriteHeader(http.StatusOK)
 
-	// For the download path we ignore the read cap entirely
-	// (maxBytes = stat.Size + 1) so even oversized files
-	// come through. The browser will buffer as needed.
-	data, _, _, _, err := h.Docker.ReadContainerFile(r.Context(), containerID, path, stat.Size+1)
-	if err != nil {
-		// We've already sent the 200 + headers above, so
-		// there's no way to turn this into a clean error
-		// response. Truncate the body — the client will
-		// see a short download and can retry.
-		return
+	// io.Copy pumps bytes from the tar reader (which
+	// is backed by the http body of the docker engine
+	// call) into the http.ResponseWriter. We deliberately
+	// do NOT try to convert a write error back into a
+	// non-2xx response — headers are already on the
+	// wire by this point, and the client will see a
+	// truncated download.
+	_, _ = io.Copy(w, body)
+}
+
+// escapeContentDispositionFilename strips characters
+// that would let a container file with a hostile name
+// break the Content-Disposition header (CR/LF for
+// header injection, `"` to escape the surrounding
+// quotes, `;` to keep the parser happy, and any other
+// non-printable byte). Anything that would change the
+// header's structure is replaced with `_` so the
+// filename is always safe to drop into the value. This
+// is RFC 6266's "value-only" form (no UTF-8 percent-
+// encoding); container file names are nearly always
+// ASCII so the simpler approach is enough, and if a
+// user does have a unicode filename they get a
+// sanitized ASCII approximation rather than a broken
+// header.
+func escapeContentDispositionFilename(name string) string {
+	if name == "" {
+		return "download"
 	}
-	_, _ = w.Write(data)
+	var b strings.Builder
+	b.Grow(len(name))
+	for _, r := range name {
+		switch {
+		case r == '"', r == '\\', r == ';', r == '\r', r == '\n':
+			b.WriteByte('_')
+		case r < 0x20 || r == 0x7f:
+			// Non-printable / DEL: replace.
+			b.WriteByte('_')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	out := b.String()
+	if out == "" {
+		return "download"
+	}
+	return out
 }
 
 // resolveAppContainer pulls the app id and container name
@@ -232,7 +278,22 @@ func (h *Handlers) streamContainerFile(w http.ResponseWriter, r *http.Request, c
 // from ListAppContainers (filtered by the engine), and a
 // docker-mode app only has one legal container: the
 // current_container recorded at last deploy.
+//
+// Docker-nil is checked first (before the ownership
+// lookup) so the handler can return 503 with a clear
+// "docker unavailable" message instead of 404. Without
+// this guard, a compose request that asks "does this
+// container belong to app X?" would silently fail the
+// membership check (because ListAppContainers panics
+// or returns nothing on a nil manager) and surface as
+// "container not found" — which is the wrong answer
+// when the real cause is the docker daemon being
+// unreachable.
 func (h *Handlers) resolveAppContainer(w http.ResponseWriter, r *http.Request) (int, string, bool) {
+	if h.Docker == nil {
+		writeErr(w, http.StatusServiceUnavailable, errors.New("docker unavailable"))
+		return 0, "", false
+	}
 	id, ok := pathID(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid id"))

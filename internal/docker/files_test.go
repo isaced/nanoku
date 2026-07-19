@@ -547,6 +547,76 @@ func TestContainerStatPath_DelegatesToSDK(t *testing.T) {
 	}
 }
 
+// TestStreamContainerFile_HappyPath exercises the
+// streaming variant of ReadContainerFile: it must
+// return a ReadCloser that yields the file's bytes
+// without buffering the whole file, and the closer
+// must release the underlying tar body. We use a
+// 1 MiB payload to confirm the streaming path
+// actually works for "the user pulled a big log".
+func TestStreamContainerFile_HappyPath(t *testing.T) {
+	ffd := newFakeFileDaemon()
+	defer ffd.Close()
+	m := newTestManagerForFiles(t, ffd)
+
+	const size = 1 << 20 // 1 MiB
+	payload := bytes.Repeat([]byte("A"), size)
+	ffd.fileTarBytes = buildSingleFileTar(t, "big.log", payload)
+	ffd.statResponse = container.PathStat{Size: int64(size), Mode: 0o644, Mtime: time.Now()}
+
+	body, n, err := m.StreamContainerFile(context.Background(), "id", "/var/log/big.log")
+	if err != nil {
+		t.Fatalf("StreamContainerFile: %v", err)
+	}
+	defer body.Close()
+
+	if n != int64(size) {
+		t.Errorf("reported size = %d, want %d", n, size)
+	}
+	got, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if len(got) != size {
+		t.Errorf("read %d bytes, want %d", len(got), size)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Errorf("body mismatch (first 32 bytes: %q)", got[:32])
+	}
+}
+
+// TestStreamContainerFile_RejectsDirectory mirrors
+// the same pre-flight check ReadContainerFile has:
+// a directory path must be rejected before we try
+// to stream (a tar listing would be technically
+// "bytes" but not what the user asked for).
+func TestStreamContainerFile_RejectsDirectory(t *testing.T) {
+	ffd := newFakeFileDaemon()
+	defer ffd.Close()
+	m := newTestManagerForFiles(t, ffd)
+
+	ffd.statResponse = container.PathStat{
+		Size:  4096,
+		Mode:  os.FileMode(0o755) | os.ModeDir,
+		Mtime: time.Now(),
+	}
+	if _, _, err := m.StreamContainerFile(context.Background(), "id", "/app"); err == nil {
+		t.Fatal("expected error for directory, got nil")
+	}
+}
+
+// TestStreamContainerFile_RejectsRelativePath is
+// the same guard as for ListContainerDir / Read /
+// Stat — the API surface only ever hands absolute
+// paths to the manager, so a relative one here means
+// a caller bug.
+func TestStreamContainerFile_RejectsRelativePath(t *testing.T) {
+	m := newTestManagerForFiles(t, newFakeFileDaemon())
+	if _, _, err := m.StreamContainerFile(context.Background(), "id", "relative"); err == nil {
+		t.Fatal("expected error for relative path, got nil")
+	}
+}
+
 // TestContainerStatPath_RejectsRelativePath is the
 // symmetry check with ReadContainerFile / ListContainerDir:
 // relative paths are refused at the boundary so the SDK

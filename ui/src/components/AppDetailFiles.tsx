@@ -211,14 +211,25 @@ function FileListing({
       dataIndex: 'modTime',
       key: 'modTime',
       width: 180,
-      render: (modTime: string) =>
-        modTime ? (
+      // The server may send Go's zero time as
+      // "0001-01-01T00:00:00Z" when the upstream `ls`
+      // mtime couldn't be parsed (we fall back to a
+      // zero time.Time rather than dropping the field).
+      // That string is truthy, so a naive `modTime ? …`
+      // would render it as the year 1. Treat both the
+      // empty string and the Go zero-time prefix as
+      // "no value" so the dash placeholder shows up
+      // instead.
+      render: (modTime: string) => {
+        const hasValue = modTime && !modTime.startsWith('0001-')
+        return hasValue ? (
           <span className="text-xs text-[var(--fg-muted)]">
             {new Date(modTime).toLocaleString()}
           </span>
         ) : (
           <span className="text-[var(--fg-muted)]">—</span>
-        ),
+        )
+      },
     },
   ]
 
