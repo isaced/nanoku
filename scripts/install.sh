@@ -16,7 +16,7 @@
 #   NANOKU_LISTEN          - nanoku listen address (default: :8080)
 #   NANOKU_DATA_DIR        - persistent data dir (default: /var/lib/nanoku)
 #   NANOKU_CONFIG_DIR      - config + compose + .env dir (default: /etc/nanoku)
-#   NANOKU_IMAGE_REGISTRY  - "dockerhub" or "ghcr" (default: dockerhub)
+#   NANOKU_IMAGE_REGISTRY  - "dockerhub", "ghcr" or "cnb" (default: dockerhub)
 
 set -o pipefail
 
@@ -36,6 +36,7 @@ section() { echo -e "\n${BOLD}==>${RESET} ${BOLD}$*${RESET}"; }
 NANOKU_VERSION="${NANOKU_VERSION:-latest}"
 case "${NANOKU_IMAGE_REGISTRY:-dockerhub}" in
     ghcr)      NANOKU_IMAGE="${NANOKU_IMAGE:-ghcr.io/isaced/nanoku:${NANOKU_VERSION}}" ;;
+    cnb)       NANOKU_IMAGE="${NANOKU_IMAGE:-docker.cnb.cool/isaced/nanoku:${NANOKU_VERSION}}" ;;
     dockerhub|*) NANOKU_IMAGE="${NANOKU_IMAGE:-isaced/nanoku:${NANOKU_VERSION}}" ;;
 esac
 NANOKU_LISTEN="${NANOKU_LISTEN:-:8080}"

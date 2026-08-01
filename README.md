@@ -91,7 +91,7 @@ Useful overrides:
 | `NANOKU_ADMIN_PASSWORD`    | *(generated)* | Set your own to skip the one-time print at the end     |
 | `NANOKU_SECRET_KEY`        | *(generated)* | AES-256-GCM passphrase; **back up** after install      |
 | `NANOKU_LISTEN`            | `:8080`       | nanoku UI listen address                               |
-| `NANOKU_IMAGE_REGISTRY`    | `dockerhub`   | Set to `ghcr` to use `ghcr.io/isaced/nanoku`           |
+| `NANOKU_IMAGE_REGISTRY`    | `dockerhub`   | `ghcr` → `ghcr.io/isaced/nanoku`; `cnb` → `docker.cnb.cool/isaced/nanoku` |
 
 After install:
 
