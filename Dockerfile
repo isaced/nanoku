@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 ARG GO_VERSION=1.26
-ARG NODE_VERSION=20
+ARG NODE_VERSION=26
 
 FROM node:${NODE_VERSION}-bookworm-slim AS ui
 WORKDIR /src/ui

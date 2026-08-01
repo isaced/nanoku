@@ -1,0 +1,17 @@
+"v*":
+  tag_push:
+    - services:
+        - docker
+      stages:
+        - name: set image tag
+          script: echo -n "${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:${CNB_BRANCH}"
+          exports:
+            info: IMAGE_TAG
+        - name: docker build
+          script: |
+            docker build \
+              --build-arg VERSION=${CNB_BRANCH} \
+              --build-arg COMMIT=${CNB_COMMIT_SHORT} \
+              -t $IMAGE_TAG .
+        - name: push image
+          script: docker push $IMAGE_TAG
